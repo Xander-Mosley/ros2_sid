@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 #change name of package to this
-project(ros2_template_package)
+project(ros2_sid)
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
@@ -55,6 +55,7 @@ install(PROGRAMS
   scripts/goal_vis.py
   scripts/target_estimator.py
   scripts/guidance_publisher.py
+  scripts/testingsignals.py
   # scripts/client_member_function.py
   # scripts/service_member_function.py
   DESTINATION lib/${PROJECT_NAME}
