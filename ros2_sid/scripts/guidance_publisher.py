@@ -142,6 +142,10 @@ class GuidancePublisher(Node):
         rel_yaw_cmd: float = 0.0  # create a trajectory message
 
         trajectory: CtlTraj = CtlTraj()
+        trajectory.roll = []
+        trajectory.pitch = []
+        trajectory.yaw = []
+        trajectory.idx = 0
         self.publish_trajectory(trajectory)
 
     def publish_trajectory(self, trajectory: CtlTraj) -> None:
