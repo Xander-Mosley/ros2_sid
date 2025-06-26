@@ -39,10 +39,10 @@ class PotentialSolution(Node):
     def __init__(self, ns=''):
         super().__init__('excitation_node')
         self.switch: int = 1
-        self.maneuver_mode: int = 0
+        self.maneuver_mode: int = 1
         self.Maneuvers()
         self.counter = 0
-        
+
         self.input_signal: Publisher = self.create_publisher(
             CtlTraj, 'trajectory', 10)
         
