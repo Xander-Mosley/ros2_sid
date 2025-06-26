@@ -41,7 +41,7 @@ class PotentialSolution(Node):
         super().__init__('excitation_node')
         self.switch: int = 1
         self.maneuver_mode: int = 0
-        self.Maneuvers()
+        self.maneuvers()
         self.counter = 0
         
         self.input_signal: Publisher = self.create_publisher(
@@ -51,12 +51,12 @@ class PotentialSolution(Node):
         self.end_maneuver_timer = False
         self.main_timerperiod: float = 0.02
         self.main_timer = self.create_timer(
-            self.main_timerperiod, self.Execute)
+            self.main_timerperiod, self.execute)
         
-        self.userthread = threading.Thread(target=self.UserInputLoop, daemon=True)
+        self.userthread = threading.Thread(target=self.user_input_loop, daemon=True)
         self.userthread.start()
 
-    def UserInputLoop(self):
+    def user_input_loop(self):
         while rclpy.ok():
             userswitch = int(input("Testing Switch (0-1): "))
             if (userswitch != self.switch):
@@ -64,7 +64,7 @@ class PotentialSolution(Node):
                 if (self.switch == 0):
                     self.maneuver_mode: int = int(input("Enter a Maneuver (0-5): "))
         
-    def Maneuvers(self) -> None:
+    def maneuvers(self) -> None:
         amplitude: float = 1.
         minimum_frequency: float = 1.
         maximum_frequency: float = 5.
@@ -118,7 +118,7 @@ class PotentialSolution(Node):
         time, doublet = MultiStep(amplitude, natural_frequency, pulses, time_delay, time_step, final_time)
         self.yawdoublet = np.array([time, doublet]).T
         
-    def Execute(self):
+    def execute(self):
         if (self.switch == 1):
             # Currently no logic for if switching from one maneuver mode to another.
             if (self.maneuver_timer is not None) and (self.end_maneuver_timer is True):
@@ -144,7 +144,7 @@ class PotentialSolution(Node):
                     maneuver_timerperiod: float = self.main_timerperiod
                 
                 self.maneuver_timer = self.create_timer(
-                    maneuver_timerperiod, self.PublishTrajectory)
+                    maneuver_timerperiod, self.publish_trajectory)
             
         elif (self.switch == 0):
             if (self.maneuver_timer is not None):
@@ -153,15 +153,15 @@ class PotentialSolution(Node):
                 self.maneuver_timer = None
                 self.counter = 0
 
-    def PublishTrajectory(self):
+    def publish_trajectory(self):
         self.trajectory: CtlTraj = CtlTraj()
 
-        self.DetermineTrajectory()
+        self.determine_trajectory()
 
         self.trajectory.idx = 0
         self.input_signal.publish(self.trajectory)
 
-    def DetermineTrajectory(self):
+    def determine_trajectory(self):
         if (self.maneuver_mode == 0):
             if (self.counter < len(self.rolsweep)):
                 self.trajectory.roll  = [self.rolsweep[self.counter, 1]]
