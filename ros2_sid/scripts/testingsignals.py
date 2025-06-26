@@ -12,6 +12,7 @@ from std_msgs.msg import String
 from std_msgs.msg import Float64
 from std_msgs.msg import Float64MultiArray
 from drone_interfaces.msg import Telem, CtlTraj
+import threading
 
 from ros2_sid.inputdesign import FrequencySweep, MultiStep
 
@@ -39,10 +40,10 @@ class PotentialSolution(Node):
     def __init__(self, ns=''):
         super().__init__('excitation_node')
         self.switch: int = 1
-        self.maneuver_mode: int = 1
+        self.maneuver_mode: int = 0
         self.Maneuvers()
         self.counter = 0
-
+        
         self.input_signal: Publisher = self.create_publisher(
             CtlTraj, 'trajectory', 10)
         
@@ -51,6 +52,17 @@ class PotentialSolution(Node):
         self.main_timerperiod: float = 0.02
         self.main_timer = self.create_timer(
             self.main_timerperiod, self.Execute)
+        
+        self.userthread = threading.Thread(target=self.UserInputLoop, daemon=True)
+        self.userthread.start()
+
+    def UserInputLoop(self):
+        while rclpy.ok():
+            userswitch = int(input("Testing Switch (0-1): "))
+            if (userswitch != self.switch):
+                self.switch = userswitch
+                if (self.switch == 0):
+                    self.maneuver_mode: int = int(input("Enter a Maneuver (0-5): "))
         
     def Maneuvers(self) -> None:
         amplitude: float = 1.
