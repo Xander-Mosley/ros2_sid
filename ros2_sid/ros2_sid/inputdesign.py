@@ -8,10 +8,10 @@ from typing import Optional
 import warnings
 
 
-__all__ = ['FrequencySweep', 'MultiStep']
+__all__ = ['frequency_sweep', 'multi_step']
 
 
-def FrequencySweep(
+def frequency_sweep(
         amplitude: float,
         minimum_frequency: float,
         maximum_frequency: float,
@@ -80,7 +80,7 @@ def FrequencySweep(
     return time, signal
 
 
-def MultiStep(
+def multi_step(
         amplitude: float | np.ndarray | list,
         natural_frequency: float,
         pulses: np.ndarray | list,
@@ -147,7 +147,7 @@ def MultiStep(
     return time, signal
 
 
-def MultiSine():
+def multi_sine():
     None
 
     
