@@ -186,8 +186,6 @@ class PubInputSignals(Node):
         self.counter += 1
 
 
-
-
 def main(args=None):
     rclpy.init(args=args)
     pub_signals = PubInputSignals()
