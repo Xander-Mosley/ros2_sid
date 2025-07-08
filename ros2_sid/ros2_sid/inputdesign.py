@@ -2,6 +2,8 @@
 # Functions to create various input signals.
 # V1.0: Developed FrequencySweep and Multistep. Created an empty MultiSine function.
 # Xander Mosley - 20250623105231
+# V1.1: Fixed naming conventions for PEP8.
+# Xander Mosley - 20250701143041
 
 import numpy as np
 from typing import Optional
@@ -9,6 +11,104 @@ import warnings
 
 
 __all__ = ['frequency_sweep', 'multi_step']
+
+
+def _rms(
+        input_array: np.ndarray
+        ) -> np.float64 | np.ndarray:
+    """
+    Computes the root-mean-square (RMS) value of a vector or matrix.
+    
+    Parameters
+    ----------
+    input_array : np.ndarray
+        Input vector or 2D array of column vectors.
+
+    Returns
+    -------
+    rms_values : np.float64 | np.ndarray
+        If input is 1D, returns a scalar.
+        If input is 2D, returns 1D array with RMS for each column.
+    """
+    input_array = np.asarray(input_array)
+    
+    if input_array.ndim == 1:
+        return np.sqrt(np.mean(input_array ** 2))
+    elif input_array.ndim == 2:
+        n, m = input_array.shape
+        rms_values = np.zeros(m)
+        for j in range(m):
+            rms_values[j] = np.sqrt(np.dot(input_array[:, j], input_array[:, j]) / n)
+        return rms_values
+    else:
+        raise ValueError("Input must be a 1D or 2D array.")
+
+
+def _peakfactor(
+        input_array: np.ndarray
+        ) -> np.float64 | np.ndarray:
+    """
+    Computes the relative peak factor of a time series.
+
+    Parameters
+    ----------
+    input_array : np.ndarray
+        Input vector or 2D array of column vectors.
+
+    Returns
+    -------
+    peak_factor : np.float64 | np.ndarray
+        Relative peak factor.
+        If input is 1D, returns a scalar.
+        If input is 2D, returns a 1D array with peak factor for each column.
+    """
+    input_array = np.asarray(input_array)
+
+    if input_array.ndim == 1:
+        peak_to_peak = np.max(input_array) - np.min(input_array)
+        return peak_to_peak / (2 * np.sqrt(2) * _rms(input_array))
+    elif input_array.ndim == 2:
+        peak_to_peak = np.max(input_array, axis=0) - np.min(input_array, axis=0)
+        return peak_to_peak / (2 * np.sqrt(2) * _rms(input_array))
+    else:
+        raise ValueError("Input must be a 1D or 2D array.")
+
+
+def _peakfactorcost(
+        phases: np.ndarray,
+        frequencies: np.ndarray,
+        powers: np.ndarray,
+        time: np.ndarray
+        ) -> tuple[np.float64, np.ndarray]:
+    """
+    Computes the relative peak factor cost for optimizing multi-sine inputs.
+
+    Parameters
+    ----------
+    phases : np.ndarray
+        Vector of phase angles (radians).
+    frequencies : np.ndarray
+        Frequency vector (Hz).
+    powers : np.ndarray
+        Power for each component. Sum should equal 1.
+    time : np.ndarray
+        Time vector.
+
+    Returns
+    -------
+    cost : np.float64
+        Relative peak factor cost.
+    signals : np.ndarray
+        Multi-frequency sum of cosine signals.
+    """
+    angular_frequencies = 2 * np.pi * frequencies
+
+    signals = np.zeros(len(time))
+    for j in range(len(frequencies)):
+        signals += np.sqrt(powers[j]) * np.cos(angular_frequencies[j] * time + phases[j])
+
+    cost = _peakfactor(signals)
+    return cost, signals
 
 
 def frequency_sweep(
@@ -149,8 +249,6 @@ def multi_step(
 
 def multi_sine():
     None
-
-    
 
 
 if (__name__ == '__main__'):
