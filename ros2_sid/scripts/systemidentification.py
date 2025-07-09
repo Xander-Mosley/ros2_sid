@@ -107,7 +107,7 @@ class OLSNode(Node):
 
     def imu_callback(self, msg: Imu) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
-        self.livetime.update_data((msg.header.stamp.nanosec))
+        self.livetime.update_data((msg.header.stamp.nanosec * 1e-9))
         self.rol_velo.update_data(msg.angular_velocity.x)
         self.pit_velo.update_data(msg.angular_velocity.y)
         self.yaw_velo.update_data(msg.angular_velocity.z)
