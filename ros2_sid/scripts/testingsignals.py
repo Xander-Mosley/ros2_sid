@@ -20,7 +20,7 @@ from ros2_sid.inputdesign import frequency_sweep, multi_step
 class PubInputSignals(Node):
     def __init__(self, ns=''):
         super().__init__('excitation_node')
-        self.switch: int = 1
+        self.switch: int = 0
         self.maneuver_mode: int = 1
         self.maneuvers()
         self.initial_counter: int = 0
@@ -43,19 +43,19 @@ class PubInputSignals(Node):
         # and the first time value must be zero
 
         amplitude: float = 1.
-        minimum_frequency: float = 1.
-        maximum_frequency: float = 5.
-        time_step: float = 0.1
-        final_time: float = 15.
+        minimum_frequency: float = 0.1
+        maximum_frequency: float = 1.5
+        time_step: float = 0.02
+        final_time: float = 25.
         time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
         empty = np.zeros_like(time)
         self.rolsweep = np.array([time, sweep, empty, empty]).T
 
         amplitude: float = 1.
-        natural_frequency: float = 0.5
+        natural_frequency: float = 1.0
         pulses: list = [1, 1]
-        time_delay: float = 5.
-        time_step: float = 0.01
+        time_delay: float = 1.0
+        time_step: float = 0.02
         final_time: float = 15.
         time, doublet = multi_step(amplitude, natural_frequency, pulses, time_delay, time_step, final_time)
         empty = np.zeros_like(time)
@@ -63,19 +63,19 @@ class PubInputSignals(Node):
         
 
         amplitude: float = 1.
-        minimum_frequency: float = 1.
-        maximum_frequency: float = 5.
-        time_step: float = 0.05
-        final_time: float = 15.
+        minimum_frequency: float = 0.1
+        maximum_frequency: float = 1.5
+        time_step: float = 0.02
+        final_time: float = 25.
         time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
         empty = np.zeros_like(time)
         self.pitsweep = np.array([time, empty, sweep, empty]).T
 
         amplitude: float = 1.
-        natural_frequency: float = 0.2
+        natural_frequency: float = 1.0
         pulses: list = [1, 1]
-        time_delay: float = 5.
-        time_step: float = 0.1
+        time_delay: float = 1.0
+        time_step: float = 0.02
         final_time: float = 15.
         time, doublet = multi_step(amplitude, natural_frequency, pulses, time_delay, time_step, final_time)
         empty = np.zeros_like(time)
@@ -83,19 +83,19 @@ class PubInputSignals(Node):
         
 
         amplitude: float = 1.
-        minimum_frequency: float = 1.
-        maximum_frequency: float = 5.
-        time_step: float = 0.1
-        final_time: float = 15.
+        minimum_frequency: float = 0.1
+        maximum_frequency: float = 1.5
+        time_step: float = 0.02
+        final_time: float = 25.
         time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
         empty = np.zeros_like(time)
         self.yawsweep = np.array([time, empty, empty, sweep]).T
         
         amplitude: float = 1.
-        natural_frequency: float = 2.
+        natural_frequency: float = 1.0
         pulses: list = [1, 1]
-        time_delay: float = 5.
-        time_step: float = 0.1
+        time_delay: float = 1.0
+        time_step: float = 0.02
         final_time: float = 15.
         time, doublet = multi_step(amplitude, natural_frequency, pulses, time_delay, time_step, final_time)
         empty = np.zeros_like(time)
@@ -160,7 +160,7 @@ class PubInputSignals(Node):
             else:
                 # could this be done earlier as well???
                 self.switch = 0
-                print("NOOO!")
+                # print("NOOO!")
             
 
 
