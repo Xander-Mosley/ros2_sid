@@ -15,6 +15,7 @@ from drone_interfaces.msg import Telem, CtlTraj
 from rclpy.subscription import Subscription
 from mavros_msgs.msg import RCIn
 from mavros.base import SENSOR_QOS
+import threading
 
 from ros2_sid.inputdesign import frequency_sweep, multi_step
 
@@ -23,7 +24,7 @@ class PubInputSignals(Node):
         super().__init__('excitation_node')
         self.setup_subscriptions()
         self.kill_switch: float = 0.
-        self.kill_switch_channel: int = 5
+        self.kill_switch_channel: int = 4
         self.kill_switch_threshold: float = 1550
 
         self.run_switch: int = 0
@@ -39,6 +40,9 @@ class PubInputSignals(Node):
         self.timer = self.create_timer(
             self.current_timer_period, self.logic_loop)
         
+        self.userthread = threading.Thread(target=self.user_input_loop, daemon=True)
+        self.userthread.start()
+        
     def setup_subscriptions(self) -> None:
         self.rcin_sub: Subscription = self.create_subscription(
             RCIn,
@@ -49,7 +53,6 @@ class PubInputSignals(Node):
 
     def rcin_callback(self, msg: RCIn) -> None:
         self.kill_switch = msg.channels[self.kill_switch_channel]
-
 
     def maneuvers(self) -> None:
         # maneuvers must have the shape (N, 4)
@@ -115,8 +118,23 @@ class PubInputSignals(Node):
         empty = np.zeros_like(time)
         self.yawdoublet = np.array([time, empty, empty, doublet]).T
 
+    def user_input_loop(self) -> None:
+        while rclpy.ok():
+            if (self.kill_switch <= self.kill_switch_threshold):
+                print("\nManeuvers")
+                print("=========")
+                print("1: Roll  - Sweep")
+                print("2: Roll  - Doublet")
+                print("3: Pitch - Sweep")
+                print("4: Pitch - Doublet")
+                print("5: Yaw   - Sweep")
+                print("6: Yaw   - Doublet")
+                self.maneuver_mode: int = int(input("\nEnter a Maneuver (1-6):\n"))
+
     def logic_loop(self) -> None:
+        # print(self.kill_switch)
         if (self.kill_switch >= self.kill_switch_threshold):
+            # print("kill switch high")
             # self.switch could be a variable defined by the control's...
             # function, so the function isn't running at each if statement
             if (self.run_switch == 1):
@@ -165,7 +183,9 @@ class PubInputSignals(Node):
 
 
         else:
+            # print("kill switch low")
             self.run_switch = 1
+            self.counter = self.initial_counter
 
     def update_timer_period(self, new_timer_period) -> None:
         if (self.timer is not None):
