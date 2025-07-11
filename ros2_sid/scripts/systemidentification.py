@@ -52,7 +52,7 @@ class OLSNode(Node):
     def __init__(self, ns=''):
         super().__init__('ols_node')
         self.setup_models()
-        self.setup_all_subscriptions()
+        self.setup_subscriptions()
         # self.setup_synced_subscriptions(ns)
         self.setup_all_publishers()
 
@@ -83,7 +83,7 @@ class OLSNode(Node):
         self.yaw = ModelStructure(2)
     
 
-    def setup_all_subscriptions(self) -> None:
+    def setup_subscriptions(self) -> None:
         self.imu_sub: Subscription = self.create_subscription(
             Imu,
             '/mavros/imu/data',

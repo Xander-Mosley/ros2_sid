@@ -16,7 +16,6 @@ import threading
 
 from ros2_sid.inputdesign import frequency_sweep, multi_step
 
-
 class PubInputSignals(Node):
     def __init__(self, ns=''):
         super().__init__('excitation_node')
