@@ -180,6 +180,7 @@ class PubInputSignals(Node):
         trajectory.roll  = [self.current_maneuver[self.counter, 1]]
         trajectory.pitch = [self.current_maneuver[self.counter, 2]]
         trajectory.yaw   = [self.current_maneuver[self.counter, 3]]
+        trajectory.thrust   = [0.5]
         trajectory.idx = 0
         self.input_signal.publish(trajectory)
         self.counter += 1
