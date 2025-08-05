@@ -14,7 +14,7 @@ from std_msgs.msg import Float64MultiArray
 from drone_interfaces.msg import Telem, CtlTraj
 import threading
 
-from ros2_sid.inputdesign import frequency_sweep, multi_step
+from ros2_sid.inputdesign import frequency_sweep, multi_step, multi_sine
 
 class PubInputSignals(Node):
     def __init__(self, ns=''):
@@ -41,16 +41,16 @@ class PubInputSignals(Node):
         # time, roll signal, pitch signal, yaw signal;
         # and the first time value must be zero
 
-        amplitude: float = 1.
+        amplitude: float = np.deg2rad(5) 
         minimum_frequency: float = 0.1
         maximum_frequency: float = 1.5
         time_step: float = 0.02
-        final_time: float = 25.
+        final_time: float = 15.
         time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
         empty = np.zeros_like(time)
         self.rolsweep = np.array([time, sweep, empty, empty]).T
 
-        amplitude: float = 1.
+        amplitude: float = np.deg2rad(5)  
         natural_frequency: float = 1.0
         pulses: list = [1, 1]
         time_delay: float = 1.0
@@ -60,17 +60,17 @@ class PubInputSignals(Node):
         empty = np.zeros_like(time)
         self.roldoublet = np.array([time, doublet, empty, empty]).T
         
-
-        amplitude: float = 1.
+        
+        amplitude: float = np.deg2rad(5)
         minimum_frequency: float = 0.1
         maximum_frequency: float = 1.5
         time_step: float = 0.02
-        final_time: float = 25.
+        final_time: float = 15.
         time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
         empty = np.zeros_like(time)
         self.pitsweep = np.array([time, empty, sweep, empty]).T
 
-        amplitude: float = 1.
+        amplitude: float = np.deg2rad(5)
         natural_frequency: float = 1.0
         pulses: list = [1, 1]
         time_delay: float = 1.0
@@ -81,16 +81,16 @@ class PubInputSignals(Node):
         self.pitdoublet = np.array([time, empty, doublet, empty]).T
         
 
-        amplitude: float = 1.
+        amplitude: float = np.deg2rad(10)
         minimum_frequency: float = 0.1
         maximum_frequency: float = 1.5
         time_step: float = 0.02
-        final_time: float = 25.
+        final_time: float = 15.
         time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
         empty = np.zeros_like(time)
         self.yawsweep = np.array([time, empty, empty, sweep]).T
         
-        amplitude: float = 1.
+        amplitude: float = np.deg2rad(10)
         natural_frequency: float = 1.0
         pulses: list = [1, 1]
         time_delay: float = 1.0
@@ -177,12 +177,13 @@ class PubInputSignals(Node):
     def publish_trajectory(self) -> None:
         trajectory: CtlTraj = CtlTraj()
         # trajectory.header.stamp = self.get_clock().now().to_msg()
-        trajectory.roll  = [self.current_maneuver[self.counter, 1]]
-        trajectory.pitch = [self.current_maneuver[self.counter, 2]]
-        trajectory.yaw   = [self.current_maneuver[self.counter, 3]]
-        trajectory.thrust   = [0.5]
+        trajectory.roll  = [self.current_maneuver[self.counter, 1], self.current_maneuver[self.counter, 1]]
+        trajectory.pitch = [self.current_maneuver[self.counter, 2], self.current_maneuver[self.counter, 2]]
+        trajectory.yaw   = [self.current_maneuver[self.counter, 3], self.current_maneuver[self.counter, 3]]
+        trajectory.thrust = [0.5, 0.5]
         trajectory.idx = 0
         self.input_signal.publish(trajectory)
+        # print(f"Publishing trajectory: {trajectory.roll}, {trajectory.pitch}, {trajectory.yaw}")
         self.counter += 1
 
 

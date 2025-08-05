@@ -6,13 +6,15 @@
 # Xander Mosley - 20250701143041
 # V1.2: Developed multi_sine function. Added notes, authorship, and history.
 # Xander Mosley - 20250723125859
+# V1.3: Debugged the code using the VSCode Python linter.
+# Xander Mosley - 20250805113326
+
 
 import numpy as np
-from typing import Any, Optional, Union
 from numpy.typing import NDArray
+from typing import Any, Optional, Union
 import warnings
-from scipy.optimize import fmin as nelder_mead
-
+# from scipy.optimize import fmin as nelder_mead
 
 
 __all__ = ['frequency_sweep', 'multi_step', 'multi_sine']

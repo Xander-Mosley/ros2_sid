@@ -60,7 +60,7 @@ class PubInputSignals(Node):
         # time, roll signal, pitch signal, yaw signal;
         # and the first time value must be zero
 
-        amplitude: float = np.deg2rad(45) 
+        amplitude: float = np.deg2rad(5) 
         minimum_frequency: float = 0.1
         maximum_frequency: float = 1.5
         time_step: float = 0.02
@@ -69,7 +69,7 @@ class PubInputSignals(Node):
         empty = np.zeros_like(time)
         self.rolsweep = np.array([time, sweep, empty, empty]).T
 
-        amplitude: float = np.deg2rad(45)  
+        amplitude: float = np.deg2rad(5)  
         natural_frequency: float = 1.0
         pulses: list = [1, 1]
         time_delay: float = 1.0
@@ -79,7 +79,8 @@ class PubInputSignals(Node):
         empty = np.zeros_like(time)
         self.roldoublet = np.array([time, doublet, empty, empty]).T
         
-        amplitude: float = np.deg2rad(10)
+
+        amplitude: float = np.deg2rad(5)
         minimum_frequency: float = 0.1
         maximum_frequency: float = 1.5
         time_step: float = 0.02
@@ -88,8 +89,8 @@ class PubInputSignals(Node):
         empty = np.zeros_like(time)
         self.pitsweep = np.array([time, empty, sweep, empty]).T
 
+        amplitude: float = np.deg2rad(5)
         natural_frequency: float = 1.0
-        amplitude: float = np.deg2rad(10)
         pulses: list = [1, 1]
         time_delay: float = 1.0
         time_step: float = 0.02
@@ -99,7 +100,7 @@ class PubInputSignals(Node):
         self.pitdoublet = np.array([time, empty, doublet, empty]).T
         
 
-        amplitude: float = np.deg2rad(30)
+        amplitude: float = np.deg2rad(10)
         minimum_frequency: float = 0.1
         maximum_frequency: float = 1.5
         time_step: float = 0.02
@@ -108,7 +109,7 @@ class PubInputSignals(Node):
         empty = np.zeros_like(time)
         self.yawsweep = np.array([time, empty, empty, sweep]).T
         
-        amplitude: float = 1.
+        amplitude: float = np.deg2rad(10)
         natural_frequency: float = 1.0
         pulses: list = [1, 1]
         time_delay: float = 1.0
@@ -204,7 +205,7 @@ class PubInputSignals(Node):
         trajectory.thrust = [0.5, 0.5]
         trajectory.idx = 0
         self.input_signal.publish(trajectory)
-        #print(f"Publishing trajectory: {trajectory.roll}, {trajectory.pitch}, {trajectory.yaw}")
+        # print(f"Publishing trajectory: {trajectory.roll}, {trajectory.pitch}, {trajectory.yaw}")
         self.counter += 1
 
 
