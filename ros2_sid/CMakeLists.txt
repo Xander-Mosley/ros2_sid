@@ -57,7 +57,8 @@ install(PROGRAMS
   scripts/guidance_publisher.py
   scripts/testingsignals_HINL.py
   scripts/testingsignals_SINL.py
-  scripts/systemidentification.py
+  scripts/systemidentification_synced.py
+  scripts/systemidentification_unsynced.py
   # scripts/client_member_function.py
   # scripts/service_member_function.py
   DESTINATION lib/${PROJECT_NAME}
