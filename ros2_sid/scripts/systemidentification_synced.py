@@ -20,29 +20,7 @@ from sensor_msgs.msg import Imu
 from std_msgs.msg import Float64, Float64MultiArray, String
 
 from ros2_sid.rt_ols import ModelStructure, StoredData, diff
-
-
-def euler_from_quaternion(x:float, y:float, z:float, w:float) -> tuple:
-        """
-        Convert a quaternion into euler angles (roll, pitch, yaw)
-        roll is rotation around x in radians (counterclockwise)
-        pitch is rotation around y in radians (counterclockwise)
-        yaw is rotation around z in radians (counterclockwise)
-        """
-        t0 = +2.0 * (w * x + y * z)
-        t1 = +1.0 - 2.0 * (x * x + y * y)
-        roll_x = np.arctan2(t0, t1)
-     
-        t2 = +2.0 * (w * y - z * x)
-        t2 = +1.0 if t2 > +1.0 else t2
-        t2 = -1.0 if t2 < -1.0 else t2
-        pitch_y = np.arcsin(t2)
-     
-        t3 = +2.0 * (w * z + x * y)
-        t4 = +1.0 - 2.0 * (y * y + z * z)
-        yaw_z = np.arctan2(t3, t4)
-     
-        return roll_x, pitch_y, yaw_z # in radians
+from ros2_sid.rotation_utils import euler_from_quaternion
 
 
 class OLSNode(Node):
@@ -119,7 +97,7 @@ class OLSNode(Node):
             odom_msg: Odometry
             ) -> None:
         
-        self.livetime.update_data((imu_msg.header.stamp.nanosec * 1e-9))
+        self.livetime.update_data((imu_msg.header.stamp.nanosec * 1e-9))    # TODO: Confirm that it is acceptable to ignore stamp.sec, or find a way to incorporate it.
         self.rol_velo.update_data(imu_msg.angular_velocity.x)
         self.pit_velo.update_data(imu_msg.angular_velocity.y)
         self.yaw_velo.update_data(imu_msg.angular_velocity.z)
@@ -131,11 +109,6 @@ class OLSNode(Node):
         self.ail_pwm.update_data(rcout_msg.channels[0])
         self.elv_pwm.update_data(rcout_msg.channels[1])
         self.rud_pwm.update_data(rcout_msg.channels[2])
-
-        # self.get_logger().info(
-        #     f"Gryo: [{self.rol_velo.data[0]}, {self.pit_velo.data[0]}, {self.yaw_velo.data[0]}],"
-        #     f"RC PWM: [Ail: {self.ail_pwm.data[0]}, Elv: {self.elv_pwm.data[0]}, Rud: {self.rud_pwm.data[0]}]"
-        # )
 
 
     def setup_all_publishers(self) -> None:
@@ -162,6 +135,10 @@ class OLSNode(Node):
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
+            np.float64(self.rol_accel.data.item(0)),
+            np.float64(self.rol_velo.data.item(0)),
+            np.float64(self.ail_pwm.data.item(0)),
+
             self.rol.parameters[0],
             self.rol.parameters[1]
             ]
@@ -172,6 +149,11 @@ class OLSNode(Node):
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
+            np.float64(self.pit_accel.data.item(0)),
+
+            np.float64(self.pit_velo.data.item(0)),
+            np.float64(self.elv_pwm.data.item(0)),
+
             self.pit.parameters[0],
             self.pit.parameters[1]
             ]
@@ -182,6 +164,11 @@ class OLSNode(Node):
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
+            np.float64(self.yaw_accel.data.item(0)),
+
+            np.float64(self.yaw_velo.data.item(0)),
+            np.float64(self.rud_pwm.data.item(0)),
+
             self.yaw.parameters[0],
             self.yaw.parameters[1]
             ]

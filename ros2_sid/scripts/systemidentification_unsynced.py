@@ -20,29 +20,7 @@ from sensor_msgs.msg import Imu
 from std_msgs.msg import Float64, Float64MultiArray, String
 
 from ros2_sid.rt_ols import ModelStructure, StoredData, diff
-
-
-def euler_from_quaternion(x:float, y:float, z:float, w:float) -> tuple:
-        """
-        Convert a quaternion into euler angles (roll, pitch, yaw)
-        roll is rotation around x in radians (counterclockwise)
-        pitch is rotation around y in radians (counterclockwise)
-        yaw is rotation around z in radians (counterclockwise)
-        """
-        t0 = +2.0 * (w * x + y * z)
-        t1 = +1.0 - 2.0 * (x * x + y * y)
-        roll_x = np.arctan2(t0, t1)
-     
-        t2 = +2.0 * (w * y - z * x)
-        t2 = +1.0 if t2 > +1.0 else t2
-        t2 = -1.0 if t2 < -1.0 else t2
-        pitch_y = np.arcsin(t2)
-     
-        t3 = +2.0 * (w * z + x * y)
-        t4 = +1.0 - 2.0 * (y * y + z * z)
-        yaw_z = np.arctan2(t3, t4)
-     
-        return roll_x, pitch_y, yaw_z # in radians
+from ros2_sid.rotation_utils import euler_from_quaternion
 
 
 class OLSNode(Node):
@@ -84,6 +62,7 @@ class OLSNode(Node):
     
 
     def setup_all_subscriptions(self) -> None:
+        # TODO: Subscribe to more published data.
         self.imu_sub: Subscription = self.create_subscription(
             Imu,
             '/mavros/imu/data',
@@ -107,7 +86,7 @@ class OLSNode(Node):
 
     def imu_callback(self, msg: Imu) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
-        self.livetime.update_data((msg.header.stamp.nanosec * 1e-9))
+        self.livetime.update_data((msg.header.stamp.nanosec * 1e-9))    # TODO: Confirm that it is acceptable to ignore stamp.sec, or find a way to incorporate it.
         self.rol_velo.update_data(msg.angular_velocity.x)
         self.pit_velo.update_data(msg.angular_velocity.y)
         self.yaw_velo.update_data(msg.angular_velocity.z)

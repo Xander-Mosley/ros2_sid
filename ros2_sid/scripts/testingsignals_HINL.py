@@ -59,6 +59,7 @@ class PubInputSignals(Node):
         # where the columns (in order) are:
         # time, roll signal, pitch signal, yaw signal;
         # and the first time value must be zero
+        # TODO: Add a set of comments that explain how to use the saved input file.
 
         amplitude: float = np.deg2rad(5) 
         minimum_frequency: float = 0.1
@@ -121,6 +122,7 @@ class PubInputSignals(Node):
 
     def user_input_loop(self) -> None:
         while rclpy.ok():
+            # Make this code match the number and type of maneuvers.
             if (self.kill_switch <= self.kill_switch_threshold):
                 print("\nManeuvers")
                 print("=========")
@@ -130,7 +132,6 @@ class PubInputSignals(Node):
                 print("4: Pitch - Doublet")
                 print("5: Yaw   - Sweep")
                 print("6: Yaw   - Doublet")
-
                 while True:
                     try:
                         maneuver_input = int(input("\nEnter a Maneuver (1-6):\n"))
@@ -148,6 +149,7 @@ class PubInputSignals(Node):
             # print("kill switch high")
             if (self.run_switch == 1):
                 if (self.counter == 0):
+                    # Make this code match the number and type of maneuvers.
                     if (self.maneuver_mode == 1):
                         self.current_maneuver = self.rolsweep
                     elif (self.maneuver_mode == 2):
