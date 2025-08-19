@@ -19,7 +19,7 @@ from ros2_sid.inputdesign import frequency_sweep, multi_step, multi_sine
 class PubInputSignals(Node):
     def __init__(self, ns=''):
         super().__init__('excitation_node')
-        self.switch: int = 0
+        self.run_switch: int = 0
         self.maneuver_mode: int = 1
         self.maneuvers()
         self.initial_counter: int = 0
@@ -102,10 +102,18 @@ class PubInputSignals(Node):
 
     def user_input_loop(self) -> None:
         while rclpy.ok():
-            userswitch = int(input("\nTesting Switch (0-1):\n"))
-            if (userswitch != self.switch):
-                self.switch = userswitch
-            if (self.switch == 0):
+            try:
+                userswitch = int(input("\nTesting Switch (0-1):\n"))
+                if userswitch not in [0, 1]:
+                    print("Invalid switch. Enter 0 or 1.")
+                    continue
+            except ValueError:
+                print("Invalid input. Please enter an integer (0 or 1).")
+                continue
+
+            if userswitch != self.run_switch:
+                self.run_switch = userswitch
+            if self.run_switch == 0:
                 print("\nManeuvers")
                 print("=========")
                 print("1: Roll  - Sweep")
@@ -114,14 +122,20 @@ class PubInputSignals(Node):
                 print("4: Pitch - Doublet")
                 print("5: Yaw   - Sweep")
                 print("6: Yaw   - Doublet")
-                self.maneuver_mode: int = int(input("\nEnter a Maneuver (1-6):\n"))
+
+                while True:
+                    try:
+                        maneuver_input = int(input("\nEnter a Maneuver (1-6):\n"))
+                        if maneuver_input not in range(1, 7):
+                            print("Invalid maneuver. Enter a number between 1 and 6.")
+                            continue
+                        self.maneuver_mode = maneuver_input
+                        break
+                    except ValueError:
+                        print("Invalid input. Please enter an integer between 1 and 6.")
 
     def logic_loop(self) -> None:
-        # self.switch could be a variable defined by the control's...
-        # function, so the function isn't running at each if statement
-        if (self.switch == 1):
-            # self.maneuver_mode should be a variable defined by the control's...
-            # function, so the function isn't running at each if statement
+        if (self.run_switch == 1):
             if (self.counter == 0):
                 if (self.maneuver_mode == 1):
                     self.current_maneuver = self.rolsweep
@@ -146,24 +160,19 @@ class PubInputSignals(Node):
                 if (maneuver_timer_period != self.current_timer_period):
                     self.update_timer_period(maneuver_timer_period)
 
-
             if (self.current_maneuver is not None):
                 if (self.counter < len(self.current_maneuver)):
                     self.publish_trajectory()
-
+                    self.counter += 1
                 else:
-                    self.switch = 0
+                    self.run_switch = 0
                     print("MANEUVER COMPLETE")
 
-
             else:
-                # could this be done earlier as well???
-                self.switch = 0
-                # print("NOOO!")
-            
+                self.run_switch = 0
+                print("NO CURRENT MANEUVER")
 
-
-        elif (self.switch == 0):
+        elif (self.run_switch == 0):
             self.counter = self.initial_counter
 
     def update_timer_period(self, new_timer_period) -> None:
@@ -175,16 +184,16 @@ class PubInputSignals(Node):
             self.current_timer_period, self.logic_loop)
         
     def publish_trajectory(self) -> None:
-        trajectory: CtlTraj = CtlTraj()
-        # trajectory.header.stamp = self.get_clock().now().to_msg()
-        trajectory.roll  = [self.current_maneuver[self.counter, 1], self.current_maneuver[self.counter, 1]]
-        trajectory.pitch = [self.current_maneuver[self.counter, 2], self.current_maneuver[self.counter, 2]]
-        trajectory.yaw   = [self.current_maneuver[self.counter, 3], self.current_maneuver[self.counter, 3]]
-        trajectory.thrust = [0.5, 0.5]
-        trajectory.idx = 0
-        self.input_signal.publish(trajectory)
-        # print(f"Publishing trajectory: {trajectory.roll}, {trajectory.pitch}, {trajectory.yaw}")
-        self.counter += 1
+        if (self.current_maneuver is not None):
+            trajectory: CtlTraj = CtlTraj()
+            # trajectory.header.stamp = self.get_clock().now().to_msg()
+            trajectory.roll  = [self.current_maneuver[self.counter, 1], self.current_maneuver[self.counter, 1]]
+            trajectory.pitch = [self.current_maneuver[self.counter, 2], self.current_maneuver[self.counter, 2]]
+            trajectory.yaw   = [self.current_maneuver[self.counter, 3], self.current_maneuver[self.counter, 3]]
+            trajectory.thrust = [0.5, 0.5]
+            trajectory.idx = 0
+            self.input_signal.publish(trajectory)
+            # print(f"Publishing trajectory: {trajectory.roll}, {trajectory.pitch}, {trajectory.yaw}")
 
 
 def main(args=None):

@@ -80,7 +80,7 @@ class OLSNode(Node):
         # initialize model structure objects
         self.rol = ModelStructure(2)
         self.pit = ModelStructure(2)
-        self.yaw = ModelStructure(2)
+        self.rol2 = ModelStructure(4)
     
 
     def setup_all_subscriptions(self) -> None:
@@ -175,17 +175,21 @@ class OLSNode(Node):
         self.ols_pit_timer = self.create_timer(
             timer_period, self.publish_ols_pit_data)
 
-        self.ols_yaw_publisher: Publisher = self.create_publisher(
-                Float64MultiArray, 'ols_yaw', 10)
+        self.ols_rol2_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol2', 10)
         timer_period: float = 0.02
-        self.ols_yaw_timer = self.create_timer(
-            timer_period, self.publish_ols_yaw_data)
+        self.ols_rol2_timer = self.create_timer(
+            timer_period, self.publish_ols_rol2_data)
         
     def publish_ols_rol_data(self) -> None:
         self.rol.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], self.ail_pwm.data[0]])
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
+            np.float64(self.rol_accel.data.item(0)),
+            np.float64(self.rol_velo.data.item(0)),
+            np.float64(self.ail_pwm.data.item(0)),
+
             self.rol.parameters[0],
             self.rol.parameters[1]
             ]
@@ -196,20 +200,34 @@ class OLSNode(Node):
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
+            np.float64(self.pit_accel.data.item(0)),
+
+            np.float64(self.pit_velo.data.item(0)),
+            np.float64(self.elv_pwm.data.item(0)),
+
             self.pit.parameters[0],
             self.pit.parameters[1]
             ]
         self.ols_pit_publisher.publish(msg)
         
-    def publish_ols_yaw_data(self) -> None:
-        self.yaw.update_model(self.yaw_accel.data[0], [self.yaw_velo.data[0], self.rud_pwm.data[0]])
+    def publish_ols_rol2_data(self) -> None:
+        self.rol2.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], self.ail_pwm.data[0], self.yaw_velo.data[0], self.rud_pwm.data[0]])
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
-            self.yaw.parameters[0],
-            self.yaw.parameters[1]
+            np.float64(self.rol_accel.data.item(0)),
+
+            np.float64(self.rol_velo.data.item(0)),
+            np.float64(self.ail_pwm.data.item(0)),
+            np.float64(self.yaw_velo.data.item(0)),
+            np.float64(self.rud_pwm.data.item(0)),
+
+            self.rol2.parameters[0],
+            self.rol2.parameters[1],
+            self.rol2.parameters[2],
+            self.rol2.parameters[3]
             ]
-        self.ols_yaw_publisher.publish(msg)
+        self.ols_rol2_publisher.publish(msg)
 
 
 def main(args=None):
