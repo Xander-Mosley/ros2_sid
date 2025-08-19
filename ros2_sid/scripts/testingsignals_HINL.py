@@ -19,6 +19,7 @@ import threading
 
 from ros2_sid.inputdesign import frequency_sweep, multi_step
 
+
 class PubInputSignals(Node):
     def __init__(self, ns=''):
         super().__init__('excitation_node')
@@ -122,7 +123,7 @@ class PubInputSignals(Node):
 
     def user_input_loop(self) -> None:
         while rclpy.ok():
-            # Make this code match the number and type of maneuvers.
+            # TODO: Make this code match the number and type of maneuvers.
             if (self.kill_switch <= self.kill_switch_threshold):
                 print("\nManeuvers")
                 print("=========")
@@ -149,7 +150,7 @@ class PubInputSignals(Node):
             # print("kill switch high")
             if (self.run_switch == 1):
                 if (self.counter == 0):
-                    # Make this code match the number and type of maneuvers.
+                    # TODO: Make this code match the number and type of maneuvers.
                     if (self.maneuver_mode == 1):
                         self.current_maneuver = self.rolsweep
                     elif (self.maneuver_mode == 2):

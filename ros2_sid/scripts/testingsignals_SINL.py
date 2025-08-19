@@ -16,6 +16,7 @@ import threading
 
 from ros2_sid.inputdesign import frequency_sweep, multi_step, multi_sine
 
+
 class PubInputSignals(Node):
     def __init__(self, ns=''):
         super().__init__('excitation_node')
@@ -114,7 +115,7 @@ class PubInputSignals(Node):
             if userswitch != self.run_switch:
                 self.run_switch = userswitch
 
-            # Make this code match the number and type of maneuvers.
+            # TODO: Make this code match the number and type of maneuvers.
             if self.run_switch == 0:
                 print("\nManeuvers")
                 print("=========")
@@ -138,7 +139,7 @@ class PubInputSignals(Node):
     def logic_loop(self) -> None:
         if (self.run_switch == 1):
             if (self.counter == 0):
-                # Make this code match the number and type of maneuvers.
+                # TODO: Make this code match the number and type of maneuvers.
                 if (self.maneuver_mode == 1):
                     self.current_maneuver = self.rolsweep
                 elif (self.maneuver_mode == 2):
