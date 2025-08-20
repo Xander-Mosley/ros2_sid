@@ -2,6 +2,7 @@
 from re import S
 import rclpy
 import math
+import os
 import numpy as np
 
 from rclpy.node import Node
@@ -37,20 +38,24 @@ class PubInputSignals(Node):
         self.userthread.start()
 
     def maneuvers(self) -> None:
-        # maneuvers must have the shape (N, 4)
-        # where the columns (in order) are:
-        # time, roll signal, pitch signal, yaw signal;
-        # and the first time value must be zero
-        # TODO: Add a set of comments that explain how to use the saved input file.
+        # Maneuvers can either be imported from a pre-saved CSV file (e.g., 'input_signal.csv') or generated live when the node starts.
+        # Using a CSV allows for reproducibility and avoids regenerating signals on each run.
+        # To create and save a maneuver, use the 'save_input_signal()' function in 'inputdesign.py'.
+        # All maneuver arrays must have shape (N, 4), where the columns are:
+        # [time, roll signal, pitch signal, yaw signal], and the first time value must be zero.
 
-        amplitude: float = np.deg2rad(5) 
-        minimum_frequency: float = 0.1
-        maximum_frequency: float = 1.5
-        time_step: float = 0.02
-        final_time: float = 15.
-        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
+        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/input_signal.csv"
+        data = np.loadtxt(file_path, delimiter=',', skiprows=1)
+        time = data[:, 0]
         empty = np.zeros_like(time)
-        self.rolsweep = np.array([time, sweep, empty, empty]).T
+        self.allsines = np.array([time, data[:, 1], data[:, 2], data[:, 3]]).T
+
+        self.rolsines = np.array([time, data[:, 1], empty, empty]).T
+
+        self.pitsines = np.array([time, empty, data[:, 2], empty]).T
+
+        self.yawsines = np.array([time, empty, empty, data[:, 3]]).T
+        
 
         amplitude: float = np.deg2rad(5)  
         natural_frequency: float = 1.0
@@ -62,16 +67,6 @@ class PubInputSignals(Node):
         empty = np.zeros_like(time)
         self.roldoublet = np.array([time, doublet, empty, empty]).T
         
-        
-        amplitude: float = np.deg2rad(5)
-        minimum_frequency: float = 0.1
-        maximum_frequency: float = 1.5
-        time_step: float = 0.02
-        final_time: float = 15.
-        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
-        empty = np.zeros_like(time)
-        self.pitsweep = np.array([time, empty, sweep, empty]).T
-
         amplitude: float = np.deg2rad(5)
         natural_frequency: float = 1.0
         pulses: list = [1, 1]
@@ -81,16 +76,6 @@ class PubInputSignals(Node):
         time, doublet = multi_step(amplitude, natural_frequency, pulses, time_delay, time_step, final_time)
         empty = np.zeros_like(time)
         self.pitdoublet = np.array([time, empty, doublet, empty]).T
-        
-
-        amplitude: float = np.deg2rad(10)
-        minimum_frequency: float = 0.1
-        maximum_frequency: float = 1.5
-        time_step: float = 0.02
-        final_time: float = 15.
-        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
-        empty = np.zeros_like(time)
-        self.yawsweep = np.array([time, empty, empty, sweep]).T
         
         amplitude: float = np.deg2rad(10)
         natural_frequency: float = 1.0
@@ -102,6 +87,34 @@ class PubInputSignals(Node):
         empty = np.zeros_like(time)
         self.yawdoublet = np.array([time, empty, empty, doublet]).T
 
+
+        amplitude: float = np.deg2rad(5) 
+        minimum_frequency: float = 0.1
+        maximum_frequency: float = 1.5
+        time_step: float = 0.02
+        final_time: float = 15.
+        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
+        empty = np.zeros_like(time)
+        self.rolsweep = np.array([time, sweep, empty, empty]).T
+
+        amplitude: float = np.deg2rad(5)
+        minimum_frequency: float = 0.1
+        maximum_frequency: float = 1.5
+        time_step: float = 0.02
+        final_time: float = 15.
+        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
+        empty = np.zeros_like(time)
+        self.pitsweep = np.array([time, empty, sweep, empty]).T
+
+        amplitude: float = np.deg2rad(10)
+        minimum_frequency: float = 0.1
+        maximum_frequency: float = 1.5
+        time_step: float = 0.02
+        final_time: float = 15.
+        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
+        empty = np.zeros_like(time)
+        self.yawsweep = np.array([time, empty, empty, sweep]).T
+        
     def user_input_loop(self) -> None:
         while rclpy.ok():
             try:
@@ -119,39 +132,51 @@ class PubInputSignals(Node):
             if self.run_switch == 0:
                 print("\nManeuvers")
                 print("=========")
-                print("1: Roll  - Sweep")
-                print("2: Roll  - Doublet")
-                print("3: Pitch - Sweep")
-                print("4: Pitch - Doublet")
-                print("5: Yaw   - Sweep")
-                print("6: Yaw   - Doublet")
+                print("0: All Multisines")
+                print("1: Multisine - Roll")
+                print("2: Multisine - Pitch")
+                print("3: Multisine - Yaw")
+                print("4: Doublet - Roll")
+                print("5: Doublet - Pitch")
+                print("6: Doublet - Yaw")
+                print("7: Sweep - Roll")
+                print("8: Sweep - Pitch")
+                print("9: Sweep - Yaw")
                 while True:
                     try:
-                        maneuver_input = int(input("\nEnter a Maneuver (1-6):\n"))
-                        if maneuver_input not in range(1, 7):
-                            print("Invalid maneuver. Enter a number between 1 and 6.")
+                        maneuver_input = int(input("\nEnter a Maneuver (0-9):\n"))
+                        if maneuver_input not in range(0, 10):
+                            print("Invalid maneuver. Enter a number between 0 and 9.")
                             continue
                         self.maneuver_mode = maneuver_input
                         break
                     except ValueError:
-                        print("Invalid input. Please enter an integer between 1 and 6.")
+                        print("Invalid input. Please enter an integer between 0 and 9.")
 
     def logic_loop(self) -> None:
         if (self.run_switch == 1):
             if (self.counter == 0):
                 # TODO: Make this code match the number and type of maneuvers.
-                if (self.maneuver_mode == 1):
-                    self.current_maneuver = self.rolsweep
+                if (self.maneuver_mode == 0):
+                    self.current_maneuver = self.allsines
+                elif (self.maneuver_mode == 1):
+                    self.current_maneuver = self.rolsines
                 elif (self.maneuver_mode == 2):
-                    self.current_maneuver = self.roldoublet
+                    self.current_maneuver = self.pitsines
                 elif (self.maneuver_mode == 3):
-                    self.current_maneuver = self.pitsweep
+                    self.current_maneuver = self.yawsines
                 elif (self.maneuver_mode == 4):
-                    self.current_maneuver = self.pitdoublet
+                    self.current_maneuver = self.roldoublet
                 elif (self.maneuver_mode == 5):
-                    self.current_maneuver = self.yawsweep
+                    self.current_maneuver = self.pitdoublet
                 elif (self.maneuver_mode == 6):
                     self.current_maneuver = self.yawdoublet
+                elif (self.maneuver_mode == 7):
+                    self.current_maneuver = self.rolsweep
+                elif (self.maneuver_mode == 8):
+                    self.current_maneuver = self.pitsweep
+                elif (self.maneuver_mode == 9):
+                    self.current_maneuver = self.yawsweep
                 else:
                     self.current_maneuver = None
                 

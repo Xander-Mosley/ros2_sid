@@ -8,13 +8,17 @@
 # Xander Mosley - 20250723125859
 # V1.3: Debugged the code using the VSCode Python linter.
 # Xander Mosley - 20250805113326
+# V1.4: Input signals are now savable to a .csv file.
+# Xander Mosley - 20250819184353
 
 
 import numpy as np
 from numpy.typing import NDArray
 from typing import Any, Optional, Union
 import warnings
-# from scipy.optimize import fmin as nelder_mead
+from scipy.optimize import minimize
+import os
+import csv
 
 
 __all__ = ['frequency_sweep', 'multi_step', 'multi_sine']
@@ -196,6 +200,47 @@ def _peakfactorcost(
 
     cost = _peakfactor(signals)
     return cost, signals
+
+
+def _save_input_signal(
+        input_signal: np.ndarray,
+        filename: Optional[str] = "input_signal.csv"
+        ) -> None:
+    """
+    Save a signal and its corresponding time vector to a CSV file in the same directory.
+
+    Parameters
+    ----------
+    input_signal : np.ndarray
+        2D array with shape (n_channels, n_samples), where the first row is the time vector.
+    filename : str, optional
+        Name of the output CSV file (default is 'input_signal.csv').
+
+    Notes
+    -----
+    - The input_signal should be stacked row-wise: [time; signal1; signal2; ...].
+    - The CSV will be saved in the same directory as this script.
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    19 Aug 2025 - Created, XDM.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(str(current_dir), str(filename))
+    
+    num_channels = input_signal.shape[1] - 1
+    header = ['time'] + [f'channel_{i+1}' for i in range(num_channels)]
+
+    with open(filepath, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(header)
+        writer.writerows(input_signal)
+
+    print(f"\nSignal saved to: {filepath}\n")
 
 
 def frequency_sweep(
@@ -560,7 +605,8 @@ def multi_sine(
             if (peak_factors[channel_index] > peak_factor_goal):
                 # print(f"\t Currently on iteration {iteration + 1} of {max_iterations} (max) ...\n")
                 
-                optimized_phases = nelder_mead(lambda phases: _peakfactorcost(phases, channel_frequencies, channel_power, time)[0], phase_vector, disp=False)
+                result = minimize(lambda phases: _peakfactorcost(phases, channel_frequencies, channel_power, time)[0], phase_vector, method='Nelder-Mead', options={'disp': False})
+                optimized_phases = result.x
                 phase_vector = optimized_phases
                 
                 phase_offset = np.zeros(num_frequencies_per_channel[channel_index])
@@ -595,8 +641,28 @@ def multi_sine(
     return time, signal, peak_factors, frequency_matrix, num_frequencies_per_channel, phase_matrix
 
 
+def saved_maneuver():
+    # maneuvers must have the shape (N, 4)
+    # where the columns (in order) are:
+    # time, roll signal, pitch signal, yaw signal;
+    # and the first time value must be zero
+    amplitude: float = np.deg2rad(5)
+    minimum_frequency: float = 0.1
+    maximum_frequency: float = 1.5
+    time_step: float = 0.02
+    final_time: float = 15.
+    num_channels: int = 3
+    time, signal, peak_factors, frequency_matrix, num_frequencies_per_channel, phase_matrix = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
+    # empty = np.zeros_like(time)
+    maneuver = np.column_stack((time, signal))
+
+    _save_input_signal(maneuver)
+
+
 if (__name__ == '__main__'):
+    saved_maneuver()
     warnings.warn(
-        "This script is not intended to be run as a standalone program."
-        " It contains structures and functions to be imported and used in other scripts.",
+        "This script is only inteded to run as a standalone program when"
+        " saving input signals. The remaining code contains structures and"
+        " functions to be imported and used in other scripts.",
         UserWarning)
