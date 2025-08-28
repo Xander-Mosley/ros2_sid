@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 from typing import Any, Optional, Union
 import warnings
-from scipy.optimize import minimize
+# from scipy.optimize import minimize
 import os
 import csv
 
@@ -662,7 +662,7 @@ def saved_maneuver():
 if (__name__ == '__main__'):
     saved_maneuver()
     warnings.warn(
-        "This script is only inteded to run as a standalone program when"
+        "This script is only intended to run as a standalone program when"
         " saving input signals. The remaining code contains structures and"
         " functions to be imported and used in other scripts.",
         UserWarning)
