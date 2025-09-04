@@ -37,7 +37,7 @@ HIGH = 1
 class PubInputSignals(Node):
     def __init__(self, 
                  mavlink_param_node:str= "/mavlink_param_bridge",
-                 use_hardware_kill_switch: bool = False,
+                 use_hardware_kill_switch: bool = True,
                  ns=''):
         super().__init__('excitation_node')
         self.mavlink_param_node = mavlink_param_node
@@ -65,7 +65,7 @@ class PubInputSignals(Node):
         self.input_signal: Publisher = self.create_publisher(
             CtlTraj, 'trajectory', 10)
         self.current_timer_period: float = self.initial_timer_period
-        
+        self.already_printed: bool = False # flag where if already printed don't do it again 
         self.timer = self.create_timer(
             self.current_timer_period, self.logic_loop)
         
@@ -112,7 +112,11 @@ class PubInputSignals(Node):
         if not self.use_hardware_kill_switch:
             return
         self.kill_switch = msg.channels[self.kill_switch_channel]
-
+        
+        # safety feature to make sure we can real time turn the switch off
+        if self.kill_switch < self.kill_switch_threshold:
+            self.run_switch = LOW
+        
     def maneuvers(self) -> None:
         # maneuvers must have the shape (N, 4)
         # where the columns (in order) are:
@@ -212,11 +216,13 @@ class PubInputSignals(Node):
         while rclpy.ok():
             try:
                 self.maneuver_mode = self.get_param(SID_TYPE_PARAM)
-                print(f"Current maneuver from GCS: {self.maneuver_mode}")
+                # print(f"Current maneuver from GCS: {self.maneuver_mode}")
                 # We want to see when the switch is set to High
-                if self.use_hardware_kill_switch and \
-                    (self.kill_switch <= self.kill_switch_threshold):
-                    self.print_maneuvers()
+                if self.use_hardware_kill_switch:
+                    if (self.kill_switch <= self.kill_switch_threshold):
+                        if not self.already_printed:
+                            self.print_maneuvers()
+                            self.already_printed = True
                 else:
                     userswitch = int(input("\nTesting Switch (0-1):\n"))
                     if userswitch not in [LOW, HIGH]:
@@ -238,8 +244,8 @@ class PubInputSignals(Node):
         """
         # just a check on whether we are using the hardware kill switch
         # or using keyboard
-        if self.use_hardware_kill_switch and \
-            (self.kill_switch >= self.kill_switch_threshold):
+        if self.use_hardware_kill_switch and self.kill_switch >= self.kill_switch_threshold:
+                self.run_switch = HIGH
                 # this is where we get the manuevers from the GCS
                 self.execute_maneuver_logic()
         else:
@@ -257,7 +263,8 @@ class PubInputSignals(Node):
                     self.publish_trajectory()
                     self.counter += 1
                 else:
-                    self.run_switch = 0
+                    self.run_switch = LOW
+                    self.already_printed = False # reset the flag so it can print again
                     print("MANEUVER COMPLETE")
             else:
                 self.run_switch = 0
@@ -309,12 +316,14 @@ class PubInputSignals(Node):
             trajectory.yaw   = [self.current_maneuver[self.counter, 3], self.current_maneuver[self.counter, 3]]
             trajectory.thrust = [0.5, 0.5]
             trajectory.idx = 0
+            print("trajectory idx:", trajectory)
             self.input_signal.publish(trajectory)
             # print(f"Publishing trajectory: {trajectory.roll}, {trajectory.pitch}, {trajectory.yaw}")
 
 
 def main(args=None):
     rclpy.init(args=args)
+    
     pub_signals = PubInputSignals()
 
     while rclpy.ok():
