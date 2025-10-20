@@ -17,6 +17,8 @@ from mavros.base import SENSOR_QOS
 from mavros_msgs.msg import RCOut
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu
+from sensor_msgs.msg import FluidPressure
+from sensor_msgs.msg import Temperature
 from std_msgs.msg import Float64, Float64MultiArray, String
 
 from ros2_sid.rt_ols import ModelStructure, StoredData, diff
@@ -43,13 +45,29 @@ class OLSNode(Node):
         self.rol_accel = StoredData(1, 1)
         self.pit_accel = StoredData(1, 1)
         self.yaw_accel = StoredData(1, 1)
+
         self.ail_pwm = StoredData(1, 1)
         self.elv_pwm = StoredData(1, 1)
         self.rud_pwm = StoredData(1, 1)
+
         # self.aoa = StoredData(1, 1)
         # self.ssa = StoredData(1, 1)
-        # self.airspeed = StoredData(6, 1)
-        # self.dyn_pres = StoredData(1, 1)
+        
+        self.dyn_pres = StoredData(1, 1)
+        self.dyn_pres.update_data(1)
+        self.stat_pres = StoredData(1, 1)
+        self.stat_pres.update_data(1)
+        self.temp = StoredData(1, 1)
+        self.temp.update_data(1)
+        self.airspeed = StoredData(1, 1)
+
+        self.xdir_accel = StoredData(1, 1)
+        self.ydir_accel = StoredData(1, 1)
+        self.zdir_accel = StoredData(1, 1)
+
+        self.mass = 1
+        self.wing_span = 3.868  # [m]
+        self.wing_area = 1.065634   # [m²]
 
     def setup_modelstructures(self) -> None:
         # define class variables
@@ -61,6 +79,9 @@ class OLSNode(Node):
         self.yaw = ModelStructure(2)
         self.rol_large = ModelStructure(4)
         self.rol_yaw = ModelStructure(5)
+        self.rol_moment = ModelStructure(2)
+        self.Y_dim = ModelStructure(4)
+        self.rol_nondim = ModelStructure(4)
     
 
     def setup_all_subscriptions(self) -> None:
@@ -80,9 +101,30 @@ class OLSNode(Node):
         )
 
         self.odom_sub: Subscription = self.create_subscription(
-            mavros.local_position.Odometry,
-            'mavros/local_position/odom',
+            Odometry,
+            '/mavros/local_position/odom',
             self.odom_callback,
+            qos_profile=SENSOR_QOS
+        )
+
+        self.diff_pressure_sub: Subscription = self.create_subscription(
+            FluidPressure,
+            '/mavros/imu/diff_pressure',
+            self.diff_pressure_callback,
+            qos_profile=SENSOR_QOS
+        )
+
+        self.static_pressure_sub: Subscription = self.create_subscription(
+            FluidPressure,
+            '/mavros/imu/static_pressure',
+            self.static_pressure_callback,
+            qos_profile=SENSOR_QOS
+        )
+
+        self.temperature_baro_sub: Subscription = self.create_subscription(
+            Temperature,
+            '/mavros/imu/temperature_baro',
+            self.temperature_baro_callback,
             qos_profile=SENSOR_QOS
         )
 
@@ -92,6 +134,9 @@ class OLSNode(Node):
         self.rol_velo.update_data(msg.angular_velocity.x)
         self.pit_velo.update_data(msg.angular_velocity.y)
         self.yaw_velo.update_data(msg.angular_velocity.z)
+        self.xdir_accel.update_data(msg.linear_acceleration.x)
+        self.ydir_accel.update_data(msg.linear_acceleration.y)
+        self.zdir_accel.update_data(msg.linear_acceleration.z)
 
         self.rol_accel.update_data(diff(self.livetime.data, self.rol_velo.data))
         self.pit_accel.update_data(diff(self.livetime.data, self.pit_velo.data))
@@ -104,7 +149,7 @@ class OLSNode(Node):
         self.elv_pwm.update_data(msg.channels[1])
         self.rud_pwm.update_data(msg.channels[2])
 
-    def odom_callback(self, msg: mavros.local_position.Odometry) -> None:
+    def odom_callback(self, msg: Odometry) -> None:
         """
         Converts NED to ENU and publishes the trajectory
         https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html
@@ -142,6 +187,15 @@ class OLSNode(Node):
             state_airspeed
         ]
 
+    def diff_pressure_callback(self, msg: FluidPressure) -> None:
+        self.dyn_pres.update_data(msg.fluid_pressure)
+
+    def static_pressure_callback(self, msg: FluidPressure) -> None:
+        self.stat_pres.update_data(msg.fluid_pressure)
+
+    def temperature_baro_callback(self, msg: Temperature) -> None:
+        self.temp.update_data(msg.temperature)
+
 
     def setup_all_publishers(self) -> None:
         self.ols_rol_publisher: Publisher = self.create_publisher(
@@ -173,6 +227,24 @@ class OLSNode(Node):
         timer_period: float = 0.02
         self.ols_rol_yaw_timer = self.create_timer(
             timer_period, self.publish_ols_rol_yaw_data)
+
+        self.ols_rol_moment_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_moment', 10)
+        timer_period: float = 0.02
+        self.ols_rol_moment_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_moment_data)
+
+        self.ols_Y_dim_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_Y_dim', 10)
+        timer_period: float = 0.02
+        self.ols_Y_dim_timer = self.create_timer(
+            timer_period, self.publish_ols_Y_dim_data)
+
+        self.ols_rol_nondim_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_nondim', 10)
+        timer_period: float = 0.02
+        self.ols_rol_nondim_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_nondim_data)
         
     def publish_ols_rol_data(self) -> None:
         self.rol.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], self.ail_pwm.data[0]])
@@ -258,6 +330,72 @@ class OLSNode(Node):
             self.rol_yaw.parameters[4]
             ]
         self.ols_rol_yaw_publisher.publish(msg)
+
+    def publish_ols_rol_moment_data(self) -> None:
+        moment = (self.rol_accel.data[0] - self.yaw_accel.data[0]) - self.pit_velo.data[0] * (self.rol_velo.data[0] - self.yaw_velo.data[0])
+
+        self.rol_moment.update_model(moment, [self.rol_velo.data[0], self.ail_pwm.data[0]])
+
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(moment.item(0)),
+
+            np.float64(self.rol_velo.data.item(0)),
+            np.float64(self.ail_pwm.data.item(0)),
+
+            self.rol_moment.parameters[0],
+            self.rol_moment.parameters[1]
+            ]
+        self.ols_rol_moment_publisher.publish(msg)
+
+    def publish_ols_Y_dim_data(self) -> None:
+        Y_force_dim = self.mass * self.ydir_accel.data[0]
+
+        self.Y_dim.update_model(Y_force_dim, [self.rol_velo.data[0], self.ail_pwm.data[0], self.yaw_velo.data[0], self.rud_pwm.data[0]])
+
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Y_force_dim.item(0)),
+
+            np.float64(self.rol_velo.data.item(0)),
+            np.float64(self.ail_pwm.data.item(0)),
+            np.float64(self.yaw_velo.data.item(0)),
+            np.float64(self.rud_pwm.data.item(0)),
+
+            self.Y_dim.parameters[0],
+            self.Y_dim.parameters[1],
+            self.Y_dim.parameters[2],
+            self.Y_dim.parameters[3]
+            ]
+        self.ols_Y_dim_publisher.publish(msg)
+
+    def publish_ols_rol_nondim_data(self) -> None:
+        airdensity = self.stat_pres.data[0] / (1 * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+        
+        Z = self.rol_accel.data[0]
+        X1 = self.rol_velo.data[0] * (self.dyn_pres.data[0] / airspeed)
+        X2 = (self.ail_pwm.data[0] * self.dyn_pres.data[0])
+        X3 = (self.pit_velo.data[0] * self.yaw_velo.data[0])
+        X4 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
+
+        self.rol_nondim.update_model(Z, [X1, X2, X3, X4])
+
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(self.rol_accel.data.item(0)),
+
+            np.float64(self.rol_velo.data.item(0) * (self.dyn_pres.data.item(0) / airspeed.item(0))),
+            np.float64((self.ail_pwm.data.item(0) * self.dyn_pres.data.item(0))),
+            np.float64((self.pit_velo.data.item(0) * self.yaw_velo.data.item(0))),
+            np.float64(self.yaw_accel.data.item(0) + (self.rol_velo.data.item(0) * self.pit_velo.data.item(0))),
+
+            self.rol_nondim.parameters[0],
+            self.rol_nondim.parameters[1],
+            self.rol_nondim.parameters[2],
+            self.rol_nondim.parameters[3]
+            ]
+        self.ols_rol_nondim_publisher.publish(msg)
 
 
 def main(args=None):

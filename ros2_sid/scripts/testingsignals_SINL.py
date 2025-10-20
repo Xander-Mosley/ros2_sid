@@ -15,7 +15,7 @@ from std_msgs.msg import Float64MultiArray
 from drone_interfaces.msg import Telem, CtlTraj
 import threading
 
-from ros2_sid.inputdesign import frequency_sweep, multi_step, multi_sine
+from ros2_sid.inputdesign import frequency_sweep, multi_step
 
 
 class PubInputSignals(Node):
