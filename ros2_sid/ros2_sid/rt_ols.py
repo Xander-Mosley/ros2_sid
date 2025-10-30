@@ -12,7 +12,7 @@ import warnings
 import weakref
 
 
-__all__ = ['StoredData', 'ModelStructure', 'diff']
+__all__ = ['StoredData', 'ModelStructure', 'diff', 'sg_diff']
 
 
 class StoredData:
@@ -263,7 +263,7 @@ class ModelStructure(metaclass=_ModelStructureMeta):
         self.measuredoutput_frequencydata = (
             self.eff * self.measuredoutput_frequencydata +
             self.measuredoutput_timedata * self.complex_products
-            )   # TODO: check that changing complex_products and measuredoutput_frequencydata to 1D still works
+            )
         
         self.regressors_timedata = np.atleast_1d(regressors_timedata).astype(float).flatten()
         if (self.regressors_timedata.size != self.num_regressors):
@@ -271,12 +271,12 @@ class ModelStructure(metaclass=_ModelStructureMeta):
         self.regressors_frequencydata = (
             self.eff * self.regressors_frequencydata +
             np.outer(self.complex_products, self.regressors_timedata)
-            )   # TODO: check that changing complex_products and regressors_timedata to 1D still works
+            )
         
         self.parameters = np.real(
             np.linalg.pinv(self.regressors_frequencydata.T @ self.regressors_frequencydata)
                 @ (self.regressors_frequencydata.T @ self.measuredoutput_frequencydata)
-            ).ravel()   # TODO: will test in the container
+            ).ravel()
         
         self.modeledoutput = float(np.dot(self.regressors_timedata, self.parameters))
     
@@ -288,7 +288,7 @@ class ModelStructure(metaclass=_ModelStructureMeta):
         Parameters
         ----------
         regressors : Union[np.ndarray, list[float], float]
-            The regressor values to use for prediction. Must match the trained model's dimension.
+            The regressor values to use for prediction. Must match the trained model dimensions.
         
         Returns
         -------
@@ -464,6 +464,52 @@ def diff(
     numerator = (6 * sum_xt) - (sum_x * sum_t)
         
     return numerator / denominator
+
+
+def sg_diff(    # Savitzky-Golay sytle differentiation
+        time: np.ndarray,
+        data: np.ndarray
+        ) -> float:
+    """
+    Estimates the derivative of 'data' with respect to 'time' using a
+    least-squares quadratic regression over several samples.
+    
+    Parameters
+    ----------
+    time : np.ndarray
+        1D array of time values (length 6).
+    data : np.ndarray
+        1D array of data values (length 6), corresponding to the time points.
+        
+    Returns
+    -------
+    float
+        The estimated derivative (slope) of data with respect to time.
+    """
+    time = np.asarray(time, dtype=float).ravel()
+    data = np.asarray(data, dtype=float).ravel()
+
+    if time.size != data.size:
+        raise ValueError("Both 'time' and 'data' must be 1D arrays of the same length.")
+
+    # Shift time to improve numerical stability (set last point to t=0)
+    center_idx = -2
+    shifted_time = time - time[center_idx]  # t[-1] becomes 0
+
+    # Design matrix for quadratic fit: [t^2, t, 1]
+    A = np.vstack([shifted_time**3, shifted_time**2, shifted_time, np.ones_like(shifted_time)]).T
+
+    # Solve least squares: find coefficients [a, b, c] for ax^2 + bx + c
+    coeffs, *_ = np.linalg.lstsq(A, data, rcond=None)
+    a, b, c, _ = coeffs
+
+    # Using a 4th order polynomial starts to fit to noise. TODO: Check if results improve with a better input data smoother.
+    # Derivative of ax^3 + bx^2 + cx is 3a*t^2 2b*t + c
+    # Evaluate at t=0 (last point)
+    derivative_at_last_point = c
+    
+    return derivative_at_last_point
+
 
 
 if (__name__ == '__main__'):

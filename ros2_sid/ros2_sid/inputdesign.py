@@ -1,32 +1,37 @@
-# Input Designs
-# Functions to create various input signals.
-# V1.0: Developed FrequencySweep and Multistep. Created an empty MultiSine function.
-# Xander Mosley - 20250623105231
-# V1.1: Fixed naming conventions for PEP8.
-# Xander Mosley - 20250701143041
-# V1.2: Developed multi_sine function. Added notes, authorship, and history.
-# Xander Mosley - 20250723125859
-# V1.3: Debugged the code using the VSCode Python linter.
-# Xander Mosley - 20250805113326
-# V1.4: Input signals are now savable to a .csv file.
-# Xander Mosley - 20250819184353
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+inputdesign.py — Importable signal generation functions.
+
+This module provides functions for generating standard excitation signals used
+in system identification and control experiments, including:
+- frequency_sweep()
+- multi_step()
+- multi_sine()
+
+All functions return NumPy arrays suitable for simulation or experiment playback.
+
+Author: Xander D. Mosley (Python adaptation of Morelli's original MATLAB code)
+Date: 2025-07-23
+"""
 
 
 import numpy as np
 from numpy.typing import NDArray
 from typing import Any, Optional, Union
 import warnings
-# from scipy.optimize import minimize
-import os
-import csv
+from scipy.optimize import minimize
 
 
 __all__ = ['frequency_sweep', 'multi_step', 'multi_sine']
+__author__ = "Xander D Mosley"
+__email__ = "XanderDMosley.Engineer@gmail.com"
 
 
 def _rms(
         input_array: np.ndarray
-        ) -> np.float64 | np.ndarray:
+        ) -> float | np.ndarray:
     """
     Compute the root-mean-square (RMS) value of a vector or matrix.
     
@@ -42,7 +47,7 @@ def _rms(
     
     Returns
     -------
-    rms_values : np.float64 or np.ndarray
+    rms_values : float or np.ndarray
         RMS value(s).
         - Scalar if input is 1D.
         - 1D array of RMS values for each column if input is 2D.
@@ -67,22 +72,16 @@ def _rms(
     23 Jul 2025 - Adapted to Python, XDM.
     """
     input_array = np.asarray(input_array)
-    
-    if input_array.ndim == 1:
-        return np.sqrt(np.mean(input_array ** 2))
-    elif input_array.ndim == 2:
-        n, m = input_array.shape
-        rms_values = np.zeros(m)
-        for j in range(m):
-            rms_values[j] = np.sqrt(np.dot(input_array[:, j], input_array[:, j]) / n)
-        return rms_values
-    else:
+
+    if input_array.ndim not in (1, 2):
         raise ValueError("Input must be a 1D or 2D array.")
+
+    return np.sqrt(np.mean(input_array ** 2, axis=0))
 
 
 def _peakfactor(
         input_array: np.ndarray
-        ) -> np.float64 | np.ndarray:
+        ) -> float | np.ndarray:
     """
     Compute the relative peak factor of a time series or multiple time series.
     
@@ -99,7 +98,7 @@ def _peakfactor(
     
     Returns
     -------
-    peak_factor : np.float64 or np.ndarray
+    peak_factor : float or np.ndarray
         Relative peak factor(s).
         - Scalar if input is 1D.
         - 1D array of relative peak factors for each column if input is 2D.
@@ -131,14 +130,12 @@ def _peakfactor(
     """
     input_array = np.asarray(input_array)
 
-    if input_array.ndim == 1:
-        peak_to_peak = np.max(input_array) - np.min(input_array)
-        return peak_to_peak / (2 * np.sqrt(2) * _rms(input_array))
-    elif input_array.ndim == 2:
-        peak_to_peak = np.max(input_array, axis=0) - np.min(input_array, axis=0)
-        return peak_to_peak / (2 * np.sqrt(2) * _rms(input_array))
-    else:
+    if input_array.ndim not in (1, 2):
         raise ValueError("Input must be a 1D or 2D array.")
+
+    rms_vals = _rms(input_array)
+    peak_to_peak = np.ptp(input_array, axis=0)
+    return peak_to_peak / (2 * np.sqrt(2) * rms_vals)
 
 
 def _peakfactorcost(
@@ -146,7 +143,7 @@ def _peakfactorcost(
         frequencies: np.ndarray,
         powers: np.ndarray,
         time: np.ndarray
-        ) -> tuple[np.float64 | np.ndarray, NDArray[np.float64] | Any]:
+        ) -> tuple[float | np.ndarray, NDArray[np.float64] | Any]:
     """
     Compute the relative peak factor cost for optimizing multisine inputs.
     
@@ -167,7 +164,7 @@ def _peakfactorcost(
     
     Returns
     -------
-    cost : np.float64
+    cost : float
         Relative peak factor of the composite signal.
     signals : np.ndarray
         Time-domain signal composed of weighted cosine components.
@@ -194,53 +191,11 @@ def _peakfactorcost(
     """
     angular_frequencies = 2 * np.pi * frequencies
 
-    signals = np.zeros(len(time))
-    for j in range(len(frequencies)):
-        signals += np.sqrt(powers[j]) * np.cos(angular_frequencies[j] * time + phases[j])
+    cos_matrix = np.cos(np.outer(time, angular_frequencies) + phases)
+    signals = cos_matrix @ np.sqrt(powers)
 
     cost = _peakfactor(signals)
     return cost, signals
-
-
-def _save_input_signal(
-        input_signal: np.ndarray,
-        filename: Optional[str] = "input_signal.csv"
-        ) -> None:
-    """
-    Save a signal and its corresponding time vector to a CSV file in the same directory.
-
-    Parameters
-    ----------
-    input_signal : np.ndarray
-        2D array with shape (n_channels, n_samples), where the first row is the time vector.
-    filename : str, optional
-        Name of the output CSV file (default is 'input_signal.csv').
-
-    Notes
-    -----
-    - The input_signal should be stacked row-wise: [time; signal1; signal2; ...].
-    - The CSV will be saved in the same directory as this script.
-
-    Author
-    ------
-    Xander D. Mosley
-
-    History
-    -------
-    19 Aug 2025 - Created, XDM.
-    """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    filepath = os.path.join(str(current_dir), str(filename))
-    
-    num_channels = input_signal.shape[1] - 1
-    header = ['time'] + [f'channel_{i+1}' for i in range(num_channels)]
-
-    with open(filepath, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(header)
-        writer.writerows(input_signal)
-
-    print(f"\nSignal saved to: {filepath}\n")
 
 
 def frequency_sweep(
@@ -316,9 +271,9 @@ def frequency_sweep(
 
     ftype = function_type.lower()
 
-    if (ftype == 'linear'):
+    if ftype == 'linear':
         K = time / final_time
-    elif (ftype == 'logarithmic'):
+    elif ftype == 'logarithmic':
         C1 = 4
         C2 = 0.0187
         K = C2 * (np.exp(C1 * (time / final_time)) - 1)
@@ -422,8 +377,6 @@ def multi_step(
         n0 = n1
         sign = -sign
     
-    signal = signal[:num_samples]
-    
     return time, signal
 
 
@@ -433,7 +386,7 @@ def multi_sine(
         maximum_frequency: float,
         time_step: float,
         total_time: float,
-        num_channels: int = 1,
+        num_channels: Optional[int] = 1,
         user_frequencies: Optional[np.ndarray] = None,
         power_spectrum: Optional[np.ndarray] = None
         ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -547,7 +500,7 @@ def multi_sine(
         
     signal = np.zeros((num_time_points, num_channels))
     
-    if (maximum_frequency <= minimum_frequency):
+    if maximum_frequency <= minimum_frequency:
         raise ValueError('Illegal frequency bounds')
         
     minimum_frequency = max(minimum_frequency, (2 / total_time))
@@ -580,9 +533,9 @@ def multi_sine(
         power_spectrum_array = np.full((np.max(num_frequencies_per_channel), num_channels), (1 / np.max(num_frequencies_per_channel)))
     else:
         power_spectrum_array = np.atleast_2d(power_spectrum)
-        if (power_spectrum_array.shape[0] != np.max(num_frequencies_per_channel)):
+        if power_spectrum_array.shape[0] != np.max(num_frequencies_per_channel):
             raise ValueError("Input size mismatch for user_frequencies and power_spectrum.")
-        if (power_spectrum_array.shape[1] != num_channels):
+        if power_spectrum_array.shape[1] != num_channels:
             power_spectrum_array = np.tile(power_spectrum_array[:, [0]], (1, num_channels))
             
     for channel_index in range(num_channels):
@@ -602,7 +555,7 @@ def multi_sine(
         # print(f"\n\n Starting phase optimization for input number {channel_index + 1} ...\n")
         
         for iteration in range(max_iterations):
-            if (peak_factors[channel_index] > peak_factor_goal):
+            if peak_factors[channel_index] > peak_factor_goal:
                 # print(f"\t Currently on iteration {iteration + 1} of {max_iterations} (max) ...\n")
                 
                 result = minimize(lambda phases: _peakfactorcost(phases, channel_frequencies, channel_power, time)[0], phase_vector, method='Nelder-Mead', options={'disp': False})
@@ -614,7 +567,7 @@ def multi_sine(
                 
                 initial_sign = np.sign(np.sum(np.sqrt(channel_power) * np.cos(phase_vector)))
                 
-                while (np.sign(np.sum(np.sqrt(channel_power) * np.cos(phase_vector + phase_offset))) == initial_sign):
+                while np.sign(np.sum(np.sqrt(channel_power) * np.cos(phase_vector + phase_offset))) == initial_sign:
                     phase_offset += (phase_increment * angular_frequencies)
                     
                 phase_vector += phase_offset
@@ -623,7 +576,7 @@ def multi_sine(
         phase_vector = phase_vector - ((2 * np.pi) * np.floor(phase_vector / (2 * np.pi)))
         
         for phase_index in range(num_frequencies_per_channel[channel_index]):
-            if (abs(phase_vector[phase_index]) > np.pi):
+            if abs(phase_vector[phase_index]) > np.pi:
                 phase_vector[phase_index] -= (np.sign(phase_vector[phase_index]) * (2 * np.pi))
                 
         phase_matrix[:num_frequencies_per_channel[channel_index], channel_index] = phase_vector
@@ -641,28 +594,13 @@ def multi_sine(
     return time, signal, peak_factors, frequency_matrix, num_frequencies_per_channel, phase_matrix
 
 
-def saved_maneuver():
-    # maneuvers must have the shape (N, 4)
-    # where the columns (in order) are:
-    # time, roll signal, pitch signal, yaw signal;
-    # and the first time value must be zero
-    amplitude: float = np.deg2rad(5)
-    minimum_frequency: float = 0.1
-    maximum_frequency: float = 1.5
-    time_step: float = 0.02
-    final_time: float = 15.
-    num_channels: int = 3
-    time, signal, peak_factors, frequency_matrix, num_frequencies_per_channel, phase_matrix = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
-    # empty = np.zeros_like(time)
-    maneuver = np.column_stack((time, signal))
-
-    _save_input_signal(maneuver)
+# TODO: Add a ramp input.
 
 
 if (__name__ == '__main__'):
-    saved_maneuver()
     warnings.warn(
-        "This script is only intended to run as a standalone program when"
-        " saving input signals. The remaining code contains structures and"
-        " functions to be imported and used in other scripts.",
+        "This script defines signal generation functions and is intended "
+        "to be imported, not executed directly. "
+        "\n\tImport this script using:\t"
+        "from inputdesign import frequency_sweep, multi_step, multi_sine",
         UserWarning)

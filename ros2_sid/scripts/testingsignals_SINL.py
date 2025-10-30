@@ -44,7 +44,7 @@ class PubInputSignals(Node):
         # All maneuver arrays must have shape (N, 4), where the columns are:
         # [time, roll signal, pitch signal, yaw signal], and the first time value must be zero.
 
-        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/input_signal.csv"
+        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
         time = data[:, 0]
         empty = np.zeros_like(time)
@@ -57,9 +57,9 @@ class PubInputSignals(Node):
         self.yawsines = np.array([time, empty, empty, data[:, 3]]).T
         
 
-        amplitude: float = np.deg2rad(5)  
+        amplitude: float = np.deg2rad(7)  
         natural_frequency: float = 1.0
-        pulses: list = [1, 1]
+        pulses: list = [3, 2, 1, 1]
         time_delay: float = 1.0
         time_step: float = 0.02
         final_time: float = 15.
@@ -88,11 +88,11 @@ class PubInputSignals(Node):
         self.yawdoublet = np.array([time, empty, empty, doublet]).T
 
 
-        amplitude: float = np.deg2rad(5) 
+        amplitude: float = np.deg2rad(7) 
         minimum_frequency: float = 0.1
-        maximum_frequency: float = 1.5
+        maximum_frequency: float = 10
         time_step: float = 0.02
-        final_time: float = 15.
+        final_time: float = 45.
         time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
         empty = np.zeros_like(time)
         self.rolsweep = np.array([time, sweep, empty, empty]).T
@@ -215,10 +215,11 @@ class PubInputSignals(Node):
         if (self.current_maneuver is not None):
             trajectory: CtlTraj = CtlTraj()
             # trajectory.header.stamp = self.get_clock().now().to_msg()
-            trajectory.roll  = [self.current_maneuver[self.counter, 1], self.current_maneuver[self.counter, 1]]
-            trajectory.pitch = [self.current_maneuver[self.counter, 2], self.current_maneuver[self.counter, 2]]
-            trajectory.yaw   = [self.current_maneuver[self.counter, 3], self.current_maneuver[self.counter, 3]]
-            trajectory.thrust = [0.5, 0.5]
+            # TODO: Check if two indexes are required.
+            trajectory.roll  = [self.current_maneuver[self.counter, 1]]
+            trajectory.pitch = [self.current_maneuver[self.counter, 2]]
+            trajectory.yaw   = [self.current_maneuver[self.counter, 3]]
+            trajectory.thrust = [0.5]
             trajectory.idx = 0
             self.input_signal.publish(trajectory)
             # print(f"Publishing trajectory: {trajectory.roll}, {trajectory.pitch}, {trajectory.yaw}")
