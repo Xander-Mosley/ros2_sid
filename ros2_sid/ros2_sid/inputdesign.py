@@ -13,7 +13,7 @@ in system identification and control experiments, including:
 All functions return NumPy arrays suitable for simulation or experiment playback.
 
 Author: Xander D. Mosley (Python adaptation of Morelli's original MATLAB code)
-Date: 2025-07-23
+Date: 23 Jul 2025
 """
 
 
