@@ -12,7 +12,7 @@ import warnings
 import weakref
 
 
-__all__ = ['StoredData', 'ModelStructure', 'diff', 'sg_diff']
+__all__ = ['StoredData', 'ModelStructure']
 
 
 class StoredData:
