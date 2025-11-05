@@ -240,9 +240,9 @@ def _test_maneuver():
     time_step: float = 0.02
     final_time: float = 15.
     num_channels: int = 3
-    # time, signal = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
+    time, signal = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
     # time, signal = multi_step(amplitude, ((minimum_frequency + maximum_frequency) / 2), [3, 2, 1, 1], (5 * time_step), time_step, final_time)
-    time, signal, *_ = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
+    # time, signal, *_ = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
     empty = np.zeros_like(time)
 
     maneuver = np.column_stack((time, signal))

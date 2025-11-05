@@ -10,7 +10,7 @@ from typing import Optional, Sequence, Union
 import warnings
 import weakref
 
-__all__ = ['linear_diff', 'savitzky_golay_diff']
+__all__ = ['linear_diff', 'savitzky_golay_diff', 'rolling_diff', 'LowPassFilter', 'smooth_data_array', 'LowPassFilterVariableDT', 'smooth_data_with_timestamps']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
@@ -158,8 +158,6 @@ def rolling_diff(
 
     if method == "linear":
         for i in range(window_size, len(data) + 1):
-            if i < 10:
-                print(i)
             t_window = time[i - window_size : i]
             x_window = data[i - window_size : i]
             derivatives[i-1] = linear_diff(t_window, x_window)
@@ -168,13 +166,101 @@ def rolling_diff(
         for i in range(window_size, len(data) + 1):
             t_window = time[i - window_size : i]
             x_window = data[i - window_size : i]
-            derivatives[i] = savitzky_golay_diff(t_window, x_window)
+            derivatives[i-1] = savitzky_golay_diff(t_window, x_window)
 
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'linear' or 'sg'.")
 
     return derivatives
 
+
+class LowPassFilter:
+    def __init__(self, cutoff_frequency, dt, initial_value=0.0):
+        """
+        Standard EMA low-pass filter for a single data stream.
+        
+        :param cutoff_frequency: Cutoff frequency in Hz
+        :param dt: Time step in seconds
+        :param initial_value: Starting value for the filter
+        """
+        self.alpha = 1 - np.exp(-2 * np.pi * cutoff_frequency * dt)
+        self.filtered_value = initial_value
+
+    def update(self, new_value):
+        """
+        Update the filter with a new value.
+        
+        :param new_value: New input value
+        :return: Filtered output
+        """
+        self.filtered_value = (self.alpha * new_value) + ((1 - self.alpha) * self.filtered_value)
+        return self.filtered_value
+
+def smooth_data_array(data, cutoff_frequency=18, dt=0.02):
+    """
+    Smooth a 1D data array using an EMA low-pass filter.
+    
+    :param data: 1D array-like sequence of data points
+    :param cutoff_frequency: Filter cutoff frequency in Hz
+    :param dt: Time step between samples in seconds
+    :return: Numpy array of filtered values
+    """
+    if len(data) == 0:
+        return np.array([])
+
+    # Initialize filter with the first value of the array
+    lpf = LowPassFilter(cutoff_frequency, dt, initial_value=data[0])
+    
+    filtered = []
+    for value in data:
+        filtered.append(lpf.update(value))
+    
+    return np.array(filtered)
+
+class LowPassFilterVariableDT:
+    def __init__(self, cutoff_frequency, initial_value=0.0):
+        """
+        EMA low-pass filter that handles variable time steps.
+        :param cutoff_frequency: Cutoff frequency in Hz
+        :param initial_value: Starting value
+        """
+        self.fc = cutoff_frequency
+        self.filtered_value = initial_value
+
+    def update(self, new_value, dt):
+        """
+        Update the filter with a new value and the timestep since last update.
+        :param new_value: New input value
+        :param dt: Time difference since previous sample
+        :return: Filtered output
+        """
+        alpha = 1 - np.exp(-2 * np.pi * self.fc * dt)
+        self.filtered_value = (alpha * new_value) + ((1 - alpha) * self.filtered_value)
+        return self.filtered_value, alpha
+
+def smooth_data_with_timestamps(data, timestamps, cutoff_frequency=18):
+    """
+    Smooth a 1D data array with variable time steps.
+    
+    :param data: 1D array of data points
+    :param timestamps: 1D array of timestamps corresponding to each data point
+    :param cutoff_frequency: Filter cutoff frequency in Hz
+    :return: Numpy array of filtered values
+    """
+    if len(data) == 0:
+        return np.array([])
+
+    lpf = LowPassFilterVariableDT(cutoff_frequency, initial_value=data[0])
+    filtered = [data[0]]
+    alphas = [0.0]  # first alpha can be 0 (no filtering yet)
+
+    for i in range(1, len(data)):
+        dt = timestamps[i] - timestamps[i-1]
+        filtered_value, alpha = lpf.update(data[i], dt)
+        filtered.append(filtered_value)
+        alphas.append(alpha)
+
+    return np.array(filtered), np.array(alphas)
 
 if (__name__ == '__main__'):
     file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"
