@@ -14,7 +14,7 @@ from scipy.signal import butter, lfilter
 
 __all__ = ['linear_diff', 'savitzky_golay_diff', 'rolling_diff', 
            'LowPassFilter', 'smooth_data_array', 'LowPassFilterVariableDT', 'smooth_data_with_timestamps_LP', 
-           'ButterworthLowPassVariableDT', 'smooth_data_with_timestamps_Butter']
+           'ButterworthLowPassVariableDT', 'smooth_data_with_timestamps_Butter', 'ButterworthLowPass', 'butterworthlowpass_loop']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
@@ -337,6 +337,51 @@ def smooth_data_with_timestamps_Butter(data, timestamps, cutoff_frequency=18, or
 
     return np.array(filtered)
 
+class ButterworthLowPass:
+    def __init__(self, cutoff_frequency):
+        self.fc = cutoff_frequency
+        self.y_filtered = [0, 0]
+        self.x_previous = [0, 0]
+
+    def update(self, x_new, dt):
+        fc_safe = min(self.fc, 0.45 / dt)  # keep < 0.5/dt (Nyquist)
+        if self.fc > 0.45 / dt:
+            print("Warning: Cutoff frequency too high; clamped to 0.45 * fs.")
+        gamma = np.tan(np.pi * fc_safe * dt)
+
+        b0_prime = gamma ** 2
+        b1_prime = 2 * b0_prime
+        b2_prime = b0_prime
+        a1_prime = 2 * ((gamma ** 2) - 1)
+        a2_prime = (gamma ** 2) - (np.sqrt(2) * gamma) + 1
+        D = (gamma ** 2) + (np.sqrt(2) * gamma) + 1
+        b0 = b0_prime / D
+        b1 = b1_prime / D
+        b2 = b2_prime / D
+        a1 = a1_prime / D
+        a2 = a2_prime / D
+
+        y_new = (b0 * x_new) + (b1 * self.x_previous[0]) + (b2 * self.x_previous[1]) - (a1 * self.y_filtered[0]) - (a2 * self.y_filtered[1])
+        self.x_previous[1] = self.x_previous[0]
+        self.x_previous[0] = x_new
+        self.y_filtered[1] = self.y_filtered[0]
+        self.y_filtered[0] = y_new
+
+        return y_new
+
+def butterworthlowpass_loop(data, timestamps, cutoff_frequency=18):
+    if len(data) == 0:
+        return np.array([])
+
+    lpf = ButterworthLowPass(cutoff_frequency)
+    filtered = [data[0]]
+
+    for i in range(1, len(data)):
+        dt = timestamps[i] - timestamps[i-1]
+        filtered_value = lpf.update(data[i], dt)
+        filtered.append(filtered_value)
+
+    return np.array(filtered)
 
 if (__name__ == '__main__'):
     file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"

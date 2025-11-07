@@ -2,7 +2,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
-from discrete_diff import linear_diff, savitzky_golay_diff, rolling_diff, LowPassFilter, smooth_data_array, LowPassFilterVariableDT, smooth_data_with_timestamps_LP, ButterworthLowPassVariableDT, smooth_data_with_timestamps_Butter
+from discrete_diff import linear_diff, savitzky_golay_diff, rolling_diff, LowPassFilter, smooth_data_array, LowPassFilterVariableDT, smooth_data_with_timestamps_LP, ButterworthLowPassVariableDT, smooth_data_with_timestamps_Butter, butterworthlowpass_loop
 
 
 
@@ -114,10 +114,10 @@ def load_signal_data(file_path, t_slice=slice(0, 9999999)):
 
 
 def preprocess_signal(t, x, cutoff_pre=10, cutoff_post=5):
-    fx = smooth_data_with_timestamps_Butter(x, t, cutoff_frequency=cutoff_pre, order=1)
+    fx = butterworthlowpass_loop(x, t, cutoff_frequency=cutoff_pre)
     xp = rolling_diff(t, fx, "sg")
     xp_full = np.concatenate(([0] * 5, xp[5:]))
-    fxp = smooth_data_with_timestamps_Butter(xp_full, t, cutoff_frequency=cutoff_post, order=1)
+    fxp = butterworthlowpass_loop(xp_full, t, cutoff_frequency=cutoff_post)
     return fx, xp_full, fxp
 
 
@@ -193,7 +193,7 @@ def plot_bode(f, pairs):
 def main(file_path):
     t, x = load_signal_data(file_path, t_slice=slice(0, 999999))
     # t, x = load_signal_data(file_path, t_slice=slice(2700, 3450))
-    fx, xp, fxp = preprocess_signal(t, x, 3, 3)
+    fx, xp, fxp = preprocess_signal(t, x, 1.25, 1.25)
     f, (X, FX, XP, FXP) = compute_fft(t, x, fx, xp, fxp)
 
 

@@ -5,6 +5,7 @@ from re import S
 
 import mavros
 import numpy as np
+from collections import deque
 
 import rclpy
 from rclpy.duration import Duration
@@ -23,7 +24,10 @@ from std_msgs.msg import Float64, Float64MultiArray, String
 
 from ros2_sid.rt_ols import ModelStructure, StoredData, diff, sg_diff
 from ros2_sid.rotation_utils import euler_from_quaternion
-from ros2_sid.discrete_diff import ButterworthLowPassVariableDT
+from ros2_sid.discrete_diff import ButterworthLowPassVariableDT, ButterworthLowPass
+
+
+FIRST_PASS = True
 
 
 class OLSNode(Node):
@@ -39,7 +43,8 @@ class OLSNode(Node):
 
     def setup_storeddatas(self) -> None:
         # initialize stored data objects
-        self.livetime = StoredData(5, 1)
+        self.livetime_sec = StoredData(5, 1)
+        self.livetime_nano = deque([0.0, 0.0, 0.0, 0.0, 0.0],maxlen=5)
         self.rol_velo = StoredData(5, 1)
         self.pit_velo = StoredData(5, 1)
         self.yaw_velo = StoredData(5, 1)
@@ -71,7 +76,8 @@ class OLSNode(Node):
         self.wing_area = 1.065634   # [m²]
 
 
-        self.lpf = ButterworthLowPassVariableDT(.1, 1, initial_value=0)
+        self.lpf1 = ButterworthLowPass(1.25)
+        self.lpf2 = ButterworthLowPass(1.25)
 
     def setup_modelstructures(self) -> None:
         # define class variables
@@ -134,17 +140,33 @@ class OLSNode(Node):
 
     def imu_callback(self, msg: Imu) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
-        self.livetime.update_data((msg.header.stamp.nanosec * 1e-9))    # TODO: Confirm that it is acceptable to ignore stamp.sec, or find a way to incorporate it.
+        self.livetime_sec.update_data(msg.header.stamp.sec)
+
+        new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
+        while len(self.livetime_nano) > 0 and new_nanosec_data < self.livetime_nano[-1]:
+            new_nanosec_data += 1.0
+        self.livetime_nano.append(new_nanosec_data)
+        if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
+            self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
+
+        dt = self.livetime_nano[-1] - self.livetime_nano[-2]
+        # ModelStructure.update_shared_cp_time(self.livetime_nano[0])     # TODO: Test if this works better with seconds or nanoseconds
+        if FIRST_PASS:
+            ModelStructure.update_shared_cp_time(self.livetime_nano[0])
+        else:
+            ModelStructure.update_shared_cp_timestep(dt)
+
         # self.rol_velo.update_data(msg.angular_velocity.x)
         self.pit_velo.update_data(msg.angular_velocity.y)
         self.yaw_velo.update_data(msg.angular_velocity.z)
         self.xdir_accel.update_data(msg.linear_acceleration.x)
         self.ydir_accel.update_data(msg.linear_acceleration.y)
         self.zdir_accel.update_data(msg.linear_acceleration.z)
-        # self.rol_accel.update_data(sg_diff(self.livetime.data, self.rol_velo.data))
-        self.pit_accel.update_data(sg_diff(self.livetime.data, self.pit_velo.data))
-        self.yaw_accel.update_data(sg_diff(self.livetime.data, self.yaw_velo.data))
+        # self.rol_accel.update_data(sg_diff(self.livetime_nano.data, self.rol_velo.data))
+        self.pit_accel.update_data(sg_diff(np.array(self.livetime_nano)[::-1], self.pit_velo.data))
+        self.yaw_accel.update_data(sg_diff(np.array(self.livetime_nano)[::-1], self.yaw_velo.data))
         
+
         # cutoff_frequency = 18   # [Hz] 1.2*f_system_dynamics (15 Hz)
         # dt = 0.02   # Assumed average dt    TODO: Confirm that this is the proper dt with the mixed IMUs
         # alpha = 1 - np.exp(-2 * np.pi * cutoff_frequency * dt)
@@ -152,24 +174,20 @@ class OLSNode(Node):
         # self.pit_velo.update_data((alpha * msg.angular_velocity.y) + ((1- alpha) * np.mean(self.pit_velo.data[1:])))
         # self.yaw_velo.update_data((alpha * msg.angular_velocity.z) + ((1- alpha) * np.mean(self.yaw_velo.data[1:])))
         
-        dt = self.livetime.data[-1] - self.livetime.data[-2]
-        self.rol_velo.update_data(self.lpf.update(msg.angular_velocity.x, dt))
+        self.rol_velo.update_data(self.lpf1.update(msg.angular_velocity.x, dt))
 
         # cutoff_frequency = 4   # [Hz] ~(0.5-0.7) the value of the gyro cutoff frequency
         # dt = 0.02   # Assumed average dt    TODO: Confirm that this is the proper dt with the mixed IMUs
         # alpha = 1 - np.exp(-2 * np.pi * cutoff_frequency * dt)
-        # # dt = self.livetime.data[-1] - self.livetime.data[-2]
+        # # dt = self.livetime_nano.data[-1] - self.livetime_nano.data[-2]
         # # alpha = np.clip(dt / 0.05, 0.1, 0.9)
         # # alpha = np.exp(-dt / 0.03)  # estimate_derivative()
-        # self.rol_accel.update_data((alpha * sg_diff(self.livetime.data, self.rol_velo.data)) + ((1 - alpha) * np.mean(self.rol_accel.data[1:])))
-        # self.pit_accel.update_data((alpha * sg_diff(self.livetime.data, self.pit_velo.data)) + ((1 - alpha) * np.mean(self.pit_accel.data[1:])))
-        # self.yaw_accel.update_data((alpha * sg_diff(self.livetime.data, self.yaw_velo.data)) + ((1 - alpha) * np.mean(self.yaw_accel.data[1:])))
+        # self.rol_accel.update_data((alpha * sg_diff(self.livetime_nano.data, self.rol_velo.data)) + ((1 - alpha) * np.mean(self.rol_accel.data[1:])))
+        # self.pit_accel.update_data((alpha * sg_diff(self.livetime_nano.data, self.pit_velo.data)) + ((1 - alpha) * np.mean(self.pit_accel.data[1:])))
+        # self.yaw_accel.update_data((alpha * sg_diff(self.livetime_nano.data, self.yaw_velo.data)) + ((1 - alpha) * np.mean(self.yaw_accel.data[1:])))
 
-        self.rol_accel.update_data(self.lpf.update(sg_diff(self.livetime.data, self.rol_velo.data), dt))
-        
-
-        ModelStructure.update_shared_cp_time(self.livetime.data[0])
-        
+        self.rol_accel.update_data(self.lpf2.update(sg_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
+                
     def rcout_callback(self, msg: RCOut) -> None:
         self.ail_pwm.update_data(msg.channels[0])
         self.elv_pwm.update_data(msg.channels[1])
