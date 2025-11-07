@@ -131,19 +131,19 @@ class OLSNode(Node):
     def imu_callback(self, msg: Imu) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
         self.livetime.update_data((msg.header.stamp.nanosec * 1e-9))    # TODO: Confirm that it is acceptable to ignore stamp.sec, or find a way to incorporate it.
-        # self.rol_velo.update_data(msg.angular_velocity.x)
-        # self.pit_velo.update_data(msg.angular_velocity.y)
-        # self.yaw_velo.update_data(msg.angular_velocity.z)
+        self.rol_velo.update_data(msg.angular_velocity.x)
+        self.pit_velo.update_data(msg.angular_velocity.y)
+        self.yaw_velo.update_data(msg.angular_velocity.z)
         self.xdir_accel.update_data(msg.linear_acceleration.x)
         self.ydir_accel.update_data(msg.linear_acceleration.y)
         self.zdir_accel.update_data(msg.linear_acceleration.z)
         
-        cutoff_frequency = 18   # [Hz] 1.2*f_system_dynamics (15 Hz)
-        dt = 0.02   # Assumed average dt    TODO: Confirm that this is the proper dt with the mixed IMUs
-        alpha = 1 - np.exp(-2 * np.pi * cutoff_frequency * dt)
-        self.rol_velo.update_data((alpha * msg.angular_velocity.x) + ((1- alpha) * np.mean(self.rol_velo.data[1:])))
-        self.pit_velo.update_data((alpha * msg.angular_velocity.y) + ((1- alpha) * np.mean(self.pit_velo.data[1:])))
-        self.yaw_velo.update_data((alpha * msg.angular_velocity.z) + ((1- alpha) * np.mean(self.yaw_velo.data[1:])))
+        # cutoff_frequency = 18   # [Hz] 1.2*f_system_dynamics (15 Hz)
+        # dt = 0.02   # Assumed average dt    TODO: Confirm that this is the proper dt with the mixed IMUs
+        # alpha = 1 - np.exp(-2 * np.pi * cutoff_frequency * dt)
+        # self.rol_velo.update_data((alpha * msg.angular_velocity.x) + ((1- alpha) * np.mean(self.rol_velo.data[1:])))
+        # self.pit_velo.update_data((alpha * msg.angular_velocity.y) + ((1- alpha) * np.mean(self.pit_velo.data[1:])))
+        # self.yaw_velo.update_data((alpha * msg.angular_velocity.z) + ((1- alpha) * np.mean(self.yaw_velo.data[1:])))
 
         cutoff_frequency = 4   # [Hz] ~(0.5-0.7) the value of the gyro cutoff frequency
         dt = 0.02   # Assumed average dt    TODO: Confirm that this is the proper dt with the mixed IMUs

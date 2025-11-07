@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -39,7 +40,7 @@ class PlotFigure:
         return obj
 
 
-    def add_line(self, ax_pos, x, y, label=None, **kwargs):
+    def add_data(self, ax_pos, x, y, label=None, **kwargs):
         return self._add_plot(ax_pos, lambda ax: ax.plot(x, y, label=label, **kwargs)[0], label)
 
     def add_scatter(self, ax_pos, x, y, label=None, **kwargs):
@@ -53,6 +54,12 @@ class PlotFigure:
 
     def add_errorbar(self, ax_pos, x, y, yerr=None, xerr=None, label=None, **kwargs):
         return self._add_plot(ax_pos, lambda ax: ax.errorbar(x, y, yerr=yerr, xerr=xerr, label=label, **kwargs), label)
+    
+    def add_line(self, ax_pos, value, orientation='h', label=None, **kwargs):
+        if orientation not in ('h', 'v'):
+            raise ValueError("orientation must be either 'h' for horizontal or 'v' for vertical")
+        plot_func = (lambda ax: ax.axhline(y=value, label=label, **kwargs) if orientation == 'h' else lambda ax: ax.axvline(x=value, label=label, **kwargs))
+        return self._add_plot(ax_pos, plot_func, label)
 
     def add_shade(self, ax_pos, x, y1, y2=0, label=None, color='gray', alpha=0.3, **kwargs):
         return self._add_plot(ax_pos, lambda ax: ax.fill_between(x, y1, y2, label=label, color=color, alpha=alpha, **kwargs), label)
@@ -98,15 +105,16 @@ class PlotFigure:
 
 
 
-def load_signal_data(file_path, t_slice=slice(2700, 3450)):
+def load_signal_data(file_path, t_slice=slice(0, 9999999)):
     data = np.loadtxt(file_path, delimiter=',', skiprows=1)
     t, x = data[t_slice, 0], data[t_slice, 4]
+    t = t[::2]
+    x = x[::2]
     return t, x
 
 
-def preprocess_signal(t, x, cutoff_pre=18, cutoff_post=4):
+def preprocess_signal(t, x, cutoff_pre=10, cutoff_post=5):
     fx, pre_a = smooth_data_with_timestamps(x, t, cutoff_frequency=cutoff_pre)
-    # fx, pre_a = smooth_data_with_timestamps(fx, t, cutoff_frequency=cutoff_pre)
     xp = rolling_diff(t, fx, "sg")
     xp_full = np.concatenate(([0] * 5, xp[5:]))
     fxp, post_a = smooth_data_with_timestamps(xp_full, t, cutoff_frequency=cutoff_post)
@@ -127,11 +135,11 @@ def plot_time_domain(t, x, fx, xp, fxp):
     fig = PlotFigure("Discrete Differentiation", nrows=2, sharex=True)
     fig.define_subplot(0, ylabel="Signal Amplitude", xlabel="Time [s]")
     fig.add_scatter(0, t, x, label="Raw")
-    fig.add_line(0, t, fx, label="Pre-filtered", color="tab:orange")
+    fig.add_data(0, t, fx, label="Pre-filtered", color="tab:orange")
 
     fig.define_subplot(1, ylabel="Derivative", xlabel="Time [s]")
-    fig.add_line(1, t, xp, label="Differentiated")
-    fig.add_line(1, t, fxp, label="Post-filtered")
+    fig.add_data(1, t, xp, label="Differentiated")
+    fig.add_data(1, t, fxp, label="Post-filtered")
     fig.set_all_legends()
     return fig
 
@@ -141,10 +149,10 @@ def plot_frequency_domain(f, X, FX, XP, FXP):
     for i, (sig, label) in enumerate([(X, "Raw vs Pre-filtered"), (XP, "Derivative vs Post-filtered")]):
         fig.define_subplot(i, xlabel="Frequency [Hz]", ylabel="Magnitude", grid=True)
         # fig.set_log_scale(i, axis='x')
-    fig.add_line(0, f, np.abs(X), label="Raw")
-    fig.add_line(0, f, np.abs(FX), label="Pre-filtered")
-    fig.add_line(1, f, np.abs(XP), label="Differentiated")
-    fig.add_line(1, f, np.abs(FXP), label="Post-filtered")
+    fig.add_data(0, f, np.abs(X), label="Raw")
+    fig.add_data(0, f, np.abs(FX), label="Pre-filtered")
+    fig.add_data(1, f, np.abs(XP), label="Differentiated")
+    fig.add_data(1, f, np.abs(FXP), label="Post-filtered")
     fig.set_all_legends()
     return fig
 
@@ -159,40 +167,59 @@ def plot_bode(f, pairs):
         fig = PlotFigure(f"Bode Plot: {title}", nrows=2, sharex=True)
         fig.define_subplot(0, ylabel="Magnitude [dB]", grid=True)
         fig.set_log_scale(0, axis='x')
-        fig.add_line(0, f, mag, label="Magnitude")
+        fig.add_data(0, f, mag, label="Magnitude")
+        fig.add_line(0, -3, orientation='h', color='red', label='-3 dB')
         fig.define_subplot(1, xlabel="Frequency [Hz]", ylabel="Phase [deg]", grid=True)
         fig.set_log_scale(1, axis='x')
-        fig.add_line(1, f, phase, label="Phase")
+        fig.add_data(1, f, phase, label="Phase")
         fig.set_all_legends()
 
 
 def main(file_path):
-    t, x = load_signal_data(file_path, t_slice=slice(0, 500000))
+    t, x = load_signal_data(file_path, t_slice=slice(0, 999999))
     # t, x = load_signal_data(file_path, t_slice=slice(2700, 3450))
-    fx, xp, fxp, pre_a, post_a = preprocess_signal(t, x, 2, 2)
+    fx, xp, fxp, pre_a, post_a = preprocess_signal(t, x, 2.5, 4)
     f, (X, FX, XP, FXP) = compute_fft(t, x, fx, xp, fxp)
 
 
-    print(np.mean(pre_a))
-    dt = np.diff(t)
-    dps = 1- pre_a[1:]
-    # print((dps ** (1/dt)))
-    dpss = np.prod((dps ** (1/dt)))
-    # dpss = 1E-256
-    print(dpss)
-    tau_eff = -1 / np.log(dpss)
-    fceff = 1 / (2 * np.pi * tau_eff)
-    print(fceff)
-    print(np.mean(post_a))
-    dt = np.diff(t)
-    dps = 1- post_a[1:]
-    # print((dps ** (1/dt)))
-    dpss = np.prod((dps ** (1/dt)))
-    # dpss = 1E-256
-    print(dpss)
-    tau_eff = -1 / np.log(dpss)
-    fceff = 1 / (2 * np.pi * tau_eff)
-    print(fceff)
+    dt = np.diff(t[1:])
+    print("Min dt: " + str(np.min(dt)))
+    print("Max dt: " + str(np.max(dt)))
+    print("Avg dt: " + str(np.mean(dt)))
+    print("Std dt: " + str(np.std(dt)))
+    print(f"Max Sample Rate: {round(np.max(1/dt),2)} Hz")
+    print(f"Min Sample Rate: {round(np.min(1/dt),2)} Hz")
+    print(f"Avg Sample rate: {round(np.mean(1/dt),2)} Hz")
+    print(f"Std Sample rate: {round(np.std(1/dt),2)} Hz")
+    print("")
+
+    print("Pre Alpha: " + str(np.mean(pre_a[1:])))
+    print("Pre Freq Cutoff: " + str((-math.log(1 - np.mean(pre_a[1:])) / (2 * np.mean(dt) * math.pi))))
+    # dps = 1- pre_a[2:]
+    # # print((dps ** (1/dt)))
+    # dpss = np.prod((dps ** (1/dt)))
+    # # dpss = 1E-256
+    # print(dpss)
+    # tau_eff = -1 / np.log(dpss)
+    # fceff = 1 / (2 * np.pi * tau_eff)
+    # print(fceff)
+
+    print("Pre Alpha: " + str(np.mean(post_a[1:])))
+    print("Pre Freq Cutoff: " + str((-math.log(1 - np.mean(post_a[1:])) / (2 * np.mean(dt) * math.pi))))
+    # dps = 1- post_a[2:]
+    # # print((dps ** (1/dt)))
+    # dpss = np.prod((dps ** (1/dt)))
+    # # dpss = 1E-256
+    # print(dpss)
+    # tau_eff = -1 / np.log(dpss)
+    # fceff = 1 / (2 * np.pi * tau_eff)
+    # print(fceff)
+
+    alpha_figure = PlotFigure("Alpha Over Time", nrows=2, sharex=True)
+    alpha_figure.define_subplot(0, "Pre-Alpha", "Time [s]", "Alpha [0-1]")
+    alpha_figure.add_data(0, t[1:], pre_a[1:], "Pre-Alpha")
+    alpha_figure.define_subplot(1, "Post-Alpha", "Time [s]", "Alpha [0-1]")
+    alpha_figure.add_data(1, t[1:], post_a[1:], "Post-Alpha")
     
 
     plot_time_domain(t, x, fx, xp, fxp)
@@ -208,4 +235,6 @@ def main(file_path):
 
 
 if __name__ == "__main__":
-    main("/develop_ws/bag_files/topic_data_files/imu_data.csv")
+    # main("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv")
+    # main("/develop_ws/bag_files/topic_data_files/imu_data.csv")
+    main("/develop_ws/bag_files/topic_data_files/imu_raw_data.csv")

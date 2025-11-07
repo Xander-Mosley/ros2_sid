@@ -224,6 +224,10 @@ class LowPassFilterVariableDT:
         :param cutoff_frequency: Cutoff frequency in Hz
         :param initial_value: Starting value
         """
+        num_data = 5
+        self.smoofactor = 2 / (1 + num_data)
+        self.average_dt = 0.1
+        
         self.fc = cutoff_frequency
         self.filtered_value = initial_value
 
@@ -234,7 +238,10 @@ class LowPassFilterVariableDT:
         :param dt: Time difference since previous sample
         :return: Filtered output
         """
-        alpha = 1 - np.exp(-2 * np.pi * self.fc * dt)
+        self.average_dt = (dt * self.smoofactor) + ((1 - self.smoofactor) * self.average_dt)
+        alpha = 1 - np.exp(-2 * np.pi * self.fc * self.average_dt)
+
+        # alpha = 1 - np.exp(-2 * np.pi * self.fc * dt)
         self.filtered_value = (alpha * new_value) + ((1 - alpha) * self.filtered_value)
         return self.filtered_value, alpha
 
