@@ -2,7 +2,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
-from discrete_diff import linear_diff, savitzky_golay_diff, rolling_diff, LowPassFilter, smooth_data_array, LowPassFilterVariableDT, smooth_data_with_timestamps
+from discrete_diff import linear_diff, savitzky_golay_diff, rolling_diff, LowPassFilter, smooth_data_array, LowPassFilterVariableDT, smooth_data_with_timestamps_LP, ButterworthLowPassVariableDT, smooth_data_with_timestamps_Butter
 
 
 
@@ -108,17 +108,17 @@ class PlotFigure:
 def load_signal_data(file_path, t_slice=slice(0, 9999999)):
     data = np.loadtxt(file_path, delimiter=',', skiprows=1)
     t, x = data[t_slice, 0], data[t_slice, 4]
-    t = t[::2]
-    x = x[::2]
+    # t = t[::2]
+    # x = x[::2]
     return t, x
 
 
 def preprocess_signal(t, x, cutoff_pre=10, cutoff_post=5):
-    fx, pre_a = smooth_data_with_timestamps(x, t, cutoff_frequency=cutoff_pre)
+    fx = smooth_data_with_timestamps_Butter(x, t, cutoff_frequency=cutoff_pre, order=1)
     xp = rolling_diff(t, fx, "sg")
     xp_full = np.concatenate(([0] * 5, xp[5:]))
-    fxp, post_a = smooth_data_with_timestamps(xp_full, t, cutoff_frequency=cutoff_post)
-    return fx, xp_full, fxp, pre_a, post_a
+    fxp = smooth_data_with_timestamps_Butter(xp_full, t, cutoff_frequency=cutoff_post, order=1)
+    return fx, xp_full, fxp
 
 
 def compute_fft(t, *signals):
@@ -138,14 +138,14 @@ def plot_time_domain(t, x, fx, xp, fxp):
     fig.add_data(0, t, fx, label="Pre-filtered", color="tab:orange")
 
     fig.define_subplot(1, ylabel="Derivative", xlabel="Time [s]")
-    fig.add_data(1, t, xp, label="Differentiated")
-    fig.add_data(1, t, fxp, label="Post-filtered")
+    fig.add_scatter(1, t, xp, label="Differentiated")
+    fig.add_data(1, t, fxp, label="Post-filtered", color="tab:orange")
     fig.set_all_legends()
     return fig
 
 
-def plot_frequency_domain(f, X, FX, XP, FXP):
-    fig = PlotFigure("Frequency Domain Analysis", nrows=2, sharex=False)
+def plot_frequency_spectrum(f, X, FX, XP, FXP):
+    fig = PlotFigure("Frequency Spectrum Analysis", nrows=2, sharex=False)
     for i, (sig, label) in enumerate([(X, "Raw vs Pre-filtered"), (XP, "Derivative vs Post-filtered")]):
         fig.define_subplot(i, xlabel="Frequency [Hz]", ylabel="Magnitude", grid=True)
         # fig.set_log_scale(i, axis='x')
@@ -153,6 +153,21 @@ def plot_frequency_domain(f, X, FX, XP, FXP):
     fig.add_data(0, f, np.abs(FX), label="Pre-filtered")
     fig.add_data(1, f, np.abs(XP), label="Differentiated")
     fig.add_data(1, f, np.abs(FXP), label="Post-filtered")
+    fig.set_all_legends()
+    return fig
+
+
+def plot_frequency_spectrum_dB(f, X, FX, XP, FXP):
+    def to_dB(x):
+        return 20 * np.log10(np.abs(x) + 1e-12)
+    fig = PlotFigure("Frequency Spectrum Analysis", nrows=2, sharex=False)
+    for i, (sig, label) in enumerate([(X, "Raw vs Pre-filtered"), (XP, "Derivative vs Post-filtered")]):
+        fig.define_subplot(i, xlabel="Frequency [Hz]", ylabel="Magnitude", grid=True)
+        # fig.set_log_scale(i, axis='x')
+    fig.add_data(0, f, to_dB(np.abs(X)), label="Raw")
+    fig.add_data(0, f, to_dB(np.abs(FX)), label="Pre-filtered")
+    fig.add_data(1, f, to_dB(np.abs(XP)), label="Differentiated")
+    fig.add_data(1, f, to_dB(np.abs(FXP)), label="Post-filtered")
     fig.set_all_legends()
     return fig
 
@@ -178,52 +193,27 @@ def plot_bode(f, pairs):
 def main(file_path):
     t, x = load_signal_data(file_path, t_slice=slice(0, 999999))
     # t, x = load_signal_data(file_path, t_slice=slice(2700, 3450))
-    fx, xp, fxp, pre_a, post_a = preprocess_signal(t, x, 2.5, 4)
+    fx, xp, fxp = preprocess_signal(t, x, 3, 3)
     f, (X, FX, XP, FXP) = compute_fft(t, x, fx, xp, fxp)
 
 
     dt = np.diff(t[1:])
+    print("")
     print("Min dt: " + str(np.min(dt)))
     print("Max dt: " + str(np.max(dt)))
     print("Avg dt: " + str(np.mean(dt)))
     print("Std dt: " + str(np.std(dt)))
+    print("")
     print(f"Max Sample Rate: {round(np.max(1/dt),2)} Hz")
     print(f"Min Sample Rate: {round(np.min(1/dt),2)} Hz")
     print(f"Avg Sample rate: {round(np.mean(1/dt),2)} Hz")
     print(f"Std Sample rate: {round(np.std(1/dt),2)} Hz")
     print("")
-
-    print("Pre Alpha: " + str(np.mean(pre_a[1:])))
-    print("Pre Freq Cutoff: " + str((-math.log(1 - np.mean(pre_a[1:])) / (2 * np.mean(dt) * math.pi))))
-    # dps = 1- pre_a[2:]
-    # # print((dps ** (1/dt)))
-    # dpss = np.prod((dps ** (1/dt)))
-    # # dpss = 1E-256
-    # print(dpss)
-    # tau_eff = -1 / np.log(dpss)
-    # fceff = 1 / (2 * np.pi * tau_eff)
-    # print(fceff)
-
-    print("Pre Alpha: " + str(np.mean(post_a[1:])))
-    print("Pre Freq Cutoff: " + str((-math.log(1 - np.mean(post_a[1:])) / (2 * np.mean(dt) * math.pi))))
-    # dps = 1- post_a[2:]
-    # # print((dps ** (1/dt)))
-    # dpss = np.prod((dps ** (1/dt)))
-    # # dpss = 1E-256
-    # print(dpss)
-    # tau_eff = -1 / np.log(dpss)
-    # fceff = 1 / (2 * np.pi * tau_eff)
-    # print(fceff)
-
-    alpha_figure = PlotFigure("Alpha Over Time", nrows=2, sharex=True)
-    alpha_figure.define_subplot(0, "Pre-Alpha", "Time [s]", "Alpha [0-1]")
-    alpha_figure.add_data(0, t[1:], pre_a[1:], "Pre-Alpha")
-    alpha_figure.define_subplot(1, "Post-Alpha", "Time [s]", "Alpha [0-1]")
-    alpha_figure.add_data(1, t[1:], post_a[1:], "Post-Alpha")
     
 
     plot_time_domain(t, x, fx, xp, fxp)
-    plot_frequency_domain(f, X, FX, XP, FXP)
+    plot_frequency_spectrum(f, X, FX, XP, FXP)
+    plot_frequency_spectrum_dB(f, X, FX, XP, FXP)
     plot_bode(f, {
         "FX vs X": (FX, X),
         # "XP vs FX": (XP, FX),

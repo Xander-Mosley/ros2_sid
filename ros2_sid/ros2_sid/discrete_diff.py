@@ -9,8 +9,12 @@ import numpy as np
 from typing import Optional, Sequence, Union
 import warnings
 import weakref
+from scipy.signal import butter, lfilter
 
-__all__ = ['linear_diff', 'savitzky_golay_diff', 'rolling_diff', 'LowPassFilter', 'smooth_data_array', 'LowPassFilterVariableDT', 'smooth_data_with_timestamps']
+
+__all__ = ['linear_diff', 'savitzky_golay_diff', 'rolling_diff', 
+           'LowPassFilter', 'smooth_data_array', 'LowPassFilterVariableDT', 'smooth_data_with_timestamps_LP', 
+           'ButterworthLowPassVariableDT', 'smooth_data_with_timestamps_Butter']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
@@ -239,13 +243,13 @@ class LowPassFilterVariableDT:
         :return: Filtered output
         """
         self.average_dt = (dt * self.smoofactor) + ((1 - self.smoofactor) * self.average_dt)
-        alpha = 1 - np.exp(-2 * np.pi * self.fc * self.average_dt)
+        # alpha = 1 - np.exp(-2 * np.pi * self.fc * self.average_dt)
 
-        # alpha = 1 - np.exp(-2 * np.pi * self.fc * dt)
+        alpha = 1 - np.exp(-2 * np.pi * self.fc * dt)
         self.filtered_value = (alpha * new_value) + ((1 - alpha) * self.filtered_value)
-        return self.filtered_value, alpha
+        return self.filtered_value
 
-def smooth_data_with_timestamps(data, timestamps, cutoff_frequency=18):
+def smooth_data_with_timestamps_LP(data, timestamps, cutoff_frequency=18):
     """
     Smooth a 1D data array with variable time steps.
     
@@ -259,15 +263,80 @@ def smooth_data_with_timestamps(data, timestamps, cutoff_frequency=18):
 
     lpf = LowPassFilterVariableDT(cutoff_frequency, initial_value=data[0])
     filtered = [data[0]]
-    alphas = [0.0]  # first alpha can be 0 (no filtering yet)
 
     for i in range(1, len(data)):
         dt = timestamps[i] - timestamps[i-1]
-        filtered_value, alpha = lpf.update(data[i], dt)
+        filtered_value = lpf.update(data[i], dt)
         filtered.append(filtered_value)
-        alphas.append(alpha)
 
-    return np.array(filtered), np.array(alphas)
+    return np.array(filtered)
+
+
+class ButterworthLowPassVariableDT:
+    def __init__(self, cutoff_frequency, order=2, initial_value=0.0):
+        """
+        Butterworth low-pass filter that handles variable time steps.
+        :param cutoff_frequency: Cutoff frequency in Hz
+        :param order: Filter order (e.g., 2 for a 2nd-order Butterworth)
+        :param initial_value: Starting value
+        """
+        self.fc = cutoff_frequency
+        self.order = order
+        self.filtered_value = initial_value
+        self.prev_data = [initial_value]
+        self.prev_timestamps = []
+
+    def _design_filter(self, dt):
+        """
+        Design a Butterworth low-pass filter for the given timestep.
+        :param dt: Time step in seconds
+        :return: (b, a) filter coefficients
+        """
+        nyquist = 0.5 / dt
+        normal_cutoff = self.fc / nyquist
+        b, a = butter(self.order, normal_cutoff, btype='low', analog=False)
+        return b, a
+
+    def update(self, new_value, dt):
+        """
+        Update the filter with a new value and the timestep since last update.
+        :param new_value: New input value
+        :param dt: Time difference since previous sample
+        :return: Filtered output
+        """
+        b, a = self._design_filter(dt)
+
+        # Apply filter to the last and new sample
+        x = np.array([self.filtered_value, new_value])
+        y = lfilter(b, a, x)
+
+        # Take the last output as the current filtered value
+        self.filtered_value = y[-1]
+        return self.filtered_value
+
+def smooth_data_with_timestamps_Butter(data, timestamps, cutoff_frequency=18, order=2):
+    """
+    Smooth a 1D data array with variable time steps using a Butterworth filter.
+    
+    :param data: 1D array of data points
+    :param timestamps: 1D array of timestamps corresponding to each data point
+    :param cutoff_frequency: Filter cutoff frequency in Hz
+    :param order: Order of the Butterworth filter
+    :return: Numpy array of filtered values
+    """
+    if len(data) == 0:
+        return np.array([])
+
+    lpf = ButterworthLowPassVariableDT(cutoff_frequency, order, initial_value=data[0])
+    filtered = [data[0]]
+
+    for i in range(1, len(data)):
+        dt = timestamps[i] - timestamps[i-1]
+        filtered_value = lpf.update(data[i], dt)
+        filtered.append(filtered_value)
+
+    return np.array(filtered)
+
 
 if (__name__ == '__main__'):
     file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"
