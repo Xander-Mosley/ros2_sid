@@ -130,96 +130,59 @@ def compute_fft(t, *signals):
     return f, ffts
 
 
+def signal_analysis(t, x, y):
+    time_figure = PlotFigure("Signal Analysis - Time Domain")
+    time_figure.define_subplot(0, ylabel="Amplitude", xlabel="Time [s]", grid=True)
+    time_figure.add_scatter(0, t, x, label="Input", color="tab:blue")
+    time_figure.add_data(0, t, y, label="Output", color="tab:orange")
+    time_figure.set_all_legends()
 
-def plot_time_domain(t, x, fx, xp, fxp):
-    fig = PlotFigure("Discrete Differentiation", nrows=2, sharex=True)
-    fig.define_subplot(0, ylabel="Signal Amplitude", xlabel="Time [s]")
-    fig.add_scatter(0, t, x, label="Raw")
-    fig.add_data(0, t, fx, label="Pre-filtered", color="tab:orange")
-
-    fig.define_subplot(1, ylabel="Derivative", xlabel="Time [s]")
-    fig.add_scatter(1, t, xp, label="Differentiated")
-    fig.add_data(1, t, fxp, label="Post-filtered", color="tab:orange")
-    fig.set_all_legends()
-    return fig
-
-
-def plot_frequency_spectrum(f, X, FX, XP, FXP):
-    fig = PlotFigure("Frequency Spectrum Analysis", nrows=2, sharex=False)
-    for i, (sig, label) in enumerate([(X, "Raw vs Pre-filtered"), (XP, "Derivative vs Post-filtered")]):
-        fig.define_subplot(i, xlabel="Frequency [Hz]", ylabel="Magnitude", grid=True)
-        # fig.set_log_scale(i, axis='x')
-    fig.add_data(0, f, np.abs(X), label="Raw")
-    fig.add_data(0, f, np.abs(FX), label="Pre-filtered")
-    fig.add_data(1, f, np.abs(XP), label="Differentiated")
-    fig.add_data(1, f, np.abs(FXP), label="Post-filtered")
-    fig.set_all_legends()
-    return fig
-
-
-def plot_frequency_spectrum_dB(f, X, FX, XP, FXP):
+    f, (X, Y) = compute_fft(t, x, y)
     def to_dB(x):
         return 20 * np.log10(np.abs(x) + 1e-12)
-    fig = PlotFigure("Frequency Spectrum Analysis", nrows=2, sharex=False)
-    for i, (sig, label) in enumerate([(X, "Raw vs Pre-filtered"), (XP, "Derivative vs Post-filtered")]):
-        fig.define_subplot(i, xlabel="Frequency [Hz]", ylabel="Magnitude", grid=True)
-        # fig.set_log_scale(i, axis='x')
-    fig.add_data(0, f, to_dB(np.abs(X)), label="Raw")
-    fig.add_data(0, f, to_dB(np.abs(FX)), label="Pre-filtered")
-    fig.add_data(1, f, to_dB(np.abs(XP)), label="Differentiated")
-    fig.add_data(1, f, to_dB(np.abs(FXP)), label="Post-filtered")
-    fig.set_all_legends()
-    return fig
-
-
-def plot_bode(f, pairs):
-    def bode_components(num, den):
-        H = num / den
-        return 20 * np.log10(np.abs(H)), np.angle(H, deg=True)
-
-    for title, (num, den) in pairs.items():
-        mag, phase = bode_components(num, den)
-        fig = PlotFigure(f"Bode Plot: {title}", nrows=2, sharex=True)
-        fig.define_subplot(0, ylabel="Magnitude [dB]", grid=True)
-        fig.set_log_scale(0, axis='x')
-        fig.add_data(0, f, mag, label="Magnitude")
-        fig.add_line(0, -3, orientation='h', color='red', label='-3 dB')
-        fig.define_subplot(1, xlabel="Frequency [Hz]", ylabel="Phase [deg]", grid=True)
-        fig.set_log_scale(1, axis='x')
-        fig.add_data(1, f, phase, label="Phase")
-        fig.set_all_legends()
+    
+    freq_figure = PlotFigure("Signal Analysis - Frequency Spectrum",  nrows=2, sharex=True)
+    freq_figure.define_subplot(0, ylabel="Magnitude", grid=True)
+    freq_figure.add_data(0, f, np.abs(X), label="Input", color="tab:blue")
+    freq_figure.add_data(0, f, np.abs(Y), label="Output", color="tab:orange")
+    freq_figure.define_subplot(1, ylabel="Magnitude [dB]", xlabel="Frequency [Hz]", grid=True)
+    freq_figure.add_data(1, f, to_dB(np.abs(X)), label="Input", color="tab:blue")
+    freq_figure.add_data(1, f, to_dB(np.abs(Y)), label="Output", color="tab:orange")
+    freq_figure.set_all_legends()
+    
+    H = Y / X
+    mag = to_dB(H)
+    phase = np.angle(H, deg=True)
+    bode_figure = PlotFigure(f"Signal Analysis - Bode Plot", nrows=2, sharex=True)
+    bode_figure.define_subplot(0, ylabel="Magnitude [dB]", grid=True)
+    bode_figure.set_log_scale(0, axis='x')
+    bode_figure.add_data(0, f, mag, label="Magnitude", color="tab:blue")
+    bode_figure.add_line(0, -3, orientation='h', color='tab:red', label='-3 dB')
+    bode_figure.define_subplot(1, ylabel="Phase [deg]", xlabel="Frequency [Hz]", grid=True)
+    bode_figure.set_log_scale(1, axis='x')
+    bode_figure.add_data(1, f, phase, label="Phase")
+    bode_figure.set_all_legends()
 
 
 def main(file_path):
     t, x = load_signal_data(file_path, t_slice=slice(0, 999999))
     # t, x = load_signal_data(file_path, t_slice=slice(2700, 3450))
-    fx, xp, fxp = preprocess_signal(t, x, 1.25, 1.25)
-    f, (X, FX, XP, FXP) = compute_fft(t, x, fx, xp, fxp)
-
+    fx, xp, fxp = preprocess_signal(t, x, 5, 2.5)
 
     dt = np.diff(t[1:])
     print("")
-    print("Min dt: " + str(np.min(dt)))
-    print("Max dt: " + str(np.max(dt)))
-    print("Avg dt: " + str(np.mean(dt)))
-    print("Std dt: " + str(np.std(dt)))
-    print("")
-    print(f"Max Sample Rate: {round(np.max(1/dt),2)} Hz")
-    print(f"Min Sample Rate: {round(np.min(1/dt),2)} Hz")
-    print(f"Avg Sample rate: {round(np.mean(1/dt),2)} Hz")
-    print(f"Std Sample rate: {round(np.std(1/dt),2)} Hz")
+    print(f"Time Step\t\tSampling Rate")
+    print(f"=========\t\t=============")
+    print(f"Min: {round(np.min(dt), 3)} s\t\tMax: {round(np.max(1/dt), 2)} Hz")
+    print(f"Max: {round(np.max(dt), 3)} s\t\tMin: {round(np.min(1/dt), 2)} Hz")
+    print(f"Avg: {round(np.mean(dt), 3)} s\t\tAvg: {round(np.mean(1/dt), 2)} Hz")
+    print(f"Std: {round(np.std(dt), 3)} s\t\tStd: {round(np.std(1/dt), 2)} Hz")
     print("")
     
-
-    plot_time_domain(t, x, fx, xp, fxp)
-    plot_frequency_spectrum(f, X, FX, XP, FXP)
-    plot_frequency_spectrum_dB(f, X, FX, XP, FXP)
-    plot_bode(f, {
-        "FX vs X": (FX, X),
-        # "XP vs FX": (XP, FX),
-        "FXP vs XP": (FXP, XP),
-        "FXP vs X": (FXP, X),
-    })
+    signal_analysis(t, x, fx)
+    # signal_analysis(t, fx, xp)
+    # signal_analysis(t, xp, fxp)
+    signal_analysis(t, x, fxp)
 
     plt.show()
 
