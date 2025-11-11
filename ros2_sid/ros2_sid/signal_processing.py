@@ -1,22 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-Script description
-"""
-
 import numpy as np
 from typing import Optional, Sequence, Union
 import warnings
 import weakref
 from scipy.signal import butter, lfilter
-
-
-__all__ = ['linear_diff', 'savitzky_golay_diff', 'rolling_diff', 
-           'LowPassFilter', 'smooth_data_array', 'LowPassFilterVariableDT', 'smooth_data_with_timestamps_LP', 
-           'ButterworthLowPassVariableDT', 'smooth_data_with_timestamps_Butter', 'ButterworthLowPass', 'butterworthlowpass_loop']
-__author__ = "Xander D Mosley"
-__email__ = "XanderDMosley.Engineer@gmail.com"
 
 
 def linear_diff(
@@ -118,7 +104,6 @@ def savitzky_golay_diff(
     
     return np.float64(derivative)
 
-
 def rolling_diff(
     time: np.ndarray,
     data: np.ndarray,
@@ -176,6 +161,7 @@ def rolling_diff(
         raise ValueError(f"Unknown method '{method}'. Use 'linear' or 'sg'.")
 
     return derivatives
+
 
 
 class LowPassFilter:
@@ -382,6 +368,7 @@ def butterworthlowpass_loop(data, timestamps, cutoff_frequency=18):
         filtered.append(filtered_value)
 
     return np.array(filtered)
+
 
 if (__name__ == '__main__'):
     file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"

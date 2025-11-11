@@ -23,15 +23,19 @@ def preprocess_signal(t, x, cutoff_pre=10, cutoff_post=5):
     return fx, xp_full, fxp
 
 
-def _compute_fft(t, *signals):
-    dt = t[1] - t[0]
-    f = np.fft.fftfreq(len(t), dt)
-    mask = f >= 0
-    f = f[mask]
-    ffts = [np.fft.fft(sig)[mask] for sig in signals]
-    return f, ffts
+def time_statistics(t):
+    dt = np.diff(t)
+    print("")
+    print(f"Time Step\t\tSampling Rate")
+    print(f"=========\t\t=============")
+    print(f"Min: {round(np.min(dt), 3)} s\t\tMax: {round(np.max(1/dt), 2)} Hz")
+    print(f"Max: {round(np.max(dt), 3)} s\t\tMin: {round(np.min(1/dt), 2)} Hz")
+    print(f"Avg: {round(np.mean(dt), 3)} s\t\tAvg: {round(np.mean(1/dt), 2)} Hz")
+    print(f"Std: {round(np.std(dt), 3)} s\t\tStd: {round(np.std(1/dt), 2)} Hz")
+    print("")
+    
 
-def _fft_nonuniform(t, *signals, f=None):
+def _compute_fft(t, *signals, f=None):
     t = np.asarray(t)
     signals = [np.asarray(sig) for sig in signals]
     if f is None:
@@ -45,7 +49,6 @@ def _fft_nonuniform(t, *signals, f=None):
         ffts.append(Xf)
     return f, ffts
 
-
 def signal_analysis(t, x, y):
     time_figure = PlotFigure("Signal Analysis - Time Domain")
     time_figure.define_subplot(0, ylabel="Amplitude", xlabel="Time [s]", grid=True)
@@ -53,7 +56,7 @@ def signal_analysis(t, x, y):
     time_figure.add_data(0, t, y, label="Output", color="tab:orange")
     time_figure.set_all_legends()
 
-    f, (X, Y) = _fft_nonuniform(t, x, y)
+    f, (X, Y) = _compute_fft(t, x, y)
     def to_dB(x):
         return 20 * np.log10(np.abs(x) + 1e-12)
     
@@ -102,19 +105,9 @@ def signal_analysis(t, x, y):
 
 def main(file_path):
     t, x = load_signal_data(file_path, t_slice=slice(0, 999999))
-    # t, x = load_signal_data(file_path, t_slice=slice(2700, 3450))
     fx, xp, fxp = preprocess_signal(t, x, 1.54, 1.54)
 
-    dt = np.diff(t[1:])
-    print("")
-    print(f"Time Step\t\tSampling Rate")
-    print(f"=========\t\t=============")
-    print(f"Min: {round(np.min(dt), 3)} s\t\tMax: {round(np.max(1/dt), 2)} Hz")
-    print(f"Max: {round(np.max(dt), 3)} s\t\tMin: {round(np.min(1/dt), 2)} Hz")
-    print(f"Avg: {round(np.mean(dt), 3)} s\t\tAvg: {round(np.mean(1/dt), 2)} Hz")
-    print(f"Std: {round(np.std(dt), 3)} s\t\tStd: {round(np.std(1/dt), 2)} Hz")
-    print("")
-    
+    time_statistics(t)
     # signal_analysis(t, x, fx)
     # signal_analysis(t, fx, xp)
     # signal_analysis(t, xp, fxp)
@@ -125,5 +118,5 @@ def main(file_path):
 
 if __name__ == "__main__":
     # main("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv")
-    # main("/develop_ws/bag_files/topic_data_files/imu_data.csv")
-    main("/develop_ws/bag_files/topic_data_files/imu_raw_data.csv")
+    main("/develop_ws/bag_files/topic_data_files/imu_data.csv")
+    # main("/develop_ws/bag_files/topic_data_files/imu_raw_data.csv")
