@@ -4,6 +4,8 @@
 """
 inputdesign.py — Importable signal generation functions.
 
+Description
+-----------
 This module provides functions for generating standard excitation signals used
 in system identification and control experiments, including:
 - frequency_sweep()
@@ -12,7 +14,10 @@ in system identification and control experiments, including:
 
 All functions return NumPy arrays suitable for simulation or experiment playback.
 
-Author: Xander D. Mosley (Python adaptation of Morelli's original MATLAB code)
+Author
+------
+Xander D. Mosley (Python adaptation of Morelli's original MATLAB code)
+Email: XanderDMosley.Engineer@gmail.com  
 Date: 23 Jul 2025
 """
 
@@ -204,8 +209,8 @@ def frequency_sweep(
         maximum_frequency: float,
         time_step: float,
         final_time: float,
-        function_type: Optional[str] = 'linear',
-        noise_amplitude: Optional[float] = 0
+        function_type: str = 'linear',
+        noise_amplitude: float = 0
         ) -> tuple[np.ndarray, np.ndarray]:
     """
     Create a frequency sweep signal using linear or logarithmic frequency variation.
@@ -386,7 +391,7 @@ def multi_sine(
         maximum_frequency: float,
         time_step: float,
         total_time: float,
-        num_channels: Optional[int] = 1,
+        num_channels: int = 1,
         user_frequencies: Optional[np.ndarray] = None,
         power_spectrum: Optional[np.ndarray] = None
         ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

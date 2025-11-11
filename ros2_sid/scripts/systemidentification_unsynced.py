@@ -76,8 +76,8 @@ class OLSNode(Node):
         self.wing_area = 1.065634   # [m²]
 
 
-        self.lpf1 = ButterworthLowPass(1.25)
-        self.lpf2 = ButterworthLowPass(1.25)
+        self.lpf1 = ButterworthLowPass(1.54)
+        self.lpf2 = ButterworthLowPass(1.54)
 
     def setup_modelstructures(self) -> None:
         # define class variables

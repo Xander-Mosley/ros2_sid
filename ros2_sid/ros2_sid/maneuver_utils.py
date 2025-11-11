@@ -4,6 +4,8 @@
 """
 maneuver_utils.py — Helpful functions for maneuvers.
 
+Description
+-----------
 This module provides functions for saving, visualizing, and analyzing
 maneuver signals commonly used in simulation and control experiments. It
 includes functions for:
@@ -16,19 +18,20 @@ All functions operate on NumPy arrays with time in the first column and
 signal channels in subsequent columns, supporting up to three rotational
 and three translational channels.
 
-Author: Xander D. Mosley
+Author
+------
+Xander D. Mosley  
+Email: XanderDMosley.Engineer@gmail.com  
 Date: 30 Oct 2025
 """
 
 
 import os
-from typing import Optional
 
 import numpy as np
-import matplotlib
-matplotlib.use("TkAgg")  # or "Qt5Agg", "GTK3Agg", depending on your system
 import matplotlib.pyplot as plt
 
+from plotter_class import PlotFigure
 from inputdesign import frequency_sweep, multi_step, multi_sine
 
 
@@ -39,7 +42,7 @@ __email__ = "XanderDMosley.Engineer@gmail.com"
 
 def save_maneuver(
         maneuver: np.ndarray,
-        filename: Optional[str] = "saved_maneuver.csv"
+        filename: str = "saved_maneuver.csv"
         ) -> None:
     """
     Save a maneuver and its corresponding time vector to a CSV file in the same directory.
@@ -79,9 +82,7 @@ def save_maneuver(
     print(f"\nSignal saved to: {filepath}\n")
 
 
-def plot_maneuver(
-        maneuver: np.ndarray
-        ) -> None:
+def plot_maneuver(maneuver: np.ndarray) -> None:
     """
     Plot maneuver signals in grouped panels:
       - Top: rotational channels (Roll, Pitch, Yaw)
@@ -114,6 +115,8 @@ def plot_maneuver(
     num_channels = signal.shape[1]
     rot_labels = ['Roll', 'Pitch', 'Yaw']
     trans_labels = ['X', 'Y', 'Z']  # TODO: Determine if adding translational maneuvers is possible.
+    colors_rot = ['tab:blue', 'tab:red', 'tab:green']   # Roll, Pitch, Yaw
+    colors_trans = ['tab:blue', 'tab:red', 'tab:green'] # X, Y, Z
 
     if num_channels <= 3:
         rot_signals = signal
@@ -123,35 +126,36 @@ def plot_maneuver(
         trans_signals = signal[:, 3:num_channels]
 
     nrows = 2 if trans_signals is not None else 1
-    fig, axs = plt.subplots(nrows, 1, figsize=(10, 6), sharex=True)
-
-    if nrows == 1:
-        axs = [axs]
+    fig = PlotFigure("Generated Maneuver", nrows=nrows, ncols=1, figsize=(10, 6), sharex=True)
 
     # --- Rotational Maneuver Plot ---
     for i in range(rot_signals.shape[1]):
-        axs[0].plot(time, rot_signals[:, i], label=rot_labels[i])
-    axs[0].set_title("Rotational Trajectory")
-    axs[0].set_ylabel(f"Rotational\nAmplitude")
-    axs[0].legend(loc="upper right")
-    axs[0].grid(True)
+        fig.add_data(0, time, rot_signals[:, i], label=rot_labels[i], color=colors_rot[i])
+    fig.define_subplot(
+        0,
+        title="Rotational Trajectory",
+        ylabel="Rotational\nAmplitude",
+        grid=True
+        )
 
     # --- Translational Maneuver Plot (if present) ---
     if trans_signals is not None:
         for i in range(trans_signals.shape[1]):
-            axs[1].plot(time, trans_signals[:, i], label=trans_labels[i])
-        axs[1].set_title("Translational Trajectory")
-        axs[1].set_ylabel("Translational\nAmplitude")
-        axs[1].legend(loc="upper right")
-        axs[1].grid(True)
+            fig.add_data(1, time, trans_signals[:, i], label=trans_labels[i], color=colors_trans[i])
+        fig.define_subplot(
+            1,
+            title="Translational Trajectory",
+            xlabel="Time [s]",
+            ylabel="Translational\nAmplitude",
+            grid=True
+            )
+    else:
+        fig.define_subplot(0, xlabel="Time [s]")
 
-    axs[-1].set_xlabel("Time [s]")
-    fig.suptitle("Generated Maneuver", fontsize=12)
+    fig.set_all_legends()
 
 
-def plot_maneuver_spectrum(
-    maneuver: np.ndarray
-    ) -> None:
+def plot_maneuver_spectrum(maneuver: np.ndarray) -> None:
     """
     Plot the single-sided magnitude spectrum of maneuver signals.
 
@@ -182,6 +186,8 @@ def plot_maneuver_spectrum(
 
     rot_labels = ['Roll', 'Pitch', 'Yaw']
     trans_labels = ['X', 'Y', 'Z']
+    colors_rot = ['tab:blue', 'tab:red', 'tab:green']   # Roll, Pitch, Yaw
+    colors_trans = ['tab:blue', 'tab:red', 'tab:green'] # X, Y, Z
 
     if num_channels <= 3:
         rot_signals = signal
@@ -201,35 +207,42 @@ def plot_maneuver_spectrum(
         return amp
 
     nrows = 2 if trans_signals is not None else 1
-    fig, axs = plt.subplots(nrows, 1, figsize=(10, 6), sharex=True)
-
-    if nrows == 1:
-        axs = [axs]
+    fig = PlotFigure("Generated Maneuver - Frequency Spectrum", nrows=nrows, ncols=1, figsize=(10, 6), sharex=True)
 
     # --- Rotational Spectrum ---
     rot_amp = amplitude_spectrum(rot_signals)
     for i in range(rot_signals.shape[1]):
-        axs[0].semilogx(freqs, rot_amp[:, i], label=rot_labels[i])
-    axs[0].set_title("Rotational Trajectory - Frequency Spectrum")
-    axs[0].set_ylabel(f"Magnitude")
-    axs[0].grid(True, which="both", ls="--", alpha=0.5)
-    axs[0].legend()
+        fig.add_data(0, freqs, rot_amp[:, i], label=rot_labels[i], color=colors_rot[i])
+    fig.define_subplot(
+        0,
+        title="Rotational Trajectory - Frequency Spectrum",
+        ylabel="Magnitude",
+        grid=True,
+        grid_kwargs={"which": "both", "ls": "--", "alpha": 0.5}
+        )
+    fig.set_log_scale(0, axis='x')
 
     # --- Translational Spectrum (if present) ---
     if trans_signals is not None:
         trans_amp = amplitude_spectrum(trans_signals)
         for i in range(trans_signals.shape[1]):
-            axs[1].semilogx(freqs, trans_amp[:, i], label=trans_labels[i])
-        axs[1].set_title("Translational Trajectory - Frequency Spectrum")
-        axs[1].set_ylabel("Magnitude")
-        axs[1].grid(True, which="both", ls="--", alpha=0.5)
-        axs[1].legend()
+            fig.add_data(1, freqs, trans_amp[:, i], label=trans_labels[i], color=colors_trans[i])
+        fig.define_subplot(
+            1,
+            title="Translational Trajectory - Frequency Spectrum",
+            xlabel="Frequency [Hz]",
+            ylabel="Magnitude",
+            grid=True,
+            grid_kwargs={"which": "both", "ls": "--", "alpha": 0.5}
+            )
+        fig.set_log_scale(1, axis='x')
+    else:
+        fig.define_subplot(0, xlabel="Frequency [Hz]")
 
-    axs[-1].set_xlabel("Frequency [Hz]")
-    fig.suptitle("Generated Maneuver - Frequency Spectrum", fontsize=12)
+    fig.set_all_legends()
 
 
-def _test_maneuver():
+def _test_maneuver() -> None:
     # TODO: Change this description if the maneuvers expand to require more than RPY signals.
     # maneuvers must have the shape (N, 4) where the columns (in order) are:
     # time, roll signal, pitch signal, yaw signal; and the first time value must be zero
