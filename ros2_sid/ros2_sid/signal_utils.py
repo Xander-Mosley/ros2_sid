@@ -303,6 +303,7 @@ def plot_analysis(t, x, y):
 
 
 def _analyze_signal(t, x):
+    # TODO: Determine the ideal filter for input data.
     fx = apply_filter(t, x, 'Butter2_VDT', 1.54)
     xp = rolling_diff(t, fx, "poly")
     fxp = apply_filter(t, xp, 'Butter2_VDT', 1.54)

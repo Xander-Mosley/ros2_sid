@@ -629,6 +629,9 @@ class ButterworthLowPass_VDT_2O:
         return y_new
 
 
+# TODO: Add more filters types as testing continues.
+
+
 if (__name__ == '__main__'):
     warnings.warn(
         "This script defines several functions and classes for"

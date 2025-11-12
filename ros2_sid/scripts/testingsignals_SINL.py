@@ -1,25 +1,121 @@
 #!/usr/bin/env python3
-from re import S
-import rclpy
+
+"""
+testingsignals_SINL.py - ROS2 node for publishing simulated drone excitation signals.
+
+This script defines a ROS2 node, 'PubInputSignals', which generates and publishes
+predefined or live-generated input maneuvers to a drone's trajectory topic for testing
+and system identification purposes. The node supports multiple types of maneuvers
+including multisines, doublets, and frequency sweeps for roll, pitch, and yaw axes.
+
+Key Features
+------------
+- Load maneuvers from CSV files to ensure reproducibility.
+- Generate and publish different excitation signals on the 'trajectory' topic.
+- User-selectable maneuver modes.
+- Adjustable publishing timer to match maneuver time steps.
+- Runs in a ROS2 environment and leverages threading to handle user input concurrently.
+
+Maneuver Format
+---------------
+- All maneuvers are expected as arrays of shape (N, 4):
+  [time, roll_signal, pitch_signal, yaw_signal]
+- Time values must start at zero.
+
+Usage
+-----
+1. Launch the node:
+    '''bash
+    ros2 run ros2_sid testingsignals_SINL.py
+    '''
+2. Toggle execution and select maneuvers via console input.
+
+Custom Dependencies:
+- Custom message: drone_interfaces/CtlTraj, drone_interfaces/Telem
+- Input signal utilities from 'ros2_sid.input_design'
+
+Author
+------
+Xander D. Mosley
+Email: XanderDMosley.Engineer@gmail.com
+Date: 11 Jul 2025
+"""
+
+
 import math
 import os
-import numpy as np
+import threading
+from re import S
 
+import numpy as np
+import rclpy
 from rclpy.node import Node
 from rclpy.duration import Duration
 from rclpy.publisher import Publisher
-from nav_msgs.msg import Odometry
-from std_msgs.msg import String
-from std_msgs.msg import Float64
-from std_msgs.msg import Float64MultiArray
-from drone_interfaces.msg import Telem, CtlTraj
-import threading
 
-from ros2_sid.inputdesign import frequency_sweep, multi_step
+from nav_msgs.msg import Odometry
+from std_msgs.msg import Float64, Float64MultiArray, String
+from drone_interfaces.msg import CtlTraj, Telem
+
+from ros2_sid.input_design import frequency_sweep, multi_sine, multi_step
+
+
+__all__ = ['PubInputSignals']
+__author__ = "Xander D Mosley"
+__email__ = "XanderDMosley.Engineer@gmail.com"
 
 
 class PubInputSignals(Node):
+    """
+    ROS2 node that publishes predefined or generated input signals (maneuvers) 
+    as control trajectories for aircraft system identification or control testing.
+
+    This node allows users to select and execute predefined excitation maneuvers 
+    interactively. Maneuvers can be loaded from CSV files or generated dynamically.
+
+    Attributes
+    ----------
+    run_switch : int
+        Internal execution flag (1 = running, 0 = stopped).
+    maneuver_mode : int
+        Index of the currently selected maneuver (0-9).
+    initial_counter : int
+        Initial value for the trajectory index counter.
+    initial_timer_period : float
+        Default timer update period (s).
+    counter: int
+        Current index in the active maneuver trajectory array.
+    input_signal : Publisher
+        ROS2 publisher for 'CtlTraj' messages.
+    current_timer_period : float
+        Current ROS2 timer period (s).
+    timer : Timer
+        ROS2 timer controlling publishing rate.
+    userthread : Thread
+        Thread for user console input.
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    11 Jul 2025 - Created, XDM.
+    """
     def __init__(self, ns=''):
+        """
+        Initialize the excitation node and set up publishers, subscribers, and timers.
+
+        Parameters
+        ----------
+        ns : str, optional
+            Namespace for the ROS2 node. Defaults to an empty string.
+
+        Notes
+        -----
+        - A separate thread is launched for user input ('self.userthread').
+        - Maneuver data is preloaded from CSV files during initialization.
+        """
         super().__init__('excitation_node')
         self.run_switch: int = 0
         self.maneuver_mode: int = 1
@@ -38,84 +134,69 @@ class PubInputSignals(Node):
         self.userthread.start()
 
     def maneuvers(self) -> None:
-        # Maneuvers can either be imported from a pre-saved CSV file (e.g., 'input_signal.csv') or generated live when the node starts.
-        # Using a CSV allows for reproducibility and avoids regenerating signals on each run.
-        # To create and save a maneuver, use the 'save_input_signal()' function in 'inputdesign.py'.
-        # All maneuver arrays must have shape (N, 4), where the columns are:
-        # [time, roll signal, pitch signal, yaw signal], and the first time value must be zero.
+        """
+        Load predefined maneuver trajectories from CSV files or generate live
+        when the node starts.
 
-        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"
+        Loads multiple sets of maneuvers such as multisine, doublet, and sweep
+        excitations for roll, pitch, and yaw axes. Each maneuver file defines
+        a (N, 4) array with columns: [time, roll, pitch, yaw].
+
+        To create and save a maneuver, use the 'save_maneuver()'
+        function in 'maneuver_utils.py'.
+
+        Raises
+        ------
+        OSError
+            If one or more maneuver CSV files cannot be found or read.
+
+        Notes
+        -----
+        -----
+        - The first time value in each file must be zero.
+        - Maneuver arrays are stored as:
+            - 'self.allsines', 'self.rolsines', 'self.pitsines', 'self.yawsines'
+            - 'self.roldoublet', 'self.pitdoublet', 'self.yawdoublet'
+            - 'self.rolsweep', 'self.pitsweep', 'self.yawsweep'
+        """
+        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/sines_7deg_15s_0.1-1.5.csv"
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
         time = data[:, 0]
         empty = np.zeros_like(time)
         self.allsines = np.array([time, data[:, 1], data[:, 2], data[:, 3]]).T
-
         self.rolsines = np.array([time, data[:, 1], empty, empty]).T
-
         self.pitsines = np.array([time, empty, data[:, 2], empty]).T
-
         self.yawsines = np.array([time, empty, empty, data[:, 3]]).T
-        
 
-        amplitude: float = np.deg2rad(7)  
-        natural_frequency: float = 1.0
-        pulses: list = [3, 2, 1, 1]
-        time_delay: float = 1.0
-        time_step: float = 0.02
-        final_time: float = 15.
-        time, doublet = multi_step(amplitude, natural_frequency, pulses, time_delay, time_step, final_time)
+        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/doublet_7deg_15s_0.1-1.5.csv"
+        data = np.loadtxt(file_path, delimiter=',', skiprows=1)
+        time = data[:, 0]
         empty = np.zeros_like(time)
-        self.roldoublet = np.array([time, doublet, empty, empty]).T
-        
-        amplitude: float = np.deg2rad(5)
-        natural_frequency: float = 1.0
-        pulses: list = [1, 1]
-        time_delay: float = 1.0
-        time_step: float = 0.02
-        final_time: float = 15.
-        time, doublet = multi_step(amplitude, natural_frequency, pulses, time_delay, time_step, final_time)
-        empty = np.zeros_like(time)
-        self.pitdoublet = np.array([time, empty, doublet, empty]).T
-        
-        amplitude: float = np.deg2rad(10)
-        natural_frequency: float = 1.0
-        pulses: list = [1, 1]
-        time_delay: float = 1.0
-        time_step: float = 0.02
-        final_time: float = 15.
-        time, doublet = multi_step(amplitude, natural_frequency, pulses, time_delay, time_step, final_time)
-        empty = np.zeros_like(time)
-        self.yawdoublet = np.array([time, empty, empty, doublet]).T
+        self.roldoublet = np.array([time, data[:, 1], empty, empty]).T
+        self.pitdoublet = np.array([time, empty, data[:, 2], empty]).T
+        self.yawdoublet = np.array([time, empty, empty, data[:, 3]]).T
 
-
-        amplitude: float = np.deg2rad(7) 
-        minimum_frequency: float = 0.1
-        maximum_frequency: float = 10
-        time_step: float = 0.02
-        final_time: float = 45.
-        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
+        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/sweep_7deg_15s_0.1-1.5.csv"
+        data = np.loadtxt(file_path, delimiter=',', skiprows=1)
+        time = data[:, 0]
         empty = np.zeros_like(time)
-        self.rolsweep = np.array([time, sweep, empty, empty]).T
-
-        amplitude: float = np.deg2rad(5)
-        minimum_frequency: float = 0.1
-        maximum_frequency: float = 1.5
-        time_step: float = 0.02
-        final_time: float = 15.
-        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
-        empty = np.zeros_like(time)
-        self.pitsweep = np.array([time, empty, sweep, empty]).T
-
-        amplitude: float = np.deg2rad(10)
-        minimum_frequency: float = 0.1
-        maximum_frequency: float = 1.5
-        time_step: float = 0.02
-        final_time: float = 15.
-        time, sweep = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
-        empty = np.zeros_like(time)
-        self.yawsweep = np.array([time, empty, empty, sweep]).T
+        self.rolsweep = np.array([time, data[:, 1], empty, empty]).T
+        self.pitsweep = np.array([time, empty, data[:, 2], empty]).T
+        self.yawsweep = np.array([time, empty, empty, data[:, 3]]).T
         
     def user_input_loop(self) -> None:
+        """
+        Continuously listen for user input to control the excitation process.
+
+        Provides a simple CLI interface for:
+            - Starting or stopping the signal publishing ('run_switch').
+            - Selecting a maneuver mode (0-9) when publishing is stopped.
+
+        Notes
+        -----
+        - This method runs in a separate daemon thread to avoid blocking
+           the ROS2 executor thread.
+        """
         while rclpy.ok():
             try:
                 userswitch = int(input("\nTesting Switch (0-1):\n"))
@@ -154,6 +235,18 @@ class PubInputSignals(Node):
                         print("Invalid input. Please enter an integer between 0 and 9.")
 
     def logic_loop(self) -> None:
+        """
+        Main logic loop for executing and publishing maneuvers.
+
+        This callback is triggered periodically by the ROS2 timer. It manages:
+            - Selecting the appropriate maneuver based on 'maneuver_mode'.
+            - Publishing trajectory points to the 'CtlTraj' topic.
+            - Resetting the state when a maneuver completes.
+
+        Notes
+        -----
+        - The timer period can change dynamically to match the maneuver's sampling time.
+        """
         if (self.run_switch == 1):
             if (self.counter == 0):
                 # TODO: Make this code match the number and type of maneuvers.
@@ -204,6 +297,21 @@ class PubInputSignals(Node):
             self.counter = self.initial_counter
 
     def update_timer_period(self, new_timer_period) -> None:
+        """
+        Update the ROS2 timer period used for publishing trajectories.
+
+        Cancels the current timer and creates a new one with the specified period.
+
+        Parameters
+        ----------
+        new_timer_period : float
+            New timer period in seconds.
+
+        Raises
+        ------
+        ValueError
+            If 'new_timer_period' is non-positive.
+        """
         if (self.timer is not None):
             self.timer.cancel()
 
@@ -212,6 +320,19 @@ class PubInputSignals(Node):
             self.current_timer_period, self.logic_loop)
         
     def publish_trajectory(self) -> None:
+        """
+        Publish a single trajectory message based on the current maneuver.
+
+        Creates and publishes a 'CtlTraj' message containing the current roll, 
+        pitch, and yaw excitation signals and a constant thrust value.
+
+        Notes
+        -----
+        - The published message corresponds to the current index ('self.counter')
+            within the maneuver array.
+        - The timestamp is currently not set but can be added using 
+            'self.get_clock().now().to_msg()'.
+        """
         if (self.current_maneuver is not None):
             trajectory: CtlTraj = CtlTraj()
             # trajectory.header.stamp = self.get_clock().now().to_msg()

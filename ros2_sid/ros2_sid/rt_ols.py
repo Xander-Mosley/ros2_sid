@@ -20,7 +20,6 @@ class StoredData:
     This class stores a 2D array of time-updating data. It supports
     FIFO-style updates where new rows push out the oldest ones.
     """
-    
     def __init__(
             self,
             num_rows: int,

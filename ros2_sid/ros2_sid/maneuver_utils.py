@@ -255,15 +255,17 @@ def _test_maneuver() -> None:
     amplitude: float = np.deg2rad(7)
     minimum_frequency: float = 0.1
     maximum_frequency: float = 1.5
+    natural_frequency: float = 1.0
     time_step: float = 0.02
-    final_time: float = 15.
+    final_time: float = 10.
+    time_delay: float = 5.
     num_channels: int = 3
-    # time, signal = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time)
-    # time, signal = multi_step(amplitude, ((minimum_frequency + maximum_frequency) / 2), [3, 2, 1, 1], (5 * time_step), time_step, final_time)
-    time, signal, *_ = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
+    # time, signal = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, 'logarithmic')
+    time, signal = multi_step(amplitude, natural_frequency, [1, 1], time_delay, time_step, final_time)
+    # time, signal, *_ = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
     empty = np.zeros_like(time)
 
-    maneuver = np.column_stack((time, signal))
+    maneuver = np.column_stack((time, signal, signal, signal))
 
     save_maneuver(maneuver)
     plot_maneuver(maneuver)
