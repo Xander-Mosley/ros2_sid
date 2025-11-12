@@ -22,10 +22,11 @@ Date: 23 Jul 2025
 """
 
 
+import warnings
+from typing import Any, Optional, Union
+
 import numpy as np
 from numpy.typing import NDArray
-from typing import Any, Optional, Union
-import warnings
 from scipy.optimize import minimize
 
 
@@ -598,6 +599,8 @@ def multi_sine(
     
     return time, signal, peak_factors, frequency_matrix, num_frequencies_per_channel, phase_matrix
 
+
+# TODO: Add a step input.
 
 # TODO: Add a ramp input.
 
