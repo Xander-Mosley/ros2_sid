@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-inputdesign.py — Importable signal generation functions.
+input_design.py — Importable signal generation functions.
 
 Description
 -----------
@@ -607,5 +607,5 @@ if (__name__ == '__main__'):
         "This script defines signal generation functions and is intended "
         "to be imported, not executed directly. "
         "\n\tImport this script using:\t"
-        "from inputdesign import frequency_sweep, multi_step, multi_sine",
+        "from input_design import frequency_sweep, multi_step, multi_sine",
         UserWarning)

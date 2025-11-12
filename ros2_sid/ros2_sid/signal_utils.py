@@ -1,22 +1,74 @@
-import math
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+signal_utils.py - Signal processing and analysis utilities.
+
+This script provides functions and tools for analyzing time-series data, 
+specifically focused on derivative computation, low-pass filtering, and 
+signal characterization in both the time and frequency domains. 
+
+Features
+--------
+- Compute rolling derivatives using local linear or polynomial fitting.
+- Apply low-pass filtering using multiple methods, including:
+  * Fixed timestep filters (LPF, Butterworth)
+  * Variable timestep filters (LPF_VDT, Butterworth_VDT)
+  * Higher order filters
+- Perform FFT-based frequency analysis, including magnitude and phase spectra.
+- Generate time-domain, frequency-domain, and Bode plots using the PlotFigure class.
+- Compute basic time statistics (min, max, mean, std) and sampling rate.
+
+Modules and Classes
+-------------------
+- 'rolling_diff' : Compute rolling derivatives of a signal.
+- 'apply_filter' : Apply a variety of low-pass filters to a signal.
+- 'time_statistics' : Print basic timing and sampling rate statistics.
+- '_compute_fft' : Compute FFT of one or more signals (supports custom frequency grids).
+- 'signal_analysis' : Generate time-domain and frequency-domain plots.
+- '_analyze_signal' : High-level function to filter, differentiate, and analyze a signal.
+
+Custom Dependencies
+------------
+- plotter_class.py
+- signal_processing.py
+
+Author
+------
+Xander D. Mosley  
+Email: XanderDMosley.Engineer@gmail.com  
+Date: 30 Oct 2025
+"""
+
+
+from typing import Literal
+
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.signal import lombscargle
 
 from plotter_class import PlotFigure
-from signal_processing import linear_diff, poly_diff, LowPassFilter, LowPassFilter_VDT, ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_VDT_2O
+from signal_processing import (
+    linear_diff, poly_diff,
+    LowPassFilter, LowPassFilter_VDT,
+    ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_VDT_2O
+    )
 
 
+__all__ = ['rolling_diff', 'apply_filter', 'time_statistics', 'plot_analysis']
+__author__ = "Xander D Mosley"
+__email__ = "XanderDMosley.Engineer@gmail.com"
 
 
 def rolling_diff(
     time: np.ndarray,
     data: np.ndarray,
     method: str = "linear",
-    window_size: int = 6
+    window_size: int = 5
     ) -> np.ndarray:
     """
-    Compute local derivatives over a rolling window using a specified method.
+    Compute local derivatives over a rolling window
+    using a specified differentiation method.
     
     Parameters
     ----------
@@ -25,8 +77,8 @@ def rolling_diff(
     data : np.ndarray
         1D array of data values.
     window_size : int, optional
-        Number of samples in each local window (default 6).
-    method : {'linear', 'sg'}, optional
+        Number of samples in each local window (default 5).
+    method : {'linear', 'poly'}, optional
         Differentiation method to use:
         - 'linear' → local linear least-squares fit
         - 'poly' → Savitzky-Golay (polynomial fit)
@@ -42,7 +94,7 @@ def rolling_diff(
 
     History
     -------
-    4 Nov 2025 - Created, XDM.
+    30 Oct 2025 - Created, XDM.
     """
     time = np.asarray(time, dtype=float)
     data = np.asarray(data, dtype=float)
@@ -56,7 +108,7 @@ def rolling_diff(
     if len(time) < window_size:
         raise ValueError("Data length must exceed window size.")
     
-    derivatives = np.full(len(time), np.nan)
+    derivatives = np.full(len(time), 0.0, dtype=float)
 
     if method == "linear":
         for i in range(window_size, len(data) + 1):
@@ -71,26 +123,104 @@ def rolling_diff(
             derivatives[i-1] = poly_diff(t_window, x_window)
 
     else:
-        raise ValueError(f"Unknown method '{method}'. Use 'linear' or 'sg'.")
+        raise ValueError(f"Unknown method '{method}'. Use 'linear' or 'poly'.")
 
     return derivatives
 
+def apply_filter(
+    time: np.ndarray,
+    data: np.ndarray,
+    filter_type: Literal[
+        "LPF", "LPF_VDT",
+        "Butter1", "Butter1_VDT", "Butter2_VDT"
+        ],
+    cutoff_frequency: float,
+    num_dts: int = 1
+    ) -> np.ndarray:
+    """
+    Apply a selected low-pass filter to an entire dataset sequentially (real-time approximation).
 
+    Parameters
+    ----------
+    time : np.ndarray
+        1D array of time values.
+    data : np.ndarray
+        1D array of input signal values.
+    filter_type : str
+        Type of filter to apply. Options:
+        - "LPF" → LowPassFilter (fixed timestep)
+        - "LPF_VDT" → LowPassFilter_VDT (variable timestep)
+        - "Butter1" → ButterworthLowPass (fixed timestep)
+        - "Butter1_VDT" → ButterworthLowPass_VDT (variable timestep)
+        - "Butter2_VDT" → ButterworthLowPass_VDT_2O (second-order, variable timestep)
+    cutoff_frequency : float
+        Desired cutoff frequency in Hz.
+    num_dts : int, optional
+        Smoothing parameter for variable timestep LPF_VDT, default 1.
 
-def load_signal_data(file_path, t_slice=slice(0, 9999999)):
-    data = np.loadtxt(file_path, delimiter=',', skiprows=1)
-    t, x = data[t_slice, 0], data[t_slice, 4]
-    t = t[::2]
-    x = x[::2]
-    return t, x
+    Returns
+    -------
+    np.ndarray
+        Array of filtered signal values, same length as 'data'.
 
+    Raises
+    ------
+    ValueError
+        If required parameters are missing or invalid.
 
-def preprocess_signal(t, x, cutoff_pre=10, cutoff_post=5):
-    fx = butterworthlowpass_loop(x, t, cutoff_frequency=cutoff_pre)
-    xp = rolling_diff(t, fx, "sg")
-    xp_full = np.concatenate(([0] * 5, xp[5:]))
-    fxp = butterworthlowpass_loop(xp_full, t, cutoff_frequency=cutoff_post)
-    return fx, xp_full, fxp
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    12 Nov 2025 - Created, XDM.
+    """
+    time = np.asarray(time, dtype=float)
+    data = np.asarray(data, dtype=float)
+    
+    if len(time) != len(data):
+        raise ValueError("'time' and 'data' must have the same length.")
+    
+    filtered = np.zeros_like(data)
+
+    if filter_type == "LPF":
+        dt = time[1] - time[0]
+        filt = LowPassFilter(cutoff_frequency=cutoff_frequency, dt=dt, initial_value=data[0])
+        for i, val in enumerate(data):
+            filtered[i] = filt.update(val)
+
+    elif filter_type == "LPF_VDT":
+        filt = LowPassFilter_VDT(cutoff_frequency=cutoff_frequency, num_dts=num_dts, initial_value=data[0])
+        for i, val in enumerate(data):
+            if i > 0:
+                dt_i = time[i] - time[i-1]
+                filtered[i] = filt.update(val, dt_i)
+
+    elif filter_type == "Butter1":
+        dt = time[1] - time[0]
+        filt = ButterworthLowPass(cutoff_frequency=cutoff_frequency, dt=dt)
+        for i, val in enumerate(data):
+            filtered[i] = filt.update(val)
+
+    elif filter_type == "Butter1_VDT":
+        filt = ButterworthLowPass_VDT(cutoff_frequency=cutoff_frequency)
+        for i, val in enumerate(data):
+            if i > 0:
+                dt_i = time[i] - time[i-1]
+                filtered[i] = filt.update(val, dt_i)
+
+    elif filter_type == "Butter2_VDT":
+        filt = ButterworthLowPass_VDT_2O(cutoff_frequency=cutoff_frequency)
+        for i, val in enumerate(data):
+            if i > 0:
+                dt_i = time[i] - time[i-1]
+                filtered[i] = filt.update(val, dt_i)
+
+    else:
+        raise ValueError(f"Unknown filter type '{filter_type}'.")
+    
+    return filtered
 
 
 def time_statistics(t):
@@ -103,7 +233,6 @@ def time_statistics(t):
     print(f"Avg: {round(np.mean(dt), 3)} s\t\tAvg: {round(np.mean(1/dt), 2)} Hz")
     print(f"Std: {round(np.std(dt), 3)} s\t\tStd: {round(np.std(1/dt), 2)} Hz")
     print("")
-    
 
 def _compute_fft(t, *signals, f=None):
     t = np.asarray(t)
@@ -119,7 +248,7 @@ def _compute_fft(t, *signals, f=None):
         ffts.append(Xf)
     return f, ffts
 
-def signal_analysis(t, x, y):
+def plot_analysis(t, x, y):
     time_figure = PlotFigure("Signal Analysis - Time Domain")
     time_figure.define_subplot(0, ylabel="Amplitude", xlabel="Time [s]", grid=True)
     time_figure.add_scatter(0, t, x, label="Input", color="tab:blue")
@@ -173,20 +302,38 @@ def signal_analysis(t, x, y):
     # delay_figure.set_all_legends()
 
 
-def main(file_path):
-    t, x = load_signal_data(file_path, t_slice=slice(0, 999999))
-    fx, xp, fxp = preprocess_signal(t, x, 1.54, 1.54)
+def _analyze_signal(t, x):
+    fx = apply_filter(t, x, 'Butter2_VDT', 1.54)
+    xp = rolling_diff(t, fx, "poly")
+    fxp = apply_filter(t, xp, 'Butter2_VDT', 1.54)
 
     time_statistics(t)
-    # signal_analysis(t, x, fx)
-    # signal_analysis(t, fx, xp)
-    # signal_analysis(t, xp, fxp)
-    signal_analysis(t, x, fxp)
+    plot_analysis(t, x, fx)
+    # plot_analysis(t, fx, xp)
+    # plot_analysis(t, xp, fxp)
+    # plot_analysis(t, x, fxp)
 
     plt.show()
 
 
+def main():
+    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"
+    file_path = "/develop_ws/bag_files/topic_data_files/imu_data.csv"
+    # file_path = "/develop_ws/bag_files/topic_data_files/imu_raw_data.csv"
+
+    df = pd.read_csv(file_path)
+    print("Columns in CSV:", df.columns.tolist())
+    time = df['timestamp'].to_numpy()
+    data = df['gx'].to_numpy()
+
+    start, end = 0, 99999
+    time = time[start:end]
+    data = data[start:end]
+    # time = time[::2]
+    # data = data[::2]
+
+    _analyze_signal(time, data)
+
+
 if __name__ == "__main__":
-    # main("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv")
-    main("/develop_ws/bag_files/topic_data_files/imu_data.csv")
-    # main("/develop_ws/bag_files/topic_data_files/imu_raw_data.csv")
+    main()

@@ -18,6 +18,11 @@ All functions operate on NumPy arrays with time in the first column and
 signal channels in subsequent columns, supporting up to three rotational
 and three translational channels.
 
+Custom Dependencies
+------------
+- plotter_class.py
+- input_design.py
+
 Author
 ------
 Xander D. Mosley  
@@ -32,7 +37,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from plotter_class import PlotFigure
-from inputdesign import frequency_sweep, multi_step, multi_sine
+from input_design import frequency_sweep, multi_step, multi_sine
 
 
 __all__ = ['save_maneuver', 'plot_maneuver', 'plot_maneuver_spectrum']
