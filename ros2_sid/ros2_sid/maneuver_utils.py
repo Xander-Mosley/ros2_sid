@@ -243,7 +243,7 @@ def plot_maneuver_spectrum(maneuver: np.ndarray) -> None:
 
 
 def _test_maneuver() -> None:
-    # TODO: Change this description if the maneuvers expand to require more than RPY signals.
+    # TODO: Change this description if the maneuvers expand to require more than rotational signals.
     # maneuvers must have the shape (N, 4) where the columns (in order) are:
     # time, roll signal, pitch signal, yaw signal; and the first time value must be zero
     # TODO: Justify why these inputs. Why this amplitude, these frequencies, and these time values?

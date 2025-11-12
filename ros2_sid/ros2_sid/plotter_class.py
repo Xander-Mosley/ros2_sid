@@ -38,7 +38,7 @@ Date: 11 Nov 2025
 """
 
 import warnings
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, Tuple
 
 import numpy as np
 import matplotlib
@@ -66,7 +66,7 @@ class PlotFigure:
         fig_title: Optional[str] = None,
         nrows: int = 1,
         ncols: int = 1,
-        figsize: tuple[float, float] = (8, 6),
+        figsize: Tuple[float, float] = (8, 6),
         sharex: bool = False,
         sharey: bool = False
         ) -> None:
@@ -81,7 +81,7 @@ class PlotFigure:
             Number of subplot rows.
         ncols : int, default = 1
             Number of subplot columns.
-        figsize : tuple[float, float], default = (8, 6)
+        figsize : Tuple[float, float], default = (8, 6)
             Size of the figure in inches.
         sharex : bool, default = False
             Share x-axis among subplots.
@@ -96,7 +96,7 @@ class PlotFigure:
             sharey=sharey
             )
         self.nrows, self.ncols = nrows, ncols
-        self.lines: dict[tuple[int, Optional[str]], object] = {}
+        self.lines: dict[Tuple[int, Optional[str]], object] = {}
 
         if fig_title:
             self.fig.suptitle(fig_title, fontsize=14)
@@ -321,7 +321,7 @@ class PlotFigure:
 
         Returns
         -------
-        tuple
+        Tuple
             The histogram output (n, bins, patches).
         """
         return self._add_plot(
@@ -471,8 +471,8 @@ class PlotFigure:
         title: Optional[str] = None,
         xlabel: Optional[str] = None,
         ylabel: Optional[str] = None,
-        xlim: Optional[tuple[float, float]] = None,
-        ylim: Optional[tuple[float, float]] = None,
+        xlim: Optional[Tuple[float, float]] = None,
+        ylim: Optional[Tuple[float, float]] = None,
         grid: bool = False,
         grid_kwargs: Optional[dict] = None
         ) -> None:
@@ -489,9 +489,9 @@ class PlotFigure:
             X-axis label.
         ylabel : Optional[str], default = None
             Y-axis label.
-        xlim : Optional[tuple[float, float]], default = None
+        xlim : Optional[Tuple[float, float]], default = None
             X-axis limits.
-        ylim : Optional[tuple[float, float]], default = None
+        ylim : Optional[Tuple[float, float]], default = None
             Y-axis limits.
         grid : bool, default = False
             Whether to enable gridlines.
@@ -516,8 +516,8 @@ class PlotFigure:
     def shade_subplot(
         self,
         ax_pos: int,
-        x_range: Optional[tuple[float, float]] = None,
-        y_range: Optional[tuple[float, float]] = None,
+        x_range: Optional[Tuple[float, float]] = None,
+        y_range: Optional[Tuple[float, float]] = None,
         color: str = 'gray',
         alpha: float = 0.3,
         **kwargs
@@ -529,9 +529,9 @@ class PlotFigure:
         ----------
         ax_pos : int
             Subplot index.
-        x_range : Optional[tuple[float, float]], default = None
+        x_range : Optional[Tuple[float, float]], default = None
             Range on the x-axis to shade.
-        y_range : Optional[tuple[float, float]], default = None
+        y_range : Optional[Tuple[float, float]], default = None
             Range on the y-axis to shade.
         color : str, default = 'gray'
             Shade color.
@@ -640,7 +640,7 @@ class PlotFigure:
 if (__name__ == '__main__'):
     warnings.warn(
         "This script defines a class that visually simplifies lines of code for plotting."
-        "it is intented to be imported, not executed directly. "
-        "\n\tImport this script using:\t"
+        " It is intented to be imported, not executed directly."
+        "\n\tImport the class from this script using:\t"
         "from plotter_class import PlotFigure",
         UserWarning)

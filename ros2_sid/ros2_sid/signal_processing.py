@@ -1,8 +1,27 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+signal_processing.py - 
+
+
+Author
+------
+Xander D. Mosley  
+Email: XanderDMosley.Engineer@gmail.com  
+Date: 4 Nov 2025
+"""
+
+
 import numpy as np
-from typing import Optional, Sequence, Union
 import warnings
-import weakref
-from scipy.signal import butter, lfilter
+
+
+__all__ = ['linear_diff', 'poly_diff',
+           'LowPassFilter', 'LowPassFilter_VDT',
+           'ButterworthLowPass', 'ButterworthLowPass_VDT', 'ButterworthLowPass_VDT_2O']
+__author__ = "Xander D Mosley"
+__email__ = "XanderDMosley.Engineer@gmail.com"
 
 
 def linear_diff(
@@ -25,8 +44,15 @@ def linear_diff(
     -------
     float
         Estimated derivative (slope) of data with respect to time.
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    4 Nov 2025 - Created, XDM.
     """
-    
     time = np.asarray(time, dtype=float).ravel()
     data = np.asarray(data, dtype=float).ravel()
     n_samples = time.size
@@ -49,29 +75,58 @@ def linear_diff(
         
     return numerator / denominator
 
-
-def savitzky_golay_diff(
+def poly_diff(
         time: np.ndarray,
         data: np.ndarray,
-        polyorder: Optional[int] = 3,
-        eval_point: Optional[str] = "center"
+        polyorder: int = 3,
+        eval_point: str = "center"
         ) -> float:
     """
-    Estimates the derivative of 'data' with respect to 'time' using a
-    least-squares cubic regression over several samples. Follows
-    the Savitzky-Golay style for differentiation.
-    
+    Estimates the first derivative of 'data' with respect to 'time' using a
+    local least-squares polynomial fit, following the Savitzky-Golay
+    differentiation method.
+
+    A polynomial of degree 'polyorder' is fit to the provided samples, and the
+    derivative is evaluated at a specified point within the window.
+
     Parameters
     ----------
     time : np.ndarray
-        1D array of time values (length >= 2).
+        1D array of time values (length > polyorder).
     data : np.ndarray
         1D array of data values, same length as 'time'.
-        
+    polyorder : int, optional
+        Order of the polynomial to fit. Must be less than the number of samples.
+        Default is 3.
+    eval_point : {'start', 'center', 'end'}, optional
+        Location within the window where the derivative is evaluated:
+        - 'start': derivative at the first sample,
+        - 'center': derivative at the midpoint sample,
+        - 'end': derivative at the last sample.
+        Default is 'center'.
+
     Returns
     -------
     float
-        Estimated derivative (slope) of data with respect to time.
+        Estimated first derivative of 'data' with respect to 'time' at the
+        specified evaluation point.
+
+    Raises
+    ------
+    ValueError
+        If 'time' and 'data' lengths differ.
+    ValueError
+        If 'polyorder' is not a valid integer.
+    ValueError
+        If 'eval_point' is not one of {'start', 'center', 'end'}.
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    4 Nov 2025 - Created, XDM.
     """
     time = np.asarray(time, dtype=float).ravel()
     data = np.asarray(data, dtype=float).ravel()
@@ -96,242 +151,112 @@ def savitzky_golay_diff(
     A = np.vander(shifted_time, N=polyorder + 1, increasing=True)
 
     coeffs, *_ = np.linalg.lstsq(A, data, rcond=None)
-    deriv_coeffs = np.array([i * coeffs[i] for i in range(1, len(coeffs))]) #TODO: Check if this produces the same results.
+    deriv_coeffs = np.array([i * coeffs[i] for i in range(1, len(coeffs))])
     derivative = np.polyval(deriv_coeffs[::-1], 0.0)
-
-    # Using a 4th order polynomial starts to fit to noise.
-    # TODO: Check if results improve with a better input data smoother.
-    
+    # NOTE: Using a 4th order polynomial starts to fit to noise.
     return np.float64(derivative)
-
-def rolling_diff(
-    time: np.ndarray,
-    data: np.ndarray,
-    method: Optional[str] = "linear",
-    window_size: Optional[int] = 6
-) -> np.ndarray:
-    """
-    Compute local derivatives over a rolling window using a specified method.
-    
-    Parameters
-    ----------
-    time : np.ndarray
-        1D array of time values.
-    data : np.ndarray
-        1D array of data values.
-    window_size : int, optional
-        Number of samples in each local window (default 6).
-    method : {'linear', 'sg'}, optional
-        Differentiation method to use:
-        - 'linear' → local linear least-squares fit
-        - 'sg' → Savitzky-Golay (polynomial fit)
-        
-    Returns
-    -------
-    np.ndarray
-        Array of derivative estimates, length = len(data).
-    """
-    time = np.asarray(time, dtype=float)
-    data = np.asarray(data, dtype=float)
-    
-    if len(time) != len(data):
-        raise ValueError("Arguments 'time' and 'data' must have the same length.")
-    if not isinstance(window_size, int) or isinstance(window_size, bool):
-        raise ValueError("Argument 'window_size' must be an integer.")
-    if window_size < 2:
-        raise ValueError("window_size must be at least 2.")
-    if len(time) < window_size:
-        raise ValueError("Data length must exceed window size.")
-    
-    derivatives = np.full(len(time), np.nan)
-
-    if method == "linear":
-        for i in range(window_size, len(data) + 1):
-            t_window = time[i - window_size : i]
-            x_window = data[i - window_size : i]
-            derivatives[i-1] = linear_diff(t_window, x_window)
-
-    elif method == "sg":
-        for i in range(window_size, len(data) + 1):
-            t_window = time[i - window_size : i]
-            x_window = data[i - window_size : i]
-            derivatives[i-1] = savitzky_golay_diff(t_window, x_window)
-
-    else:
-        raise ValueError(f"Unknown method '{method}'. Use 'linear' or 'sg'.")
-
-    return derivatives
-
 
 
 class LowPassFilter:
-    def __init__(self, cutoff_frequency, dt, initial_value=0.0):
-        """
-        Standard EMA low-pass filter for a single data stream.
-        
-        :param cutoff_frequency: Cutoff frequency in Hz
-        :param dt: Time step in seconds
-        :param initial_value: Starting value for the filter
-        """
+    # First order low pass exponential moving average filter
+    def __init__(
+            self,
+            cutoff_frequency: float,
+            dt: float,
+            initial_value: float = 0.0
+            ) -> None:
         self.alpha = 1 - np.exp(-2 * np.pi * cutoff_frequency * dt)
         self.filtered_value = initial_value
 
-    def update(self, new_value):
-        """
-        Update the filter with a new value.
-        
-        :param new_value: New input value
-        :return: Filtered output
-        """
+    def update(self, new_value: float) -> float:
         self.filtered_value = (self.alpha * new_value) + ((1 - self.alpha) * self.filtered_value)
         return self.filtered_value
 
-def smooth_data_array(data, cutoff_frequency=18, dt=0.02):
-    """
-    Smooth a 1D data array using an EMA low-pass filter.
-    
-    :param data: 1D array-like sequence of data points
-    :param cutoff_frequency: Filter cutoff frequency in Hz
-    :param dt: Time step between samples in seconds
-    :return: Numpy array of filtered values
-    """
-    if len(data) == 0:
-        return np.array([])
-
-    # Initialize filter with the first value of the array
-    lpf = LowPassFilter(cutoff_frequency, dt, initial_value=data[0])
-    
-    filtered = []
-    for value in data:
-        filtered.append(lpf.update(value))
-    
-    return np.array(filtered)
-
-class LowPassFilterVariableDT:
-    def __init__(self, cutoff_frequency, initial_value=0.0):
-        """
-        EMA low-pass filter that handles variable time steps.
-        :param cutoff_frequency: Cutoff frequency in Hz
-        :param initial_value: Starting value
-        """
-        num_data = 5
-        self.smoofactor = 2 / (1 + num_data)
-        self.average_dt = 0.1
-        
+class LowPassFilter_VDT:
+    # First order low pass exponential moving average filter with variable time steps
+    def __init__(
+            self,
+            cutoff_frequency: float,
+            num_dts: int = 1,
+            initial_value: float = 0.0
+            ) -> None:
+        num_dts = num_dts
+        self.smoothing_factor = 2 / (1 + num_dts)
+        self.average_dt = 0.0
         self.fc = cutoff_frequency
         self.filtered_value = initial_value
 
-    def update(self, new_value, dt):
-        """
-        Update the filter with a new value and the timestep since last update.
-        :param new_value: New input value
-        :param dt: Time difference since previous sample
-        :return: Filtered output
-        """
-        self.average_dt = (dt * self.smoofactor) + ((1 - self.smoofactor) * self.average_dt)
-        # alpha = 1 - np.exp(-2 * np.pi * self.fc * self.average_dt)
-
-        alpha = 1 - np.exp(-2 * np.pi * self.fc * dt)
+    def update(self, new_value: float, dt: float) -> float:
+        self.average_dt = (dt * self.smoothing_factor) + ((1 - self.smoothing_factor) * self.average_dt)
+        alpha = 1 - np.exp(-2 * np.pi * self.fc * self.average_dt)
         self.filtered_value = (alpha * new_value) + ((1 - alpha) * self.filtered_value)
         return self.filtered_value
 
-def smooth_data_with_timestamps_LP(data, timestamps, cutoff_frequency=18):
-    """
-    Smooth a 1D data array with variable time steps.
-    
-    :param data: 1D array of data points
-    :param timestamps: 1D array of timestamps corresponding to each data point
-    :param cutoff_frequency: Filter cutoff frequency in Hz
-    :return: Numpy array of filtered values
-    """
-    if len(data) == 0:
-        return np.array([])
-
-    lpf = LowPassFilterVariableDT(cutoff_frequency, initial_value=data[0])
-    filtered = [data[0]]
-
-    for i in range(1, len(data)):
-        dt = timestamps[i] - timestamps[i-1]
-        filtered_value = lpf.update(data[i], dt)
-        filtered.append(filtered_value)
-
-    return np.array(filtered)
-
-
-class ButterworthLowPassVariableDT:
-    def __init__(self, cutoff_frequency, order=2, initial_value=0.0):
-        """
-        Butterworth low-pass filter that handles variable time steps.
-        :param cutoff_frequency: Cutoff frequency in Hz
-        :param order: Filter order (e.g., 2 for a 2nd-order Butterworth)
-        :param initial_value: Starting value
-        """
-        self.fc = cutoff_frequency
-        self.order = order
-        self.filtered_value = initial_value
-        self.prev_data = [initial_value]
-        self.prev_timestamps = []
-
-    def _design_filter(self, dt):
-        """
-        Design a Butterworth low-pass filter for the given timestep.
-        :param dt: Time step in seconds
-        :return: (b, a) filter coefficients
-        """
-        nyquist = 0.5 / dt
-        normal_cutoff = self.fc / nyquist
-        b, a = butter(self.order, normal_cutoff, btype='low', analog=False)
-        return b, a
-
-    def update(self, new_value, dt):
-        """
-        Update the filter with a new value and the timestep since last update.
-        :param new_value: New input value
-        :param dt: Time difference since previous sample
-        :return: Filtered output
-        """
-        b, a = self._design_filter(dt)
-
-        # Apply filter to the last and new sample
-        x = np.array([self.filtered_value, new_value])
-        y = lfilter(b, a, x)
-
-        # Take the last output as the current filtered value
-        self.filtered_value = y[-1]
-        return self.filtered_value
-
-def smooth_data_with_timestamps_Butter(data, timestamps, cutoff_frequency=18, order=2):
-    """
-    Smooth a 1D data array with variable time steps using a Butterworth filter.
-    
-    :param data: 1D array of data points
-    :param timestamps: 1D array of timestamps corresponding to each data point
-    :param cutoff_frequency: Filter cutoff frequency in Hz
-    :param order: Order of the Butterworth filter
-    :return: Numpy array of filtered values
-    """
-    if len(data) == 0:
-        return np.array([])
-
-    lpf = ButterworthLowPassVariableDT(cutoff_frequency, order, initial_value=data[0])
-    filtered = [data[0]]
-
-    for i in range(1, len(data)):
-        dt = timestamps[i] - timestamps[i-1]
-        filtered_value = lpf.update(data[i], dt)
-        filtered.append(filtered_value)
-
-    return np.array(filtered)
 
 class ButterworthLowPass:
-    def __init__(self, cutoff_frequency):
-        self.fc = cutoff_frequency
-        self.y_filtered = [0, 0]
-        self.x_previous = [0, 0]
+    # First order low pass butterworth filter
+    def __init__(self, cutoff_frequency: float, dt: float):
+        fc = cutoff_frequency
+        self.y_filtered = 0.0
+        self.x_previous = 0.0
 
-    def update(self, x_new, dt):
-        fc_safe = min(self.fc, 0.45 / dt)  # keep < 0.5/dt (Nyquist)
-        if self.fc > 0.45 / dt:
+        fc_safe = min(fc, 0.45 / dt)  # keep cutoff frequency below Nyquist (< 0.5/dt)
+        if fc > (0.45 / dt):
+            print("Warning: Cutoff frequency too high; clamped to 0.45 * fs.")
+        gamma = np.tan(np.pi * fc_safe * dt)
+
+        b0_prime = gamma
+        b1_prime = b0_prime
+        a1_prime = gamma - 1
+        D = (gamma ** 2) + (np.sqrt(2) * gamma) + 1
+        self.b0 = b0_prime / D
+        self.b1 = b1_prime / D
+        self.a1 = a1_prime / D
+
+    def update(self, x_new: float):
+        y_new = (self.b0 * x_new) + (self.b1 * self.x_previous) - (self.a1 * self.y_filtered)
+        self.x_previous = x_new
+        self.y_filtered = y_new
+
+        return y_new
+
+class ButterworthLowPass_VDT:
+    # First order low pass butterworth filter with variable time steps
+    def __init__(self, cutoff_frequency: float):
+        self.fc = cutoff_frequency
+        self.y_filtered = 0.0
+        self.x_previous = 0.0
+
+    def update(self, x_new: float, dt: float):
+        fc_safe = min(self.fc, 0.45 / dt)  # keep cutoff frequency below Nyquist (< 0.5/dt)
+        if self.fc > (0.45 / dt):
+            print("Warning: Cutoff frequency too high; clamped to 0.45 * fs.")
+        gamma = np.tan(np.pi * fc_safe * dt)
+
+        b0_prime = gamma
+        b1_prime = b0_prime
+        a1_prime = gamma - 1
+        D = (gamma ** 2) + (np.sqrt(2) * gamma) + 1
+        b0 = b0_prime / D
+        b1 = b1_prime / D
+        a1 = a1_prime / D
+
+        y_new = (b0 * x_new) + (b1 * self.x_previous) - (a1 * self.y_filtered)
+        self.x_previous = x_new
+        self.y_filtered = y_new
+
+        return y_new
+
+class ButterworthLowPass_VDT_2O:
+    # Second order low pass butterworth filter with variable time steps
+    def __init__(self, cutoff_frequency: float):
+        self.fc = cutoff_frequency
+        self.y_filtered = [0.0, 0.0]
+        self.x_previous = [0.0, 0.0]
+
+    def update(self, x_new: float, dt: float):
+        fc_safe = min(self.fc, 0.45 / dt)  # keep cutoff frequency below Nyquist (< 0.5/dt)
+        if self.fc > (0.45 / dt):
             print("Warning: Cutoff frequency too high; clamped to 0.45 * fs.")
         gamma = np.tan(np.pi * fc_safe * dt)
 
@@ -355,25 +280,15 @@ class ButterworthLowPass:
 
         return y_new
 
-def butterworthlowpass_loop(data, timestamps, cutoff_frequency=18):
-    if len(data) == 0:
-        return np.array([])
-
-    lpf = ButterworthLowPass(cutoff_frequency)
-    filtered = [data[0]]
-
-    for i in range(1, len(data)):
-        dt = timestamps[i] - timestamps[i-1]
-        filtered_value = lpf.update(data[i], dt)
-        filtered.append(filtered_value)
-
-    return np.array(filtered)
-
 
 if (__name__ == '__main__'):
-    file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"
-    data = np.loadtxt(file_path, delimiter=',', skiprows=1)
-    t = data[:, 0]
-    x = data[:, 1]
-    rolling_diff(t, x)
+    warnings.warn(
+        "This script defines several functions and classes for"
+        " signal processing, such as filtering and differentiating."
+        "It is intented to be imported, not executed directly."
+        "\n\tImport functions and class structures from this script using:\t"
+        "from signal_processing import linear_diff, LowPassFilter, ButterworthLowPass_VDT"
+        "\nMore functions and class structures are available within this script"
+        " than the ones shown for example.",
+        UserWarning)
 

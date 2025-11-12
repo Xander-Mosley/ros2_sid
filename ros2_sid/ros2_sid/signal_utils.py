@@ -4,7 +4,77 @@ import matplotlib.pyplot as plt
 from scipy.signal import lombscargle
 
 from plotter_class import PlotFigure
-from signal_processing import linear_diff, savitzky_golay_diff, rolling_diff, LowPassFilter, smooth_data_array, LowPassFilterVariableDT, smooth_data_with_timestamps_LP, ButterworthLowPassVariableDT, smooth_data_with_timestamps_Butter, butterworthlowpass_loop
+from signal_processing import linear_diff, poly_diff, LowPassFilter, LowPassFilter_VDT, ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_VDT_2O
+
+
+
+
+def rolling_diff(
+    time: np.ndarray,
+    data: np.ndarray,
+    method: str = "linear",
+    window_size: int = 6
+    ) -> np.ndarray:
+    """
+    Compute local derivatives over a rolling window using a specified method.
+    
+    Parameters
+    ----------
+    time : np.ndarray
+        1D array of time values.
+    data : np.ndarray
+        1D array of data values.
+    window_size : int, optional
+        Number of samples in each local window (default 6).
+    method : {'linear', 'sg'}, optional
+        Differentiation method to use:
+        - 'linear' → local linear least-squares fit
+        - 'poly' → Savitzky-Golay (polynomial fit)
+        
+    Returns
+    -------
+    np.ndarray
+        Array of derivative estimates, length = len(data).
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    4 Nov 2025 - Created, XDM.
+    """
+    time = np.asarray(time, dtype=float)
+    data = np.asarray(data, dtype=float)
+    
+    if len(time) != len(data):
+        raise ValueError("Arguments 'time' and 'data' must have the same length.")
+    if not isinstance(window_size, int) or isinstance(window_size, bool):
+        raise ValueError("Argument 'window_size' must be an integer.")
+    if window_size < 2:
+        raise ValueError("window_size must be at least 2.")
+    if len(time) < window_size:
+        raise ValueError("Data length must exceed window size.")
+    
+    derivatives = np.full(len(time), np.nan)
+
+    if method == "linear":
+        for i in range(window_size, len(data) + 1):
+            t_window = time[i - window_size : i]
+            x_window = data[i - window_size : i]
+            derivatives[i-1] = linear_diff(t_window, x_window)
+
+    elif method == "poly":
+        for i in range(window_size, len(data) + 1):
+            t_window = time[i - window_size : i]
+            x_window = data[i - window_size : i]
+            derivatives[i-1] = poly_diff(t_window, x_window)
+
+    else:
+        raise ValueError(f"Unknown method '{method}'. Use 'linear' or 'sg'.")
+
+    return derivatives
+
 
 
 def load_signal_data(file_path, t_slice=slice(0, 9999999)):
