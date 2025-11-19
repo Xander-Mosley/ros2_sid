@@ -1,18 +1,38 @@
-# System-Identification, Real-Time Ordinary-Least-Squares
-# Class structures and functions for performing real-time OLS on several model instances.
-# V1.0: Created a reformatted StoredData and diff().
-# Xander Mosley - 20250703102331
-# V1.1: Created a reformatted ModelStructure (with the additiion of _ModelStructureMeta).
-# Xander Mosley - 20250707162841
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+rt_ols.py — structures for real-time ordinary-least-squares
+
+Description
+-----------
+Real-time data storage and frequency-domain model structures for recursive
+ordinary-least-squares (OLS) estimation in the frequency domain.
+
+This module provides two primary classes:
+- 'StoredData': A FIFO-style rolling data container for time-indexed signals.
+- 'ModelStructure': A frequency-domain model class supporting exponential
+  forgetting, complex exponential basis functions, and recursive parameter
+  estimation.
+
+Author
+------
+Xander D. Mosley  
+Email: XanderDMosley.Engineer@gmail.com  
+Date: 3 Jul 2025
+"""
 
 
-import numpy as np
-from typing import Optional, Sequence, Union
 import warnings
 import weakref
+from typing import Optional, Sequence, Union
+
+import numpy as np
 
 
 __all__ = ['StoredData', 'ModelStructure']
+__author__ = "Xander D Mosley"
+__email__ = "XanderDMosley.Engineer@gmail.com"
 
 
 class StoredData:
@@ -422,97 +442,11 @@ class ModelStructure(metaclass=_ModelStructureMeta):
                 inst.complex_products *= delta_cp
 
 
-def diff(
-        time: np.ndarray,
-        data: np.ndarray
-        ) -> float:
-    """
-    Estimates the derivative of 'data' with respect to 'time' using a 
-    least-squares linear regression over six samples.
-    
-    Assumes both 'time' and 'data' contain exactly six elements.
-    
-    Parameters
-    ----------
-    time : np.ndarray
-        1D array of time values (length 6).
-    data : np.ndarray
-        1D array of data values (length 6), corresponding to the time points.
-        
-    Returns
-    -------
-    float
-        The estimated derivative (slope) of data with respect to time.
-    """
-    
-    time = np.asarray(time, dtype=float).ravel()
-    data = np.asarray(data, dtype=float).ravel()
-
-    if time.size != 6 or data.size != 6:
-        raise ValueError("Both 'time' and 'data' must be 1D arrays of length 6.")
-        
-    sum_xt = np.dot(data, time)
-    sum_t = time.sum()
-    sum_x = data.sum()
-    sum_t2 = np.dot(time, time)
-    
-    denominator = (6 * sum_t2) - (sum_t ** 2)
-    if (denominator == 0):
-        raise ZeroDivisionError("Denominator in derivative computation is zero.")
-        
-    numerator = (6 * sum_xt) - (sum_x * sum_t)
-        
-    return numerator / denominator
-
-
-def sg_diff(    # Savitzky-Golay sytle differentiation
-        time: np.ndarray,
-        data: np.ndarray
-        ) -> float:
-    """
-    Estimates the derivative of 'data' with respect to 'time' using a
-    least-squares quadratic regression over several samples.
-    
-    Parameters
-    ----------
-    time : np.ndarray
-        1D array of time values (length 6).
-    data : np.ndarray
-        1D array of data values (length 6), corresponding to the time points.
-        
-    Returns
-    -------
-    float
-        The estimated derivative (slope) of data with respect to time.
-    """
-    time = np.asarray(time, dtype=float).ravel()
-    data = np.asarray(data, dtype=float).ravel()
-
-    if time.size != data.size:
-        raise ValueError("Both 'time' and 'data' must be 1D arrays of the same length.")
-
-    # Shift time to improve numerical stability (set last point to t=0)
-    center_idx = -2
-    shifted_time = time - time[center_idx]  # t[-1] becomes 0
-
-    # Design matrix for quadratic fit: [t^2, t, 1]
-    A = np.vstack([shifted_time**3, shifted_time**2, shifted_time, np.ones_like(shifted_time)]).T
-
-    # Solve least squares: find coefficients [a, b, c] for ax^2 + bx + c
-    coeffs, *_ = np.linalg.lstsq(A, data, rcond=None)
-    a, b, c, _ = coeffs
-
-    # Using a 4th order polynomial starts to fit to noise. TODO: Check if results improve with a better input data smoother.
-    # Derivative of ax^3 + bx^2 + cx is 3a*t^2 2b*t + c
-    # Evaluate at t=0 (last point)
-    derivative_at_last_point = c
-    
-    return derivative_at_last_point
-
-
-
 if (__name__ == '__main__'):
     warnings.warn(
-        "This script is not intended to be run as a standalone program."
-        " It contains structures and functions to be imported and used in other scripts.",
+        "This script defines the structures necessary for real-time "
+        "ordinary-least-squares; and is intended to be imported, not "
+        "executed directly."
+        "\n\tImport this script using:\t"
+        "from rt_ols import StoredData, ModelStructure",
         UserWarning)

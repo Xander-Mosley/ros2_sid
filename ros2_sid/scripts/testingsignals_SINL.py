@@ -3,6 +3,8 @@
 """
 testingsignals_SINL.py - ROS2 node for publishing simulated drone excitation signals.
 
+Description
+-----------
 This script defines a ROS2 node, 'PubInputSignals', which generates and publishes
 predefined or live-generated input maneuvers to a drone's trajectory topic for testing
 and system identification purposes. The node supports multiple types of maneuvers
@@ -30,7 +32,8 @@ Usage
     '''
 2. Toggle execution and select maneuvers via console input.
 
-Custom Dependencies:
+Custom Dependencies
+-------------------
 - Custom message: drone_interfaces/CtlTraj, drone_interfaces/Telem
 - Input signal utilities from 'ros2_sid.input_design'
 
@@ -159,30 +162,39 @@ class PubInputSignals(Node):
             - 'self.roldoublet', 'self.pitdoublet', 'self.yawdoublet'
             - 'self.rolsweep', 'self.pitsweep', 'self.yawsweep'
         """
+        # TODO: pitch is not trimmed in the simulation. Trim state requires around -3.5°.
+        
         file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/sines_7deg_15s_0.1-1.5.csv"
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
         time = data[:, 0]
         empty = np.zeros_like(time)
-        self.allsines = np.array([time, data[:, 1], data[:, 2], data[:, 3]]).T
-        self.rolsines = np.array([time, data[:, 1], empty, empty]).T
-        self.pitsines = np.array([time, empty, data[:, 2], empty]).T
-        self.yawsines = np.array([time, empty, empty, data[:, 3]]).T
+        elv_trim = np.ones_like(time) * np.deg2rad(-3.5)
+        self.rolsines = np.array([time, data[:, 1], elv_trim, empty]).T
+        self.pitsines = np.array([time, empty, (data[:, 2] + elv_trim), empty]).T
+        self.yawsines = np.array([time, empty, elv_trim, data[:, 3]]).T
+
+        long_time = np.hstack(((time), (time + time[-1] + (time[-1] - time[-2])), (time + (2 * time[-1] + (time[-1] - time[-2]))), (time + (3 * time[-1] + (time[-1] - time[-2])))))
+        long_empty = np.zeros_like(long_time)
+        long_trim = np.ones_like(long_time) * np.deg2rad(-3.5)
+        self.allsines = np.array([long_time, long_empty, long_trim, long_empty]).T
 
         file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/doublet_7deg_15s_0.1-1.5.csv"
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
         time = data[:, 0]
         empty = np.zeros_like(time)
-        self.roldoublet = np.array([time, data[:, 1], empty, empty]).T
-        self.pitdoublet = np.array([time, empty, data[:, 2], empty]).T
-        self.yawdoublet = np.array([time, empty, empty, data[:, 3]]).T
+        elv_trim = np.ones_like(time) * np.deg2rad(-3.5)
+        self.roldoublet = np.array([time, data[:, 1], elv_trim, empty]).T
+        self.pitdoublet = np.array([time, empty, (data[:, 2] + elv_trim), empty]).T
+        self.yawdoublet = np.array([time, empty, elv_trim, data[:, 3]]).T
 
         file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/sweep_7deg_15s_0.1-1.5.csv"
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
         time = data[:, 0]
         empty = np.zeros_like(time)
-        self.rolsweep = np.array([time, data[:, 1], empty, empty]).T
-        self.pitsweep = np.array([time, empty, data[:, 2], empty]).T
-        self.yawsweep = np.array([time, empty, empty, data[:, 3]]).T
+        elv_trim = np.ones_like(time) * np.deg2rad(-3.5)
+        self.rolsweep = np.array([time, data[:, 1], elv_trim, empty]).T
+        self.pitsweep = np.array([time, empty, (data[:, 2] + elv_trim), empty]).T
+        self.yawsweep = np.array([time, empty, elv_trim, data[:, 3]]).T
         
     def user_input_loop(self) -> None:
         """

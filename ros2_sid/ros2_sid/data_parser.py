@@ -141,6 +141,18 @@ def parse_ols(label, msg, relative_time):
 
     return result
 
+def parse_telem(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'ax': msg.accel_x,
+        'ay': msg.accel_y,
+        'az': msg.accel_z,
+        'gx': msg.gyro_x,
+        'gy': msg.gyro_y,
+        'gz': msg.gyro_z
+    }
+
+
 def parse_imu(msg, relative_time):
     return {
         'timestamp': relative_time,
@@ -190,6 +202,32 @@ def parse_odometry(msg, relative_time):
         'airspeed': airspeed
     }
 
+def parse_gps(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'lat': msg.latitude,
+        'lon': msg.longitude,
+        'alt': msg.altitude
+    }
+
+def parse_gps_vel(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'lin_x_velo': msg.twist.linear.x,
+        'lin_y_velo': msg.twist.linear.y,
+        'lin_z_velo': msg.twist.linear.z,
+        'ang_x_velo': msg.twist.angular.x,
+        'ang_y_velo': msg.twist.angular.y,
+        'ang_z_velo': msg.twist.angular.z
+    }
+
+def parse_altitude(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'altitude': msg.data
+    }
+
+
 def parse_trajectory(msg, relative_time):
     idx = msg.idx
     return {
@@ -199,19 +237,6 @@ def parse_trajectory(msg, relative_time):
         'yaw_cmd': np.rad2deg(msg.yaw[idx])
     }
 
-def parse_gps(msg, relative_time):
-    return {
-        'timestamp': relative_time,
-        'lat': msg.latitude,
-        'lon': msg.longitude,
-        'alt': msg.altitude
-    }
-
-def parse_altitude(msg, relative_time):
-    return {
-        'timestamp': relative_time,
-        'altitude': msg.data
-    }
 
 def parse_ros_message(label, msg, relative_time):
     if label.startswith('ols'):
@@ -221,18 +246,22 @@ def parse_ros_message(label, msg, relative_time):
             return parse_imu(msg, relative_time)
         case 'imu_raw':
             return parse_imu_raw(msg, relative_time)
+        case 'telem':
+            return parse_telem(msg, relative_time)
         case 'rcout':
             return parse_rcout(msg, relative_time)
         case 'rcin':
             return parse_rcin(msg, relative_time)
         case 'odometry':
             return parse_odometry(msg, relative_time)
-        case 'trajectory':
-            return parse_trajectory(msg, relative_time)
         case 'gps':
             return parse_gps(msg, relative_time)
+        case 'gps_vel':
+            return parse_gps_vel(msg, relative_time)
         case 'altitude':
             return parse_altitude(msg, relative_time)
+        case 'trajectory':
+            return parse_trajectory(msg, relative_time)
         case _:
             base = {'timestamp': relative_time}
             if hasattr(msg, 'data') and isinstance(msg.data, (list, tuple, np.ndarray, array.array)):
@@ -311,19 +340,22 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/rosbag2_2025_11_10-21_52_18/rosbag2_2025_11_10-21_52_18_0.db3'
+    bag_file = '/develop_ws/bag_files/Sim-Rol_1/rosbag2_2025_11_19-16_22_44_0.db3'
     
     topics_to_extract = {
         '/mavros/imu/data': 'imu',
         '/mavros/imu/data_raw': 'imu_raw',
+        '/telem': 'telem',
         '/mavros/rc/out': 'rcout',
         '/mavros/rc/in': 'rcin',
-        '/trajectory': 'trajectory',
-        '/mavros/global_position/rel_alt': 'altitude',
         '/mavros/local_position/odom': 'odometry',
-        '/mavros/imu/diff_pressure': 'diff_pressure',
-        '/mavros/imu/static_pressure': 'static_pressure',
-        '/mavros/imu/temperature_baro': 'temperature_baro',
+        # '/mavros/global_position/global': 'gps',
+        # '/mavros/global_position/raw/gps_vel': 'gps_vel',
+        '/mavros/global_position/rel_alt': 'altitude',
+        # '/mavros/imu/diff_pressure': 'diff_pressure',
+        # '/mavros/imu/static_pressure': 'static_pressure',
+        # '/mavros/imu/temperature_baro': 'temperature_baro',
+        '/trajectory': 'trajectory',
         '/ols_rol': 'ols_rol',
         '/ols_pit': 'ols_pit',
         '/ols_yaw': 'ols_yaw',

@@ -19,7 +19,7 @@ signal channels in subsequent columns, supporting up to three rotational
 and three translational channels.
 
 Custom Dependencies
-------------
+-------------------
 - plotter_class.py
 - input_design.py
 
@@ -260,12 +260,13 @@ def _test_maneuver() -> None:
     final_time: float = 10.
     time_delay: float = 5.
     num_channels: int = 3
-    # time, signal = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, 'logarithmic')
-    time, signal = multi_step(amplitude, natural_frequency, [1, 1], time_delay, time_step, final_time)
+    time, signal = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, 'logarithmic')
+    # time, signal = multi_step(amplitude, natural_frequency, [1, 1], time_delay, time_step, final_time)
     # time, signal, *_ = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
     empty = np.zeros_like(time)
+    pit_trim = np.ones_like(time) * np.deg2rad(-3.5)
 
-    maneuver = np.column_stack((time, signal, signal, signal))
+    maneuver = np.column_stack((time, signal, pit_trim, empty))
 
     save_maneuver(maneuver)
     plot_maneuver(maneuver)

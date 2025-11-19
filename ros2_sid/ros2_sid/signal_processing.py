@@ -4,6 +4,8 @@
 """
 signal_processing.py - Importable signal processing functions and class structures.
 
+Description
+-----------
 A collection of functions and class structures for discrete-time signal processing
 tasks, including numerical differentiation and filtering. 
 

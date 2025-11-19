@@ -4,6 +4,8 @@
 """
 signal_utils.py - Signal processing and analysis utilities.
 
+Description
+-----------
 This script provides functions and tools for analyzing time-series data, 
 specifically focused on derivative computation, low-pass filtering, and 
 signal characterization in both the time and frequency domains. 
@@ -226,12 +228,12 @@ def apply_filter(
 def time_statistics(t):
     dt = np.diff(t)
     print("")
-    print(f"Time Step\t\tSampling Rate")
-    print(f"=========\t\t=============")
-    print(f"Min: {round(np.min(dt), 3)} s\t\tMax: {round(np.max(1/dt), 2)} Hz")
-    print(f"Max: {round(np.max(dt), 3)} s\t\tMin: {round(np.min(1/dt), 2)} Hz")
-    print(f"Avg: {round(np.mean(dt), 3)} s\t\tAvg: {round(np.mean(1/dt), 2)} Hz")
-    print(f"Std: {round(np.std(dt), 3)} s\t\tStd: {round(np.std(1/dt), 2)} Hz")
+    print("Time Step\t\tSampling Rate")
+    print("=========\t\t=============")
+    print(f"Min: {round(np.min(dt), 4)} s\t\tMax: {round(np.max(1/dt), 2)} Hz")
+    print(f"Max: {round(np.max(dt), 4)} s\t\tMin: {round(np.min(1/dt), 2)} Hz")
+    print(f"Avg: {round(np.mean(dt), 4)} s\t\tAvg: {round(np.mean(1/dt), 2)} Hz")
+    print(f"Std: {round(np.std(dt), 4)} s\t\tStd: {round(np.std(1/dt), 2)} Hz")
     print("")
 
 def _compute_fft(t, *signals, f=None):
@@ -271,7 +273,7 @@ def plot_analysis(t, x, y):
     H = Y / X
     mag = to_dB(H)
     phase = np.angle(H, deg=True)
-    bode_figure = PlotFigure(f"Signal Analysis - Bode Plot", nrows=2, sharex=True)
+    bode_figure = PlotFigure("Signal Analysis - Bode Plot", nrows=2, sharex=True)
     bode_figure.define_subplot(0, ylabel="Magnitude [dB]", grid=True)
     bode_figure.set_log_scale(0, axis='x')
     bode_figure.add_data(0, f, mag, label="Magnitude", color="tab:blue")
@@ -309,29 +311,30 @@ def _analyze_signal(t, x):
     fxp = apply_filter(t, xp, 'Butter2_VDT', 1.54)
 
     time_statistics(t)
-    plot_analysis(t, x, fx)
+    # plot_analysis(t, x, fx)
     # plot_analysis(t, fx, xp)
     # plot_analysis(t, xp, fxp)
-    # plot_analysis(t, x, fxp)
+    plot_analysis(t, x, fxp)
 
     plt.show()
 
 
 def main():
-    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/saved_maneuver.csv"
-    file_path = "/develop_ws/bag_files/topic_data_files/imu_data.csv"
-    # file_path = "/develop_ws/bag_files/topic_data_files/imu_raw_data.csv"
+    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/saved_maneuver.csv"
+    file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"
+    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_raw_data.csv"
+    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/telem_data.csv"
 
     df = pd.read_csv(file_path)
     print("Columns in CSV:", df.columns.tolist())
     time = df['timestamp'].to_numpy()
-    data = df['gx'].to_numpy()
+    data = df['gy'].to_numpy()
 
-    start, end = 0, 99999
+    start, end = 0, 999999999
     time = time[start:end]
     data = data[start:end]
-    # time = time[::2]
-    # data = data[::2]
+    # time = time[::4]
+    # data = data[::4]
 
     _analyze_signal(time, data)
 
