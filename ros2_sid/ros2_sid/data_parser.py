@@ -197,7 +197,7 @@ def parse_odometry(msg, relative_time):
         'timestamp': relative_time,
         'x': pos.x, 'y': pos.y, 'z': pos.z,
         'roll_deg': np.rad2deg(roll),
-        'pitch_deg': np.rad2deg(pitch),
+        'pitch_deg': -np.rad2deg(pitch),
         'yaw_deg': np.rad2deg(yaw),
         'airspeed': airspeed
     }
@@ -233,7 +233,7 @@ def parse_trajectory(msg, relative_time):
     return {
         'timestamp': relative_time,
         'roll_cmd': np.rad2deg(msg.roll[idx]),
-        'pitch_cmd': -np.rad2deg(msg.pitch[idx]),
+        'pitch_cmd': np.rad2deg(msg.pitch[idx]),
         'yaw_cmd': np.rad2deg(msg.yaw[idx])
     }
 
