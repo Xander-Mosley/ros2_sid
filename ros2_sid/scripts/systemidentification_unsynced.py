@@ -48,11 +48,17 @@ class OLSNode(Node):
         self.livetime_sec = StoredData(5, 1)
         self.livetime_nano = deque([0.0, 0.0, 0.0, 0.0, 0.0],maxlen=5)
         self.rol_velo = StoredData(5, 1)
+        self.lpf_rol_velo = ButterworthLowPass_VDT_2O(1.54)
         self.pit_velo = StoredData(5, 1)
+        self.lpf_pit_velo = ButterworthLowPass_VDT_2O(1.54)
         self.yaw_velo = StoredData(5, 1)
+        self.lpf_yaw_velo = ButterworthLowPass_VDT_2O(1.54)
         self.rol_accel = StoredData(5, 1)
+        self.lpf_rol_accel = ButterworthLowPass_VDT_2O(1.54)
         self.pit_accel = StoredData(5, 1)
+        self.lpf_pit_accel = ButterworthLowPass_VDT_2O(1.54)
         self.yaw_accel = StoredData(5, 1)
+        self.lpf_yaw_accel = ButterworthLowPass_VDT_2O(1.54)
 
         self.ail_pwm = StoredData(1, 1)
         self.elv_pwm = StoredData(1, 1)
@@ -78,9 +84,6 @@ class OLSNode(Node):
         self.wing_area = 1.065634   # [m²]
 
 
-        self.lpf1 = ButterworthLowPass_VDT_2O(1.54)
-        self.lpf2 = ButterworthLowPass_VDT_2O(1.54)
-
     def setup_modelstructures(self) -> None:
         # define class variables
         ModelStructure.class_eff = 0.999
@@ -105,12 +108,12 @@ class OLSNode(Node):
             qos_profile=SENSOR_QOS
         )
 
-        self.telem_sub: Subscription = self.create_subscription(
-            Telem,
-            '/telem',
-            self.telem_callback,
-            qos_profile=SENSOR_QOS
-        )
+        # self.telem_sub: Subscription = self.create_subscription(
+        #     Telem,
+        #     '/telem',
+        #     self.telem_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
 
         self.rcout_sub: Subscription = self.create_subscription(
             RCOut,
@@ -148,68 +151,16 @@ class OLSNode(Node):
         )
 
     def imu_callback(self, msg: Imu) -> None:
-        # # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
-        # self.livetime_sec.update_data(msg.header.stamp.sec)
-
-        # new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-        # while len(self.livetime_nano) > 0 and new_nanosec_data < self.livetime_nano[-1]:
-        #     new_nanosec_data += 1.0
-        # self.livetime_nano.append(new_nanosec_data)
-        # if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
-        #     self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
-
-        # dt = self.livetime_nano[-1] - self.livetime_nano[-2]
-        # # ModelStructure.update_shared_cp_time(self.livetime_nano[0])     # TODO: Test if this works better with seconds or nanoseconds
-        # if FIRST_PASS:
-        #     ModelStructure.update_shared_cp_time(self.livetime_nano[0])
-        # else:
-        #     ModelStructure.update_shared_cp_timestep(dt)
-
-        # # self.rol_velo.update_data(msg.angular_velocity.x)
-        # self.pit_velo.update_data(msg.angular_velocity.y)
-        # self.yaw_velo.update_data(msg.angular_velocity.z)
-        # self.xdir_accel.update_data(msg.linear_acceleration.x)
-        # self.ydir_accel.update_data(msg.linear_acceleration.y)
-        # self.zdir_accel.update_data(msg.linear_acceleration.z)
-        # # self.rol_accel.update_data(sg_diff(self.livetime_nano.data, self.rol_velo.data))
-        # self.pit_accel.update_data(sg_diff(np.array(self.livetime_nano)[::-1], self.pit_velo.data))
-        # self.yaw_accel.update_data(sg_diff(np.array(self.livetime_nano)[::-1], self.yaw_velo.data))
-        
-
-        # # cutoff_frequency = 18   # [Hz] 1.2*f_system_dynamics (15 Hz)
-        # # dt = 0.02   # Assumed average dt    TODO: Confirm that this is the proper dt with the mixed IMUs
-        # # alpha = 1 - np.exp(-2 * np.pi * cutoff_frequency * dt)
-        # # self.rol_velo.update_data((alpha * msg.angular_velocity.x) + ((1- alpha) * np.mean(self.rol_velo.data[1:])))
-        # # self.pit_velo.update_data((alpha * msg.angular_velocity.y) + ((1- alpha) * np.mean(self.pit_velo.data[1:])))
-        # # self.yaw_velo.update_data((alpha * msg.angular_velocity.z) + ((1- alpha) * np.mean(self.yaw_velo.data[1:])))
-        
-        # self.rol_velo.update_data(self.lpf1.update(msg.angular_velocity.x, dt))
-
-        # # cutoff_frequency = 4   # [Hz] ~(0.5-0.7) the value of the gyro cutoff frequency
-        # # dt = 0.02   # Assumed average dt    TODO: Confirm that this is the proper dt with the mixed IMUs
-        # # alpha = 1 - np.exp(-2 * np.pi * cutoff_frequency * dt)
-        # # # dt = self.livetime_nano.data[-1] - self.livetime_nano.data[-2]
-        # # # alpha = np.clip(dt / 0.05, 0.1, 0.9)
-        # # # alpha = np.exp(-dt / 0.03)  # estimate_derivative()
-        # # self.rol_accel.update_data((alpha * sg_diff(self.livetime_nano.data, self.rol_velo.data)) + ((1 - alpha) * np.mean(self.rol_accel.data[1:])))
-        # # self.pit_accel.update_data((alpha * sg_diff(self.livetime_nano.data, self.pit_velo.data)) + ((1 - alpha) * np.mean(self.pit_accel.data[1:])))
-        # # self.yaw_accel.update_data((alpha * sg_diff(self.livetime_nano.data, self.yaw_velo.data)) + ((1 - alpha) * np.mean(self.yaw_accel.data[1:])))
-
-        # self.rol_accel.update_data(self.lpf2.update(sg_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
-        pass
-
-    def telem_callback(self, msg: Telem) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
         global FIRST_PASS
 
         self.livetime_sec.update_data(msg.header.stamp.sec)
-
         new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
         while len(self.livetime_nano) > 0 and new_nanosec_data < self.livetime_nano[-1]:
             new_nanosec_data += 1.0
 
         dt = new_nanosec_data - self.livetime_nano[-1]
-        if dt > 0.005:
+        if dt > 0.0075:
             self.livetime_nano.append(new_nanosec_data)
             if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
                 self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
@@ -221,14 +172,43 @@ class OLSNode(Node):
             else:
                 ModelStructure.update_shared_cp_timestep(dt)
 
-            self.rol_velo.update_data(self.lpf1.update(msg.accel_x, dt))
-            self.pit_velo.update_data(self.lpf1.update(msg.accel_y, dt))
-            self.yaw_velo.update_data(self.lpf1.update(msg.accel_z, dt))
-            print(msg.accel_x)
+            self.xdir_accel.update_data(msg.linear_acceleration.x)
+            self.ydir_accel.update_data(msg.linear_acceleration.y)
+            self.zdir_accel.update_data(msg.linear_acceleration.z)
+            self.rol_velo.update_data(self.lpf_rol_velo.update(msg.angular_velocity.x, dt))
+            self.pit_velo.update_data(self.lpf_pit_velo.update(msg.angular_velocity.y, dt))
+            self.yaw_velo.update_data(self.lpf_yaw_velo.update(msg.angular_velocity.z, dt))
+            self.rol_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
+            self.pit_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
+            self.yaw_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
 
-            self.rol_accel.update_data(self.lpf2.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
-            self.pit_accel.update_data(self.lpf2.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
-            self.yaw_accel.update_data(self.lpf2.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
+    def telem_callback(self, msg: Telem) -> None:
+        global FIRST_PASS
+
+        self.livetime_sec.update_data(msg.header.stamp.sec)
+        new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
+        while len(self.livetime_nano) > 0 and new_nanosec_data < self.livetime_nano[-1]:
+            new_nanosec_data += 1.0
+
+        dt = new_nanosec_data - self.livetime_nano[-1]
+        if dt > 0.0075:
+            self.livetime_nano.append(new_nanosec_data)
+            if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
+                self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
+
+            # ModelStructure.update_shared_cp_time(self.livetime_nano[0])     # TODO: Test if this works better with seconds or nanoseconds
+            if FIRST_PASS:
+                FIRST_PASS = False
+                ModelStructure.update_shared_cp_time(self.livetime_nano[0])
+            else:
+                ModelStructure.update_shared_cp_timestep(dt)
+
+            self.rol_velo.update_data(self.lpf_rol_velo.update(msg.accel_x, dt))
+            self.pit_velo.update_data(self.lpf_pit_velo.update(msg.accel_y, dt))
+            self.yaw_velo.update_data(self.lpf_yaw_velo.update(msg.accel_z, dt))
+            self.rol_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
+            self.pit_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
+            self.yaw_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
 
     def rcout_callback(self, msg: RCOut) -> None:
         self.ail_pwm.update_data(msg.channels[0])
@@ -290,15 +270,15 @@ class OLSNode(Node):
         self.ols_rol_timer = self.create_timer(
             timer_period, self.publish_ols_rol_data)
 
-        # self.ols_pit_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_pit', 10)
-        # timer_period: float = 0.02
+        self.ols_pit_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_pit', 10)
+        timer_period: float = 0.02
         # self.ols_pit_timer = self.create_timer(
         #     timer_period, self.publish_ols_pit_data)
         
-        # self.ols_yaw_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_yaw', 10)
-        # timer_period: float = 0.02
+        self.ols_yaw_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_yaw', 10)
+        timer_period: float = 0.02
         # self.ols_yaw_timer = self.create_timer(
         #     timer_period, self.publish_ols_yaw_data)
 
@@ -308,21 +288,21 @@ class OLSNode(Node):
         self.ols_rol_large_timer = self.create_timer(
             timer_period, self.publish_ols_rol_large_data)
 
-        # self.ols_rol_yaw_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_yaw', 10)
-        # timer_period: float = 0.02
+        self.ols_rol_yaw_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_yaw', 10)
+        timer_period: float = 0.02
         # self.ols_rol_yaw_timer = self.create_timer(
         #     timer_period, self.publish_ols_rol_yaw_data)
 
-        # self.ols_rol_moment_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_moment', 10)
-        # timer_period: float = 0.02
+        self.ols_rol_moment_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_moment', 10)
+        timer_period: float = 0.02
         # self.ols_rol_moment_timer = self.create_timer(
         #     timer_period, self.publish_ols_rol_moment_data)
 
-        # self.ols_Y_dim_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_Y_dim', 10)
-        # timer_period: float = 0.02
+        self.ols_Y_dim_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_Y_dim', 10)
+        timer_period: float = 0.02
         # self.ols_Y_dim_timer = self.create_timer(
         #     timer_period, self.publish_ols_Y_dim_data)
 

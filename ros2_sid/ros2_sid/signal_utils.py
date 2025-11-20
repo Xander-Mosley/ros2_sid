@@ -328,7 +328,7 @@ def main():
     df = pd.read_csv(file_path)
     print("Columns in CSV:", df.columns.tolist())
     time = df['timestamp'].to_numpy()
-    data = df['gy'].to_numpy()
+    data = df['gx'].to_numpy()
 
     start, end = 0, 999999999
     time = time[start:end]

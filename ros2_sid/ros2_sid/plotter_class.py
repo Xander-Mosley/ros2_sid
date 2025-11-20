@@ -38,13 +38,16 @@ Date: 11 Nov 2025
 """
 
 import warnings
-from typing import Callable, Optional, Union, Tuple
+from typing import Any, Callable, Optional, Union, Sequence, Tuple
 
 import numpy as np
+import pandas as pd
 import matplotlib
 matplotlib.use("TkAgg")  # or "Qt5Agg", "GTK3Agg", depending on your system
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+
+ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
 
 
 __all__ = ['PlotFigure']
@@ -189,12 +192,43 @@ class PlotFigure:
             self._maybe_legend(ax, label)
         self.lines[(ax_pos, label)] = obj
         return obj
+    
+    def _ensure_numpy(self, data: Optional[ArrayLike]) -> np.ndarray:
+        """
+        Convert any array-like input to a proper NumPy array.
+
+        Parameters
+        ----------
+        data : ArrayLike
+            Input data: float, list, tuple, np.ndarray, pd.Series, or pd.DataFrame.
+
+        Returns
+        -------
+        np.ndarray
+            A NumPy array with the same data.
+        """
+        if data is None:
+            return None # type: ignore
+        if isinstance(data, np.ndarray):
+            return data
+        try:
+            if isinstance(data, pd.Series):
+                return np.asarray(data)
+            if isinstance(data, pd.DataFrame):
+                # Single-column DataFrame becomes 1D array
+                if data.shape[1] == 1:
+                    return np.asarray(data.iloc[:, 0])
+                return np.asarray(data)
+        except ImportError:
+            pass
+        # Default fallback for lists, tuples, etc.
+        return np.array(data)
 
     def add_data(
         self,
         ax_pos: int,
-        x: np.ndarray,
-        y: np.ndarray,
+        x: ArrayLike,
+        y: ArrayLike,
         label: Optional[str] = None,
         **kwargs
         ) -> object:
@@ -221,7 +255,35 @@ class PlotFigure:
         """
         return self._add_plot(
             ax_pos,
-            lambda ax: ax.plot(x, y, label=label, **kwargs)[0],
+            lambda ax: ax.plot(self._ensure_numpy(x), self._ensure_numpy(y), label=label, **kwargs)[0],
+            label
+            )
+
+    def add_data_secondary_y(
+            self,
+            ax_pos: int,
+            x: ArrayLike,
+            y: ArrayLike,
+            label: Optional[str] = None,
+            **kwargs
+            ) -> object:
+        """
+        Add a line plot to a secondary y-axis on the given subplot.
+
+        Parameters
+        ----------
+        ax_pos : int
+            Subplot index.
+        x, y : array-like
+            Data for plotting.
+        label : str, optional
+            Legend label.
+        kwargs :
+            Passed to matplotlib.axes.Axes.plot
+        """
+        return self._add_plot(
+            ax_pos,
+            lambda ax: ax.twinx().plot(self._ensure_numpy(x), self._ensure_numpy(y), label=label, **kwargs)[0],
             label
             )
 
@@ -256,7 +318,7 @@ class PlotFigure:
         """
         return self._add_plot(
             ax_pos,
-            lambda ax: ax.scatter(x, y, label=label, **kwargs),
+            lambda ax: ax.scatter(self._ensure_numpy(x), self._ensure_numpy(y), label=label, **kwargs),
             label
             )
 
@@ -291,7 +353,7 @@ class PlotFigure:
         """
         return self._add_plot(
             ax_pos,
-            lambda ax: ax.bar(x, height, label=label, **kwargs),
+            lambda ax: ax.bar(self._ensure_numpy(x), height, label=label, **kwargs),
             label
             )
 
@@ -326,7 +388,7 @@ class PlotFigure:
         """
         return self._add_plot(
             ax_pos,
-            lambda ax: ax.hist(data, bins=bins, label=label, **kwargs),
+            lambda ax: ax.hist(self._ensure_numpy(data), bins=bins, label=label, **kwargs),
             label
             )
 
@@ -368,7 +430,7 @@ class PlotFigure:
         return self._add_plot(
             ax_pos,
             lambda ax: ax.errorbar(
-                x, y, yerr=yerr, xerr=xerr, label=label, **kwargs
+                self._ensure_numpy(x), self._ensure_numpy(y), yerr=self._ensure_numpy(yerr), xerr=self._ensure_numpy(xerr), label=label, **kwargs
                 ),
             label
             )
@@ -411,7 +473,6 @@ class PlotFigure:
             raise ValueError(
                 "orientation must be either 'h' (horizontal) or 'v' (vertical)"
                 )
-
         plot_func = (
             (lambda ax: ax.axhline(y=value, label=label, **kwargs))
             if orientation == 'h'
@@ -460,7 +521,7 @@ class PlotFigure:
         return self._add_plot(
             ax_pos,
             lambda ax: ax.fill_between(
-                x, y1, y2, label=label, color=color, alpha=alpha, **kwargs
+                self._ensure_numpy(x), self._ensure_numpy(y1), self._ensure_numpy(y2), label=label, color=color, alpha=alpha, **kwargs
                 ),
             label
             )
