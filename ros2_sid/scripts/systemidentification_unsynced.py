@@ -60,9 +60,12 @@ class OLSNode(Node):
         self.yaw_accel = StoredData(5, 1)
         self.lpf_yaw_accel = ButterworthLowPass_VDT_2O(1.54)
 
-        self.ail_pwm = StoredData(1, 1)
-        self.elv_pwm = StoredData(1, 1)
-        self.rud_pwm = StoredData(1, 1)
+        self.ail_pwm = StoredData(10, 1)
+        self.lpf_ail_pwm = ButterworthLowPass_VDT_2O(1.54)
+        self.elv_pwm = StoredData(10, 1)
+        self.lpf_elv_pwm = ButterworthLowPass_VDT_2O(1.54)
+        self.rud_pwm = StoredData(10, 1)
+        self.lpf_rud_pwm = ButterworthLowPass_VDT_2O(1.54)
 
         # self.aoa = StoredData(1, 1)
         # self.ssa = StoredData(1, 1)
@@ -82,6 +85,8 @@ class OLSNode(Node):
         self.mass = 1
         self.wing_span = 3.868  # [m]
         self.wing_area = 1.065634   # [m²]
+
+        self.dt = 0.0
 
 
     def setup_modelstructures(self) -> None:
@@ -159,8 +164,8 @@ class OLSNode(Node):
         while len(self.livetime_nano) > 0 and new_nanosec_data < self.livetime_nano[-1]:
             new_nanosec_data += 1.0
 
-        dt = new_nanosec_data - self.livetime_nano[-1]
-        if dt > 0.0075:
+        self.dt = new_nanosec_data - self.livetime_nano[-1]
+        if self.dt > 0.0075:
             self.livetime_nano.append(new_nanosec_data)
             if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
                 self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
@@ -170,17 +175,17 @@ class OLSNode(Node):
                 FIRST_PASS = False
                 ModelStructure.update_shared_cp_time(self.livetime_nano[0])
             else:
-                ModelStructure.update_shared_cp_timestep(dt)
+                ModelStructure.update_shared_cp_timestep(self.dt)
 
             self.xdir_accel.update_data(msg.linear_acceleration.x)
             self.ydir_accel.update_data(msg.linear_acceleration.y)
             self.zdir_accel.update_data(msg.linear_acceleration.z)
-            self.rol_velo.update_data(self.lpf_rol_velo.update(msg.angular_velocity.x, dt))
-            self.pit_velo.update_data(self.lpf_pit_velo.update(msg.angular_velocity.y, dt))
-            self.yaw_velo.update_data(self.lpf_yaw_velo.update(msg.angular_velocity.z, dt))
-            self.rol_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
-            self.pit_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
-            self.yaw_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
+            self.rol_velo.update_data(self.lpf_rol_velo.update(msg.angular_velocity.x, self.dt))
+            self.pit_velo.update_data(self.lpf_pit_velo.update(msg.angular_velocity.y, self.dt))
+            self.yaw_velo.update_data(self.lpf_yaw_velo.update(msg.angular_velocity.z, self.dt))
+            self.rol_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), self.dt))
+            self.pit_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), self.dt))
+            self.yaw_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), self.dt))
 
     def telem_callback(self, msg: Telem) -> None:
         global FIRST_PASS
@@ -211,9 +216,9 @@ class OLSNode(Node):
             self.yaw_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), dt))
 
     def rcout_callback(self, msg: RCOut) -> None:
-        self.ail_pwm.update_data(msg.channels[0])
-        self.elv_pwm.update_data(msg.channels[1])
-        self.rud_pwm.update_data(msg.channels[2])
+        self.ail_pwm.update_data(self.lpf_ail_pwm.update(msg.channels[0], self.dt))
+        self.elv_pwm.update_data(self.lpf_elv_pwm.update(msg.channels[1], self.dt))
+        self.rud_pwm.update_data(self.lpf_rud_pwm.update(msg.channels[2], self.dt))
 
     def odom_callback(self, msg: Odometry) -> None:
         """
@@ -313,14 +318,14 @@ class OLSNode(Node):
             timer_period, self.publish_ols_rol_nondim_data)
         
     def publish_ols_rol_data(self) -> None:
-        self.rol.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], self.ail_pwm.data[0]])
+        self.rol.update_model(self.rol_accel.data[1], [self.rol_velo.data[0], self.ail_pwm.data[5]])
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
-            np.float64(self.rol_accel.data.item(0)),
+            np.float64(self.rol_accel.data.item(1)),
 
             np.float64(self.rol_velo.data.item(0)),
-            np.float64(self.ail_pwm.data.item(0)),
+            np.float64(self.ail_pwm.data.item(5)),
 
             self.rol.parameters[0],
             self.rol.parameters[1]
