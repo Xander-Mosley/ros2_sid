@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.use("TkAgg")  # or "Qt5Agg", "GTK3Agg", depending on your system
+import re
+from typing import Any, Optional, Sequence, Union
 
 import numpy as np
-import re
 import pandas as pd
+import matplotlib
+matplotlib.use("TkAgg")  # or "Qt5Agg", "GTK3Agg", depending on your system
+import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import ScalarFormatter
-# from IPython import get_ipython
-from typing import Union
-# Comment this out if running on main OS
+
+from plotter_class import PlotFigure
+
+ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
 
 
 
@@ -1207,14 +1210,13 @@ def plot_correlation(
 
 
 if __name__ == "__main__":
-    # get_ipython().run_line_magic('matplotlib', 'qt')
-    # get_ipython().run_line_magic('matplotlib', 'inline')
     csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/synced_all_data.csv"
     
     models = ['ols_rol_']
-    # 
+    
     start_time = 0
     end_time = 999999
+    # TODO: Add model labels as well
     plot_labels = {
     "subtitle": "Roll Models",
     "time": "Time [s]",
@@ -1241,12 +1243,19 @@ if __name__ == "__main__":
     csv = pd.read_csv(csv_path)
     model_dfs = {prefix: extract_model(csv, prefix) for prefix in models}
     processed_models = process_models(list(model_dfs.values()))
+    # TODO: ADD BATCH RESULTS!
     plot_models(processed_models, start_time, end_time, plot_labels)
     plot_regressor_data(processed_models, start_time, end_time, plot_labels)
     # plot_confidence(processed_models,  start_time, end_time, plot_labels)
+    # TODO: Recenter around data, not confidence intervals.
     # plot_percent_confidence(processed_models,  start_time, end_time, plot_labels)
     plot_error(processed_models, start_time, end_time, plot_labels)
     # plot_fit(processed_models,  start_time, end_time, plot_labels)
+    # TODO: Review the R² calculations.
     # plot_conditioning(processed_models, start_time, end_time, plot_labels)
     # plot_correlation(processed_models, start_time, end_time, plot_labels)
+
+    # TODO: Add FFT plotter
+    # TODO: Add Bode plotter
+
     plt.show()
