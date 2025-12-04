@@ -17,6 +17,10 @@ from plotter_class import PlotFigure
 ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
 
 
+# __all__ = ['']
+__author__ = "Xander D Mosley"
+__email__ = "XanderDMosley.Engineer@gmail.com"
+
 
 def _ensure_numpy(x):
     if isinstance(x, (pd.Series, pd.DataFrame)):
@@ -411,6 +415,8 @@ def process_models(dataframes: list[pd.DataFrame]):
         mse = _sliding_mse(df[f"{prefix}measured_output"], df[f"{prefix}modeled_output"], window_size=6)
         mse_label = f"{prefix}mse"
         df.insert(loc=6, column=mse_label, value=mse)
+        total_mse = _sliding_mse(df[f"{prefix}measured_output"], df[f"{prefix}modeled_output"], window_size=6)
+        print(total_mse)
         
         # coefficient of determination (cod)
         num_regressors = len([col for col in df.columns if re.match(rf"{prefix}regressor_\d+$", col)])
@@ -1212,7 +1218,7 @@ def plot_correlation(
 if __name__ == "__main__":
     csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/synced_all_data.csv"
     
-    models = ['ols_rol_']
+    models = ['ols_rol_large_']
     
     start_time = 0
     end_time = 999999
@@ -1245,7 +1251,7 @@ if __name__ == "__main__":
     processed_models = process_models(list(model_dfs.values()))
     # TODO: ADD BATCH RESULTS!
     plot_models(processed_models, start_time, end_time, plot_labels)
-    plot_regressor_data(processed_models, start_time, end_time, plot_labels)
+    # plot_regressor_data(processed_models, start_time, end_time, plot_labels)  # TODO: Fix labels of this plotter function
     # plot_confidence(processed_models,  start_time, end_time, plot_labels)
     # TODO: Recenter around data, not confidence intervals.
     # plot_percent_confidence(processed_models,  start_time, end_time, plot_labels)

@@ -340,7 +340,7 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/rosbag2_2025_11_21-00_17_00/rosbag2_2025_11_21-00_17_00_0.db3'
+    bag_file = '/develop_ws/bag_files/rosbag2_2025_12_04-02_28_54/rosbag2_2025_12_04-02_28_54_0.db3'
     
     topics_to_extract = {
         '/mavros/imu/data': 'imu',
@@ -356,14 +356,22 @@ if __name__ == "__main__":
         # '/mavros/imu/static_pressure': 'static_pressure',
         # '/mavros/imu/temperature_baro': 'temperature_baro',
         '/trajectory': 'trajectory',
+
         '/ols_rol': 'ols_rol',
         '/ols_pit': 'ols_pit',
         '/ols_yaw': 'ols_yaw',
         '/ols_rol_large': 'ols_rol_large',
-        '/ols_rol_yaw': 'ols_rol_yaw',
-        '/ols_rol_moment': 'ols_rol_moment',
-        '/ols_Y_dim': 'ols_Y_dim',
-        '/ols_rol_nondim': 'ols_rol_nondim'
+
+        '/ols_rol_nondim': 'ols_rol_nondim',
+        '/ols_rol_nondim_inertias': 'ols_rol_nondim_inertias',
+        '/ols_rol_ssa': 'ols_rol_ssa',
+        '/ols_rol_ssa_nondim': 'ols_rol_ssa_nondim',
+        '/ols_rol_ssa_nondim_inertias': 'ols_rol_ssa_nondim_inertias',
+        '/ols_rol_large_nondim': 'ols_rol_large_nondim',
+        '/ols_rol_large_nondim_inertias': 'ols_rol_large_nondim_inertias',
+        '/ols_rol_large_ssa': 'ols_rol_large_ssa',
+        '/ols_rol_large_ssa_nondim': 'ols_rol_large_ssa_nondim',
+        '/ols_rol_large_ssa_nondim_inertias': 'ols_rol_large_ssa_nondim_inertias'
         }
     
     output_directory = '/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files'
