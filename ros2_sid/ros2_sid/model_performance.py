@@ -627,7 +627,7 @@ def plot_regressor_data(
 
         # --- Subplot 2+ ---
         for j in range(num_params):
-            axs[1 + j].plot(time, regressors[:, j], label=f'{prefix}', linestyle='-', color=model_color)
+            axs[1 + j].scatter(time, regressors[:, j], label=f'{prefix}', linestyle='-', color=model_color)
 
     # --- Final Formatting ---
     axs[0].set_title("Measured vs Estimated Outputs")
@@ -1218,7 +1218,7 @@ def plot_correlation(
 if __name__ == "__main__":
     csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/synced_all_data.csv"
     
-    models = ['ols_rol_large_']
+    models = ['ols_rol_']
     
     start_time = 0
     end_time = 999999
@@ -1251,11 +1251,11 @@ if __name__ == "__main__":
     processed_models = process_models(list(model_dfs.values()))
     # TODO: ADD BATCH RESULTS!
     plot_models(processed_models, start_time, end_time, plot_labels)
-    # plot_regressor_data(processed_models, start_time, end_time, plot_labels)  # TODO: Fix labels of this plotter function
+    plot_regressor_data(processed_models, start_time, end_time, plot_labels)  # TODO: Fix labels of this plotter function
     # plot_confidence(processed_models,  start_time, end_time, plot_labels)
     # TODO: Recenter around data, not confidence intervals.
     # plot_percent_confidence(processed_models,  start_time, end_time, plot_labels)
-    plot_error(processed_models, start_time, end_time, plot_labels)
+    # plot_error(processed_models, start_time, end_time, plot_labels)
     # plot_fit(processed_models,  start_time, end_time, plot_labels)
     # TODO: Review the R² calculations.
     # plot_conditioning(processed_models, start_time, end_time, plot_labels)

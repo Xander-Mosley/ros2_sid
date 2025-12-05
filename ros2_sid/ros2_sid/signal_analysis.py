@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-signal_utils.py - Signal processing and analysis utilities.
+signal_analysis.py - Signal processing and analysis utilities.
 
 Description
 -----------
@@ -311,7 +311,7 @@ def _analyze_signal(t, x):
     fxp = apply_filter(t, xp, 'Butter2_VDT', 1.54)
 
     time_statistics(t)
-    # plot_analysis(t, x, fx)
+    plot_analysis(t, x, fx)
     # plot_analysis(t, fx, xp)
     # plot_analysis(t, xp, fxp)
     plot_analysis(t, x, fxp)

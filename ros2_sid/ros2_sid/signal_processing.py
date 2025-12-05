@@ -629,6 +629,9 @@ class ButterworthLowPass_VDT_2O:
         self.y_filtered[0] = y_new
 
         return y_new
+    
+    def current(self):
+        return self.y_filtered[0]
 
 
 # TODO: Add more filters types as testing continues.

@@ -346,7 +346,8 @@ def plot_input_performance(
         odometry_dataframe: pd.DataFrame,
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
-        plot_labels: Optional[dict] = None
+        plot_labels: Optional[dict] = None,
+        time_offset: float = 0.0
         ) -> PlotFigure:
 
     if trajectory_dataframe is None or trajectory_dataframe.empty or 'timestamp' not in trajectory_dataframe.columns:
@@ -370,7 +371,7 @@ def plot_input_performance(
     pit_cmd = trajectory_dataframe["pitch_cmd"]
     yaw_cmd = trajectory_dataframe["yaw_cmd"]
     
-    odometry_time = odometry_dataframe["timestamp"]
+    odometry_time = odometry_dataframe["timestamp"] - time_offset
     rol_deg = odometry_dataframe["roll_deg"]
     pit_deg = odometry_dataframe["pitch_deg"]
     yaw_deg = odometry_dataframe["yaw_deg"]
@@ -383,7 +384,7 @@ def plot_input_performance(
 
     fig.define_subplot(0, title="Roll Over Time", ylabel="Angle\n[deg]")
     fig.add_data(0, trajectory_time, rol_cmd, label="Command", color='black', linestyle="--")
-    fig.add_data(0, odometry_time, rol_deg, label="Response", color='tab:blue')
+    fig.add_scatter(0, odometry_time, rol_deg, label="Response", color='tab:blue')
 
     fig.define_subplot(1, title="Pitch Over Time", ylabel="Angle\n[deg]")
     fig.add_data(1, trajectory_time, pit_cmd, label="Command", color='black', linestyle="--")
@@ -423,7 +424,13 @@ def landing_performance(folder_path, start_time, end_time):
 
 def control_performance(folder_path, start_time, end_time):
     # plot_trajectory(pd.read_csv(f"{folder_path}trajectory_data.csv"), start_time, end_time)
-    plot_input_performance(pd.read_csv(f"{folder_path}trajectory_data.csv"), pd.read_csv(f"{folder_path}odometry_data.csv"), start_time, end_time)
+    plot_input_performance(
+        pd.read_csv(f"{folder_path}trajectory_data.csv"),
+        pd.read_csv(f"{folder_path}odometry_data.csv"),
+        start_time,
+        end_time,
+        time_offset=0.0)
+    # TODO: Make a lag plot for the command and response angle
 
 
 def main():
