@@ -303,6 +303,12 @@ def plot_analysis(t, x, y):
     # delay_figure.add_scatter(1, f, group_delay_samples, color="tab:orange", label="Phase Delay (samples)")
     # delay_figure.set_all_legends()
 
+def plot_for_biweekly(t, y):
+    time_figure = PlotFigure("Signal Analysis - Time Domain")
+    time_figure.define_subplot(0, ylabel="Amplitude", xlabel="Time [s]", grid=True)
+    time_figure.add_data(0, t, y, label="Output", color="tab:orange")
+    time_figure.set_all_legends()
+
 
 def _analyze_signal(t, x):
     # TODO: Determine the ideal filter for input data.
@@ -311,19 +317,20 @@ def _analyze_signal(t, x):
     fxp = apply_filter(t, xp, 'Butter2_VDT', 1.54)
 
     time_statistics(t)
-    plot_analysis(t, x, fx)
+    # plot_analysis(t, x, fx)
     # plot_analysis(t, fx, xp)
     # plot_analysis(t, xp, fxp)
-    plot_analysis(t, x, fxp)
+    # plot_analysis(t, x, fxp)
+    plot_for_biweekly(t, fxp)
 
     plt.show()
 
 
 def main():
     # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/saved_maneuver.csv"
-    file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"
+    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"
     # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_raw_data.csv"
-    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/telem_data.csv"
+    file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/telem_data.csv"
 
     df = pd.read_csv(file_path)
     print("Columns in CSV:", df.columns.tolist())
@@ -333,8 +340,8 @@ def main():
     start, end = 0, 999999999
     time = time[start:end]
     data = data[start:end]
-    # time = time[::4]
-    # data = data[::4]
+    time = time[::2]
+    data = data[::2]
 
     _analyze_signal(time, data)
 

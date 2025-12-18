@@ -175,6 +175,26 @@ def parse_imu_raw(msg, relative_time):
         'gz_raw': msg.angular_velocity.z
     }
 
+def parse_imu_filtered(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'gx': msg.data[0],
+        'gy': msg.data[1],
+        'gz': msg.data[2],
+        'gax': msg.data[3],
+        'gay': msg.data[4],
+        'gaz': msg.data[5]
+    }
+
+def parse_filter_duration(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'elapsed': msg.data[0],
+        'ema_elapsed': msg.data[1],
+        'max_elapsed': msg.data[2],
+        'min_elapsed': msg.data[3]
+    }
+    
 def parse_rcout(msg, relative_time):
     return {
         'timestamp': relative_time,
@@ -246,6 +266,10 @@ def parse_ros_message(label, msg, relative_time):
             return parse_imu(msg, relative_time)
         case 'imu_raw':
             return parse_imu_raw(msg, relative_time)
+        case 'imu_filtered':
+            return parse_imu_filtered(msg, relative_time)
+        case 'filter_duration':
+            return parse_filter_duration(msg, relative_time)
         case 'telem':
             return parse_telem(msg, relative_time)
         case 'rcout':
@@ -340,12 +364,14 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/rosbag2_2025_12_05-00_03_54/rosbag2_2025_12_05-00_03_54_0.db3'
+    bag_file = '/develop_ws/bag_files/2025-12-17_IsolatedFiltering2/rosbag2_2025_12_18-00_52_26_0.db3'
     
     topics_to_extract = {
         '/mavros/imu/data': 'imu',
         '/mavros/imu/data_raw': 'imu_raw',
-        '/telem': 'telem',
+        # '/telem': 'telem',
+        '/imu_filtered': 'imu_filtered',
+        '/imu_filter_duration': 'filter_duration',
         '/mavros/rc/out': 'rcout',
         '/mavros/rc/in': 'rcin',
         '/mavros/local_position/odom': 'odometry',

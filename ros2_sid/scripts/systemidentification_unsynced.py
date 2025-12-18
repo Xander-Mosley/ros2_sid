@@ -109,12 +109,12 @@ class OLSNode(Node):
 
     def setup_all_subscriptions(self) -> None:
         # # TODO: Subscribe to more published data.
-        self.imu_sub: Subscription = self.create_subscription(
-            Imu,
-            '/mavros/imu/data',
-            self.imu_callback,
-            qos_profile=SENSOR_QOS
-        )
+        # self.imu_sub: Subscription = self.create_subscription(
+        #     Imu,
+        #     '/mavros/imu/data',
+        #     self.imu_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
 
         # self.telem_sub: Subscription = self.create_subscription(
         #     Telem,
@@ -123,6 +123,13 @@ class OLSNode(Node):
         #     qos_profile=SENSOR_QOS
         # )
 
+        self.imu_filtered_sub: Subscription = self.create_subscription(
+            Float64MultiArray,
+            '/imu_filtered',
+            self.imu_filtered_callback,
+            qos_profile=SENSOR_QOS
+        )
+
         self.rcout_sub: Subscription = self.create_subscription(
             RCOut,
             '/mavros/rc/out',
@@ -130,12 +137,12 @@ class OLSNode(Node):
             qos_profile=SENSOR_QOS
         )
 
-        self.odom_sub: Subscription = self.create_subscription(
-            Odometry,
-            '/mavros/local_position/odom',
-            self.odom_callback,
-            qos_profile=SENSOR_QOS
-        )
+        # self.odom_sub: Subscription = self.create_subscription(
+        #     Odometry,
+        #     '/mavros/local_position/odom',
+        #     self.odom_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
 
         self.diff_pressure_sub: Subscription = self.create_subscription(
             FluidPressure,
@@ -230,7 +237,7 @@ class OLSNode(Node):
 
         self.livetime_sec.update_data(msg.header.stamp.sec)
         new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-        while len(self.livetime_nano) > 0 and new_nanosec_data < self.livetime_nano[-1]:
+        if new_nanosec_data < self.livetime_nano[-1]:
             new_nanosec_data += 1.0
 
         self.dt = new_nanosec_data - self.livetime_nano[-1]
@@ -243,6 +250,9 @@ class OLSNode(Node):
             if FIRST_PASS:
                 FIRST_PASS = False
                 ModelStructure.update_shared_cp_time(self.livetime_nano[0])
+                # self.max_elapsed = 0
+                # self.min_elapsed = 1
+                # self.ema_elapsed = 0
             else:
                 ModelStructure.update_shared_cp_timestep(self.dt)
 
@@ -269,6 +279,30 @@ class OLSNode(Node):
             #     "new_data": poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data),
             #     "filtered_data": self.lpf_rol_accel.current()
             # }
+            # with open("first_filter_record.pkl", "ab") as f1:
+            #     pkl.dump(first_filter_record, f1)
+            # with open("deriv_record.pkl", "ab") as f2:
+            #     pkl.dump(deriv_record, f2)
+            # with open("second_filter_record.pkl", "ab") as f3:
+            #     pkl.dump(second_filter_record, f3)
+
+            # end = time.perf_counter()
+            # elapsed = end - start
+            # self.max_elapsed = np.max([self.max_elapsed, elapsed])
+            # self.min_elapsed = np.min([self.min_elapsed, elapsed])
+            # num_pts = 99
+            # alpha = 2 / (num_pts + 1)
+            # self.ema_elapsed = (alpha * elapsed) + ((1-alpha) * self.ema_elapsed)
+            # print(f"imu_callback runtime - avg: {self.ema_elapsed*1e3:.3f} ms\tmax: {self.max_elapsed*1e3:.3f} ms\tmin: {self.min_elapsed*1e3:.3f} ms")
+            # }
+
+    def imu_filtered_callback(self, msg: Float64MultiArray) -> None:
+        self.rol_velo.update_data(msg.data[0])
+        self.pit_velo.update_data(msg.data[1])
+        self.yaw_velo.update_data(msg.data[2])
+        self.rol_accel.update_data(msg.data[3])
+        self.pit_accel.update_data(msg.data[4])
+        self.yaw_accel.update_data(msg.data[5])
 
     def rcout_callback(self, msg: RCOut) -> None:
         self.ail_pwm.update_data(msg.channels[0])
@@ -325,6 +359,10 @@ class OLSNode(Node):
 
 
     def setup_all_publishers(self) -> None:
+        self.accel_delays = 2
+        self.velo_delays = 0
+        self.ctrl_delays = 0
+
         self.ols_rol_publisher: Publisher = self.create_publisher(
                 Float64MultiArray, 'ols_rol', 10)
         timer_period: float = 0.02
@@ -346,8 +384,8 @@ class OLSNode(Node):
         self.ols_rol_large_publisher: Publisher = self.create_publisher(
                 Float64MultiArray, 'ols_rol_large', 10)
         timer_period: float = 0.02
-        # self.ols_rol_large_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_large_data)
+        self.ols_rol_large_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_large_data)
         
         self.ols_rol_nondim_publisher: Publisher = self.create_publisher(
                 Float64MultiArray, 'ols_rol_nondim', 10)
@@ -410,14 +448,14 @@ class OLSNode(Node):
         #     timer_period, self.publish_ols_rol_large_ssa_nondim_inertias_data)
         
     def publish_ols_rol_data(self) -> None:
-        self.rol.update_model(self.rol_accel.data[2], [self.rol_velo.data[0], self.ail_pwm.data[15]])
+        self.rol.update_model(self.rol_accel.data[self.accel_delays], [self.rol_velo.data[self.velo_delays], self.ail_pwm.data[self.ctrl_delays]])
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
-            np.float64(self.rol_accel.data.item(2)),
+            np.float64(self.rol_accel.data.item(self.accel_delays)),
 
-            np.float64(self.rol_velo.data.item(0)),
-            np.float64(self.ail_pwm.data.item(15)),
+            np.float64(self.rol_velo.data.item(self.velo_delays)),
+            np.float64(self.ail_pwm.data.item(self.ctrl_delays)),
 
             self.rol.parameters[0],
             self.rol.parameters[1]
@@ -455,16 +493,16 @@ class OLSNode(Node):
         self.ols_yaw_publisher.publish(msg)
         
     def publish_ols_rol_large_data(self) -> None:
-        self.rol_large.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], self.ail_pwm.data[0], self.yaw_velo.data[0], self.rud_pwm.data[0]])
+        self.rol_large.update_model(self.rol_accel.data[self.accel_delays], [self.rol_velo.data[self.velo_delays], self.ail_pwm.data[self.ctrl_delays], self.yaw_velo.data[self.velo_delays], self.rud_pwm.data[self.ctrl_delays]])
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
-            np.float64(self.rol_accel.data.item(0)),
+            np.float64(self.rol_accel.data.item(self.accel_delays)),
 
-            np.float64(self.rol_velo.data.item(0)),
-            np.float64(self.ail_pwm.data.item(0)),
-            np.float64(self.yaw_velo.data.item(0)),
-            np.float64(self.rud_pwm.data.item(0)),
+            np.float64(self.rol_velo.data.item(self.velo_delays)),
+            np.float64(self.ail_pwm.data.item(self.ctrl_delays)),
+            np.float64(self.yaw_velo.data.item(self.velo_delays)),
+            np.float64(self.rud_pwm.data.item(self.ctrl_delays)),
 
             self.rol_large.parameters[0],
             self.rol_large.parameters[1],

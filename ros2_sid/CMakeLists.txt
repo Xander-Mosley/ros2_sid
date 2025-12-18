@@ -58,8 +58,9 @@ install(PROGRAMS
   scripts/testingsignals_HINL.py
   scripts/testingsignals_SINL.py
   scripts/systemidentification_synced.py
-  scripts/systemidentification_unsynced.py  
+  scripts/systemidentification_unsynced.py
   scripts/gcs_test_input.py
+  scripts/datafiltering.py
   # scripts/client_member_function.py
   # scripts/service_member_function.py
   DESTINATION lib/${PROJECT_NAME}

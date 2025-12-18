@@ -1214,6 +1214,42 @@ def plot_correlation(
         for ax in axs:
             ax.yaxis.set_major_formatter(formatter)
 
+def plot_filter_duration(
+        dataframe: pd.DataFrame,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None,
+        plot_labels: Optional[dict] = None
+        ) -> PlotFigure:
+
+    if dataframe is None or dataframe.empty or 'timestamp' not in dataframe.columns:
+        raise ValueError("Invalid DataFrame provided.")
+    if plot_labels is None:
+        plot_labels = {}
+        
+    if start_time is not None:
+        dataframe = dataframe[dataframe["timestamp"] >= start_time]
+    if end_time is not None:
+        dataframe = dataframe[dataframe["timestamp"] <= end_time]
+
+    time = dataframe["timestamp"]
+    elapsed = dataframe["elapsed"] * 1000
+    ema_elapsed = dataframe["ema_elapsed"] * 1000
+    max_elapsed = dataframe["max_elapsed"] * 1000
+    min_elapsed = dataframe["min_elapsed"] * 1000
+
+    fig = PlotFigure(nrows=1, ncols=1, figsize=(12, 6), sharex=True)
+    base_title = "Filter Performance - Duration"
+    subtitle = plot_labels.get("subtitle", "Last Test")
+    fig.set_figure_title(f"{base_title}\n{subtitle}" if subtitle else base_title)
+
+    fig.define_subplot(0, title="Filter Duration Over Time", ylabel="Time\n[ms]", xlabel="Time [s]")
+    fig.add_scatter(0, time, elapsed, color='tab:blue')
+    fig.add_data(0, time, ema_elapsed, color='black')
+    fig.add_fill_between(0, time, max_elapsed, min_elapsed, "Bounds", color="tab:blue")
+
+    fig.set_all_legends(loc='upper right', fontsize='medium')
+    fig.set_all_grids(True, alpha=0.5)
+    return fig
 
 if __name__ == "__main__":
     csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/synced_all_data.csv"
@@ -1255,7 +1291,7 @@ if __name__ == "__main__":
     # plot_confidence(processed_models,  start_time, end_time, plot_labels)
     # TODO: Recenter around data, not confidence intervals.
     # plot_percent_confidence(processed_models,  start_time, end_time, plot_labels)
-    # plot_error(processed_models, start_time, end_time, plot_labels)
+    plot_error(processed_models, start_time, end_time, plot_labels)
     # plot_fit(processed_models,  start_time, end_time, plot_labels)
     # TODO: Review the R² calculations.
     # plot_conditioning(processed_models, start_time, end_time, plot_labels)
@@ -1263,5 +1299,7 @@ if __name__ == "__main__":
 
     # TODO: Add FFT plotter
     # TODO: Add Bode plotter
+
+    plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filter_duration_data.csv"))
 
     plt.show()

@@ -39,65 +39,71 @@ def _recenter_angles(data: ArrayLike) -> np.ndarray:
 
 
 def plot_overall(
-        dataframe: pd.DataFrame,
+        dataframes: list[pd.DataFrame],
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
         plot_labels: Optional[dict] = None
         ) -> PlotFigure:
-
-    if dataframe is None or dataframe.empty or 'timestamp' not in dataframe.columns:
-        raise ValueError("Invalid DataFrame provided.")
+    
+    if not dataframes or len(dataframes) != 5:
+        raise ValueError("Expected a list of 5 DataFrames (one per subplot).")
     if plot_labels is None:
         plot_labels = {}
-        
-    if start_time is not None:
-        dataframe = dataframe[dataframe["timestamp"] >= start_time]
-    if end_time is not None:
-        dataframe = dataframe[dataframe["timestamp"] <= end_time]
-
-    time = dataframe["timestamp"]
-    ail_def = dataframe["rcout_ch1"]
-    elv_def = dataframe["rcout_ch2"]
-    rud_def = dataframe["rcout_ch4"]
-    thrust = dataframe["rcout_ch3"]
-    rol_rate = dataframe["gx"]
-    pit_rate = dataframe["gy"]
-    yaw_rate = dataframe["gz"]
-    rol_deg = dataframe["roll_deg"]
-    pit_deg = dataframe["pitch_deg"]
-    yaw_deg = dataframe["yaw_deg"]
-    airspeed = dataframe["airspeed"]
-    altitude = dataframe["altitude"]
 
     fig = PlotFigure(nrows=5, ncols=1, figsize=(12, 6), sharex=True)
     base_title = "Flight Performance - Overall"
     subtitle = plot_labels.get("subtitle", "Last Test")
     fig.set_figure_title(f"{base_title}\n{subtitle}" if subtitle else base_title)
 
+    def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty or 'timestamp' not in df.columns:
+            raise ValueError("Invalid DataFrame provided.")
+        if start_time is not None:
+            df = df[df["timestamp"] >= start_time]
+        if end_time is not None:
+            df = df[df["timestamp"] <= end_time]
+        return df
+
+    # ---------- Subplot 0: Control Commands ----------
+    df = preprocess(dataframes[0])
+    t = df["timestamp"]
     fig.define_subplot(0, title="Control Commands Over Time", ylabel="PWM Signal")
-    fig.add_data(0, time, ail_def, label='Aileron', color='tab:blue')
-    fig.add_data(0, time, elv_def, label='Elevator', color='tab:red')
-    fig.add_data(0, time, rud_def, label='Rudder', color='tab:green')
-    fig.add_data(0, time, thrust, label='Thrust', color='black')
+    fig.add_data(0, t, df["rcout_ch1"], label="Aileron", color="tab:blue")
+    fig.add_data(0, t, df["rcout_ch2"], label="Elevator", color="tab:red")
+    fig.add_data(0, t, df["rcout_ch4"], label="Rudder", color="tab:green")
+    fig.add_data(0, t, df["rcout_ch3"], label="Thrust", color="black")
 
+    # ---------- Subplot 1: Rates ----------
+    df = preprocess(dataframes[1])
+    t = df["timestamp"]
     fig.define_subplot(1, title="Rates Over Time", ylabel="Angular Velocity\n[rad/s]")
-    fig.add_data(1, time, rol_rate, label='Roll', color='tab:blue')
-    fig.add_data(1, time, pit_rate, label='Pitch', color='tab:red')
-    fig.add_data(1, time, yaw_rate, label='Yaw', color='tab:green')
+    fig.add_data(1, t, df["gx"], label="Roll", color="tab:blue")
+    fig.add_data(1, t, df["gy"], label="Pitch", color="tab:red")
+    fig.add_data(1, t, df["gz"], label="Yaw", color="tab:green")
 
+    # ---------- Subplot 2: Attitude ----------
+    df = preprocess(dataframes[2])
+    t = df["timestamp"]
     fig.define_subplot(2, title="Attitude Over Time", ylabel="Roll & Pitch\n[deg]", y2label="Yaw\n[deg]")
-    fig.add_data(2, time, rol_deg, label='Roll', color='tab:blue')
-    fig.add_data(2, time, pit_deg, label='Pitch', color='tab:red')
-    fig.add_data_secondary_y(2, time, yaw_deg, label='Yaw', color='tab:green', axis_color='green')
+    fig.add_data(2, t, df["roll_deg"], label="Roll", color="tab:blue")
+    fig.add_data(2, t, df["pitch_deg"], label="Pitch", color="tab:red")
+    fig.add_data_secondary_y(2, t, df["yaw_deg"], label="Yaw", color="tab:green", axis_color="green")
 
+    # ---------- Subplot 3: Airspeed ----------
+    df = preprocess(dataframes[3])
+    t = df["timestamp"]
     fig.define_subplot(3, title="Airspeed Over Time", ylabel="Airspeed\n[m/s]")
-    fig.add_data(3, time, airspeed, color='black')
+    fig.add_data(3, t, df["airspeed"], color="black")
 
+    # ---------- Subplot 4: Altitude ----------
+    df = preprocess(dataframes[4])
+    t = df["timestamp"]
     fig.define_subplot(4, title="Altitude Over Time", ylabel="Altitude\n[m]", xlabel="Time [s]")
-    fig.add_data(4, time, altitude, color='black')
+    fig.add_data(4, t, df["altitude"], color="black")
 
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+    fig.set_all_legends(loc="upper right", fontsize="medium")
     fig.set_all_grids(True, alpha=0.5)
+
     return fig
 
 def plot_controls(
@@ -265,36 +271,42 @@ def plot_attitude(
     return fig
 
 def plot_energy(
-        dataframe: pd.DataFrame,
+        dataframes: list[pd.DataFrame],
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
         plot_labels: Optional[dict] = None
         ) -> PlotFigure:
-
-    if dataframe is None or dataframe.empty or 'timestamp' not in dataframe.columns:
-        raise ValueError("Invalid DataFrame provided.")
+    
+    if not dataframes or len(dataframes) != 2:
+        raise ValueError("Expected a list of 2 DataFrames (one per subplot).")
     if plot_labels is None:
         plot_labels = {}
-        
-    if start_time is not None:
-        dataframe = dataframe[dataframe["timestamp"] >= start_time]
-    if end_time is not None:
-        dataframe = dataframe[dataframe["timestamp"] <= end_time]
-
-    time = dataframe["timestamp"]
-    airspeed = dataframe["airspeed"]
-    altitude = dataframe["altitude"]
 
     fig = PlotFigure(nrows=2, ncols=1, figsize=(12, 6), sharex=True)
     base_title = "Flight Performance - Energy"
     subtitle = plot_labels.get("subtitle", "Last Test")
     fig.set_figure_title(f"{base_title}\n{subtitle}" if subtitle else base_title)
 
+    def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty or 'timestamp' not in df.columns:
+            raise ValueError("Invalid DataFrame provided.")
+        if start_time is not None:
+            df = df[df["timestamp"] >= start_time]
+        if end_time is not None:
+            df = df[df["timestamp"] <= end_time]
+        return df
+    
+    # ---------- Subplot 0: Airspeed ----------
+    df = preprocess(dataframes[0])
+    t = df["timestamp"]
     fig.define_subplot(0, title="Airspeed Over Time", ylabel="Airspeed\n[m/s]")
-    fig.add_data(0, time, airspeed, color='black')
+    fig.add_data(0, t, df["airspeed"], color="black")
 
+    # ---------- Subplot 1: Altitude ----------
+    df = preprocess(dataframes[1])
+    t = df["timestamp"]
     fig.define_subplot(1, title="Altitude Over Time", ylabel="Altitude\n[m]", xlabel="Time [s]")
-    fig.add_data(1, time, altitude, color='black')
+    fig.add_data(1, t, df["altitude"], color="black")
 
     fig.set_all_legends(loc='upper right', fontsize='medium')
     fig.set_all_grids(True, alpha=0.5)
@@ -342,45 +354,46 @@ def plot_trajectory(
     return fig
     
 def plot_input_performance(
-        trajectory_dataframe: pd.DataFrame,
-        odometry_dataframe: pd.DataFrame,
+        dataframes: list[pd.DataFrame],
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
         plot_labels: Optional[dict] = None,
         time_offset: float = 0.0
         ) -> PlotFigure:
-
-    if trajectory_dataframe is None or trajectory_dataframe.empty or 'timestamp' not in trajectory_dataframe.columns:
-        raise ValueError("Invalid DataFrame provided.")
-    if odometry_dataframe is None or odometry_dataframe.empty or 'timestamp' not in odometry_dataframe.columns:
-        raise ValueError("Invalid DataFrame provided.")
+    
+    if not dataframes or len(dataframes) != 2:
+        raise ValueError("Expected a list of 2 DataFrames (one per subplot).")
     if plot_labels is None:
         plot_labels = {}
-        
-    if start_time is not None:
-        trajectory_dataframe = trajectory_dataframe[trajectory_dataframe["timestamp"] >= start_time]
-    if end_time is not None:
-        trajectory_dataframe = trajectory_dataframe[trajectory_dataframe["timestamp"] <= end_time]
-    if start_time is not None:
-        odometry_dataframe = odometry_dataframe[odometry_dataframe["timestamp"] >= start_time]
-    if end_time is not None:
-        odometry_dataframe = odometry_dataframe[odometry_dataframe["timestamp"] <= end_time]
-
-    trajectory_time = trajectory_dataframe["timestamp"]
-    rol_cmd = trajectory_dataframe["roll_cmd"]
-    pit_cmd = trajectory_dataframe["pitch_cmd"]
-    yaw_cmd = trajectory_dataframe["yaw_cmd"]
-    
-    odometry_time = odometry_dataframe["timestamp"] - time_offset
-    rol_deg = odometry_dataframe["roll_deg"]
-    pit_deg = odometry_dataframe["pitch_deg"]
-    yaw_deg = odometry_dataframe["yaw_deg"]
-    # yaw_deg = _recenter_angles(odometry_dataframe["yaw_deg"])
 
     fig = PlotFigure(nrows=3, ncols=1, figsize=(12, 6), sharex=True)
     base_title = "Flight Performance - Trajectory Delay"
     subtitle = plot_labels.get("subtitle", "Last Test")
     fig.set_figure_title(f"{base_title}\n{subtitle}" if subtitle else base_title)
+
+    def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty or 'timestamp' not in df.columns:
+            raise ValueError("Invalid DataFrame provided.")
+        if start_time is not None:
+            df = df[df["timestamp"] >= start_time]
+        if end_time is not None:
+            df = df[df["timestamp"] <= end_time]
+        return df
+
+    # ---------- Data Sources ----------
+    trajectory_df = preprocess(dataframes[0])
+    odometry_df = preprocess(dataframes[1])
+
+    trajectory_time = trajectory_df["timestamp"]
+    rol_cmd = trajectory_df["roll_cmd"]
+    pit_cmd = trajectory_df["pitch_cmd"]
+    yaw_cmd = trajectory_df["yaw_cmd"]
+    
+    odometry_time = odometry_df["timestamp"] - time_offset
+    rol_deg = odometry_df["roll_deg"]
+    pit_deg = odometry_df["pitch_deg"]
+    yaw_deg = odometry_df["yaw_deg"]
+    # yaw_deg = _recenter_angles(odometry_df["yaw_deg"])
 
     fig.define_subplot(0, title="Roll Over Time", ylabel="Angle\n[deg]")
     fig.add_data(0, trajectory_time, rol_cmd, label="Command", color='black', linestyle="--")
@@ -400,13 +413,22 @@ def plot_input_performance(
 
 
 def flight_data(folder_path, start_time, end_time):
-    plot_overall(pd.read_csv(f"{folder_path}synced_all_data.csv"), start_time, end_time)
+    plot_overall(
+        [pd.read_csv(f"{folder_path}rcout_data.csv"),
+         pd.read_csv(f"{folder_path}imu_data.csv"),
+         pd.read_csv(f"{folder_path}odometry_data.csv"),
+         pd.read_csv(f"{folder_path}odometry_data.csv"),
+         pd.read_csv(f"{folder_path}altitude_data.csv")
+         ], start_time, end_time)
     # plot_controls(pd.read_csv(f"{folder_path}rcout_data.csv"), start_time, end_time)
     # # plot_rates(pd.read_csv(f"{folder_path}telem_data.csv"), start_time, end_time)
     # plot_rates(pd.read_csv(f"{folder_path}imu_data.csv"), start_time, end_time)
     # plot_raw_rates(pd.read_csv(f"{folder_path}imu_raw_data.csv"), start_time, end_time)
     # plot_attitude(pd.read_csv(f"{folder_path}odometry_data.csv"), start_time, end_time)
-    # plot_energy(pd.read_csv(f"{folder_path}synced_all_data.csv"), start_time, end_time)
+    # plot_energy([
+    #      pd.read_csv(f"{folder_path}odometry_data.csv"),
+    #      pd.read_csv(f"{folder_path}altitude_data.csv")
+    #      ], start_time, end_time)
 
 def flight_envelope(folder_path, start_time, end_time):
     pass
@@ -424,12 +446,10 @@ def landing_performance(folder_path, start_time, end_time):
 
 def control_performance(folder_path, start_time, end_time):
     # plot_trajectory(pd.read_csv(f"{folder_path}trajectory_data.csv"), start_time, end_time)
-    plot_input_performance(
+    plot_input_performance([
         pd.read_csv(f"{folder_path}trajectory_data.csv"),
-        pd.read_csv(f"{folder_path}odometry_data.csv"),
-        start_time,
-        end_time,
-        time_offset=0.0)
+        pd.read_csv(f"{folder_path}odometry_data.csv")
+        ], start_time, end_time, time_offset=0.0)
     # TODO: Make a lag plot for the command and response angle
 
 
