@@ -304,12 +304,10 @@ class OLSNode(Node):
         now = time.monotonic()
         if self.last_time is not None:
             ModelStructure.update_shared_cp_timestep(now - self.last_time)
-            print(f"{now - self.last_time} = {now} - {self.last_time}")
         else:
             ModelStructure.update_shared_cp_time(0)
-            print(f"0 = {now} - {self.last_time}")
         self.last_time = now
-            
+        
         self.rol_velo.update_data(msg.data[0])
         self.pit_velo.update_data(msg.data[1])
         self.yaw_velo.update_data(msg.data[2])
