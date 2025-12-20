@@ -175,18 +175,24 @@ def parse_imu_raw(msg, relative_time):
         'gz_raw': msg.angular_velocity.z
     }
 
-def parse_imu_filtered(msg, relative_time):
+def parse_filt_duration(msg, relative_time):
     return {
         'timestamp': relative_time,
-        'gx': msg.data[0],
-        'gy': msg.data[1],
-        'gz': msg.data[2],
-        'gax': msg.data[3],
-        'gay': msg.data[4],
-        'gaz': msg.data[5]
+        'elapsed': msg.data[0],
+        'ema_elapsed': msg.data[1],
+        'max_elapsed': msg.data[2],
+        'min_elapsed': msg.data[3]
+    }
+    
+def parse_imu_diff(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'gax': msg.data[0],
+        'gay': msg.data[1],
+        'gaz': msg.data[2]
     }
 
-def parse_filter_duration(msg, relative_time):
+def parse_diff_duration(msg, relative_time):
     return {
         'timestamp': relative_time,
         'elapsed': msg.data[0],
@@ -266,10 +272,12 @@ def parse_ros_message(label, msg, relative_time):
             return parse_imu(msg, relative_time)
         case 'imu_raw':
             return parse_imu_raw(msg, relative_time)
-        case 'imu_filtered':
-            return parse_imu_filtered(msg, relative_time)
-        case 'filter_duration':
-            return parse_filter_duration(msg, relative_time)
+        case 'filt_duration':
+            return parse_filt_duration(msg, relative_time)
+        case 'imu_diff':
+            return parse_imu_diff(msg, relative_time)
+        case 'diff_duration':
+            return parse_diff_duration(msg, relative_time)
         case 'telem':
             return parse_telem(msg, relative_time)
         case 'rcout':
@@ -364,14 +372,16 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2025-12-19_AddedCp/rosbag2_2025_12_19-18_35_29_0.db3'
+    bag_file = '/develop_ws/bag_files/2025-12-19_AllRollModels/rosbag2_2025_12_20-01_46_45_0.db3'
     
     topics_to_extract = {
-        '/mavros/imu/data': 'imu',
-        '/mavros/imu/data_raw': 'imu_raw',
+        # '/mavros/imu/data': 'imu',
+        # '/mavros/imu/data_raw': 'imu_raw',
         # '/telem': 'telem',
-        '/imu_filtered': 'imu_filtered',
-        '/imu_filter_duration': 'filter_duration',
+        '/imu_filt': 'imu',
+        '/imu_filt_duration': 'filt_duration',
+        '/imu_diff': 'imu_diff',
+        '/imu_diff_duration': 'diff_duration',
         '/mavros/rc/out': 'rcout',
         '/mavros/rc/in': 'rcin',
         '/mavros/local_position/odom': 'odometry',
@@ -384,8 +394,10 @@ if __name__ == "__main__":
         '/trajectory': 'trajectory',
 
         '/ols_rol': 'ols_rol',
-        '/ols_pit': 'ols_pit',
-        '/ols_yaw': 'ols_yaw',
+        '/ols_rol_slowed': 'ols_rol_slowed',
+        '/ols_rol_sped': 'ols_rol_sped',
+        # '/ols_pit': 'ols_pit',
+        # '/ols_yaw': 'ols_yaw',
         '/ols_rol_large': 'ols_rol_large',
 
         '/ols_rol_nondim': 'ols_rol_nondim',

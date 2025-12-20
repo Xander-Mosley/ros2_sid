@@ -25,28 +25,22 @@ from ros2_sid.signal_processing import (
 
 FIRST_PASS = True
 
-class DataFiltering(Node):
+class IMUFiltering(Node):
     def __init__(self, ns=''):
-        super().__init__('data_filtering_node')
+        super().__init__('imu_filtering_node')
         self.setup_vars()
         self.setup_subs()
         self.setup_pubs()
         
     def setup_vars(self):
-        self.livetime_sec = StoredData(5, 1)
+        self.livetime_sec = 0.0
         self.livetime_nano = deque([0.0, 0.0, 0.0, 0.0, 0.0],maxlen=5)
-        self.rol_velo = StoredData(5, 1)
         self.lpf_rol_velo = ButterworthLowPass_VDT_2O(1.54)
-        self.pit_velo = StoredData(5, 1)
         self.lpf_pit_velo = ButterworthLowPass_VDT_2O(1.54)
-        self.yaw_velo = StoredData(5, 1)
         self.lpf_yaw_velo = ButterworthLowPass_VDT_2O(1.54)
-        self.rol_accel = StoredData(5, 1)
-        self.lpf_rol_accel = ButterworthLowPass_VDT_2O(1.54)
-        self.pit_accel = StoredData(5, 1)
-        self.lpf_pit_accel = ButterworthLowPass_VDT_2O(1.54)
-        self.yaw_accel = StoredData(5, 1)
-        self.lpf_yaw_accel = ButterworthLowPass_VDT_2O(1.54)
+        self.rol_velo = 0.0
+        self.pit_velo = 0.0
+        self.yaw_velo = 0.0
         
         self.elapsed = 0
         self.max_elapsed = 0
@@ -67,7 +61,7 @@ class DataFiltering(Node):
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
         global FIRST_PASS
 
-        self.livetime_sec.update_data(sub_msg.header.stamp.sec)
+        self.livetime_sec = sub_msg.header.stamp.sec
         new_nanosec_data: float = sub_msg.header.stamp.nanosec * 1E-9
         if new_nanosec_data < self.livetime_nano[-1]:
             new_nanosec_data += 1.0
@@ -78,30 +72,16 @@ class DataFiltering(Node):
             if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
                 self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
 
-            if FIRST_PASS:
-                FIRST_PASS = False
-                ModelStructure.update_shared_cp_time(self.livetime_nano[0])
-            else:
-                ModelStructure.update_shared_cp_timestep(self.dt)
-
-            self.rol_velo.update_data(self.lpf_rol_velo.update(sub_msg.angular_velocity.x, self.dt))
-            self.pit_velo.update_data(self.lpf_pit_velo.update(sub_msg.angular_velocity.y, self.dt))
-            self.yaw_velo.update_data(self.lpf_yaw_velo.update(sub_msg.angular_velocity.z, self.dt))
-
-            self.rol_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), self.dt))
-            self.pit_accel.update_data(self.lpf_pit_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.pit_velo.data), self.dt))
-            self.yaw_accel.update_data(self.lpf_yaw_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.yaw_velo.data), self.dt))
+            self.pit_velo = self.lpf_pit_velo.update(sub_msg.angular_velocity.y, self.dt)
+            self.rol_velo = self.lpf_rol_velo.update(sub_msg.angular_velocity.x, self.dt)
+            self.yaw_velo = self.lpf_yaw_velo.update(sub_msg.angular_velocity.z, self.dt)
             
-            pub_msg: Float64MultiArray = Float64MultiArray()
-            pub_msg.data = [
-                np.float64(self.rol_velo.data.item(0)),
-                np.float64(self.pit_velo.data.item(0)),
-                np.float64(self.yaw_velo.data.item(0)),
-                np.float64(self.rol_accel.data.item(0)),
-                np.float64(self.pit_accel.data.item(0)),
-                np.float64(self.yaw_accel.data.item(0))
-            ]
-            self.imu_filtered.publish(pub_msg)
+            pub_msg: Imu = Imu()
+            pub_msg.header = sub_msg.header
+            pub_msg.angular_velocity.x = np.float64(self.rol_velo)
+            pub_msg.angular_velocity.y = np.float64(self.pit_velo)
+            pub_msg.angular_velocity.z = np.float64(self.yaw_velo)
+            self.imu_filt.publish(pub_msg)
 
             end = time.perf_counter()
             self.elapsed = end - start
@@ -119,29 +99,29 @@ class DataFiltering(Node):
                 np.float64(self.max_elapsed),
                 np.float64(self.min_elapsed),
             ]
-            self.imu_filter_duration.publish(pub_msg_2)
+            self.imu_filt_duration.publish(pub_msg_2)
 
 
     def setup_pubs(self):
-        self.imu_filtered: Publisher = self.create_publisher(
-            Float64MultiArray, 'imu_filtered', 10)
+        self.imu_filt: Publisher = self.create_publisher(
+            Imu, 'imu_filt', 10)
         
-        self.imu_filter_duration: Publisher = self.create_publisher(
-            Float64MultiArray, 'imu_filter_duration', 10)
+        self.imu_filt_duration: Publisher = self.create_publisher(
+            Float64MultiArray, 'imu_filt_duration', 10)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    data_filtering_node = DataFiltering()
+    imu_filtering_node = IMUFiltering()
 
     while rclpy.ok():
         try:
-            rclpy.spin_once(data_filtering_node, timeout_sec=0.1)
+            rclpy.spin_once(imu_filtering_node, timeout_sec=0.1)
 
         except KeyboardInterrupt:
             break
 
-    data_filtering_node.destroy_node()
+    imu_filtering_node.destroy_node()
     rclpy.shutdown()
 
 

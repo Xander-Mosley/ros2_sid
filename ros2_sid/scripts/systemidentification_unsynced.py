@@ -50,17 +50,11 @@ class OLSNode(Node):
         self.livetime_sec = StoredData(5, 1)
         self.livetime_nano = deque([0.0, 0.0, 0.0, 0.0, 0.0],maxlen=5)
         self.rol_velo = StoredData(5, 1)
-        # self.lpf_rol_velo = ButterworthLowPass_VDT_2O(1.54)
         self.pit_velo = StoredData(5, 1)
-        # self.lpf_pit_velo = ButterworthLowPass_VDT_2O(1.54)
         self.yaw_velo = StoredData(5, 1)
-        # self.lpf_yaw_velo = ButterworthLowPass_VDT_2O(1.54)
         self.rol_accel = StoredData(5, 1)
-        # self.lpf_rol_accel = ButterworthLowPass_VDT_2O(1.54)
         self.pit_accel = StoredData(5, 1)
-        # self.lpf_pit_accel = ButterworthLowPass_VDT_2O(1.54)
         self.yaw_accel = StoredData(5, 1)
-        # self.lpf_yaw_accel = ButterworthLowPass_VDT_2O(1.54)
 
         self.ail_pwm = StoredData(5, 1)
         self.elv_pwm = StoredData(5, 1)
@@ -90,21 +84,23 @@ class OLSNode(Node):
 
         # initialize model structure objects
         self.rol = ModelStructure(2)
+        self.rol_slowed = ModelStructure(2)
+        self.rol_sped = ModelStructure(2)
         self.pit = ModelStructure(2)
         self.yaw = ModelStructure(2)
         self.rol_large = ModelStructure(4)
 
-        # self.rol_nondim = ModelStructure(2)
-        # self.rol_nondim_inertias = ModelStructure(4)
-        # self.rol_ssa = ModelStructure(3)
-        # self.rol_ssa_nondim = ModelStructure(3)
-        # self.rol_ssa_nondim_inertias = ModelStructure(5)
+        self.rol_nondim = ModelStructure(2)
+        self.rol_nondim_inertias = ModelStructure(4)
+        self.rol_ssa = ModelStructure(3)
+        self.rol_ssa_nondim = ModelStructure(3)
+        self.rol_ssa_nondim_inertias = ModelStructure(5)
 
-        # self.rol_large_nondim = ModelStructure(4)
-        # self.rol_large_nondim_inertias = ModelStructure(6)
-        # self.rol_large_ssa = ModelStructure(5)
-        # self.rol_large_ssa_nondim = ModelStructure(5)
-        # self.rol_large_ssa_nondim_inertias = ModelStructure(7)
+        self.rol_large_nondim = ModelStructure(4)
+        self.rol_large_nondim_inertias = ModelStructure(6)
+        self.rol_large_ssa = ModelStructure(5)
+        self.rol_large_ssa_nondim = ModelStructure(5)
+        self.rol_large_ssa_nondim_inertias = ModelStructure(7)
     
 
     def setup_all_subscriptions(self) -> None:
@@ -124,9 +120,16 @@ class OLSNode(Node):
         # )
 
         self.imu_filtered_sub: Subscription = self.create_subscription(
-            Float64MultiArray,
-            '/imu_filtered',
+            Imu,
+            '/imu_filt',
             self.imu_filtered_callback,
+            qos_profile=SENSOR_QOS
+        )
+
+        self.imu_differentiated_sub: Subscription = self.create_subscription(
+            Float64MultiArray,
+            '/imu_diff',
+            self.imu_differentiated_callback,
             qos_profile=SENSOR_QOS
         )
 
@@ -137,33 +140,33 @@ class OLSNode(Node):
             qos_profile=SENSOR_QOS
         )
 
-        # self.odom_sub: Subscription = self.create_subscription(
-        #     Odometry,
-        #     '/mavros/local_position/odom',
-        #     self.odom_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.odom_sub: Subscription = self.create_subscription(
+            Odometry,
+            '/mavros/local_position/odom',
+            self.odom_callback,
+            qos_profile=SENSOR_QOS
+        )
 
-        # self.diff_pressure_sub: Subscription = self.create_subscription(
-        #     FluidPressure,
-        #     '/mavros/imu/diff_pressure',
-        #     self.diff_pressure_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.diff_pressure_sub: Subscription = self.create_subscription(
+            FluidPressure,
+            '/mavros/imu/diff_pressure',
+            self.diff_pressure_callback,
+            qos_profile=SENSOR_QOS
+        )
 
-        # self.static_pressure_sub: Subscription = self.create_subscription(
-        #     FluidPressure,
-        #     '/mavros/imu/static_pressure',
-        #     self.static_pressure_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.static_pressure_sub: Subscription = self.create_subscription(
+            FluidPressure,
+            '/mavros/imu/static_pressure',
+            self.static_pressure_callback,
+            qos_profile=SENSOR_QOS
+        )
 
-        # self.temperature_baro_sub: Subscription = self.create_subscription(
-        #     Temperature,
-        #     '/mavros/imu/temperature_baro',
-        #     self.temperature_baro_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.temperature_baro_sub: Subscription = self.create_subscription(
+            Temperature,
+            '/mavros/imu/temperature_baro',
+            self.temperature_baro_callback,
+            qos_profile=SENSOR_QOS
+        )
 
     # def imu_callback(self, msg: Imu) -> None:
     #     # start = time.perf_counter()
@@ -296,7 +299,7 @@ class OLSNode(Node):
     #         # print(f"imu_callback runtime - avg: {self.ema_elapsed*1e3:.3f} ms\tmax: {self.max_elapsed*1e3:.3f} ms\tmin: {self.min_elapsed*1e3:.3f} ms")
     #         # }
 
-    def imu_filtered_callback(self, msg: Float64MultiArray) -> None:
+    def imu_filtered_callback(self, msg: Imu) -> None:
         global FIRST_PASS
         if FIRST_PASS:
             FIRST_PASS = False
@@ -308,12 +311,14 @@ class OLSNode(Node):
             ModelStructure.update_shared_cp_time(0)
         self.last_time = now
         
-        self.rol_velo.update_data(msg.data[0])
-        self.pit_velo.update_data(msg.data[1])
-        self.yaw_velo.update_data(msg.data[2])
-        self.rol_accel.update_data(msg.data[3])
-        self.pit_accel.update_data(msg.data[4])
-        self.yaw_accel.update_data(msg.data[5])
+        self.rol_velo.update_data(msg.angular_velocity.x)
+        self.pit_velo.update_data(msg.angular_velocity.y)
+        self.yaw_velo.update_data(msg.angular_velocity.z)
+
+    def imu_differentiated_callback(self, msg: Float64MultiArray) -> None:
+        self.rol_accel.update_data(msg.data[0])
+        self.pit_accel.update_data(msg.data[1])
+        self.yaw_accel.update_data(msg.data[2])
 
     def rcout_callback(self, msg: RCOut) -> None:
         self.ail_pwm.update_data(msg.channels[0])
@@ -372,13 +377,25 @@ class OLSNode(Node):
     def setup_all_publishers(self) -> None:
         self.accel_delays = 0
         self.velo_delays = 0
-        self.ctrl_delays = 0
+        self.ctrl_delays = 1
 
         self.ols_rol_publisher: Publisher = self.create_publisher(
                 Float64MultiArray, 'ols_rol', 10)
         timer_period: float = 0.02
         self.ols_rol_timer = self.create_timer(
             timer_period, self.publish_ols_rol_data)
+
+        self.ols_rol_slowed_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_slowed', 10)
+        timer_period: float = 0.25
+        self.ols_rol_slowed_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_slowed_data)
+
+        self.ols_rol_sped_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_sped', 10)
+        timer_period: float = 1 / 30
+        self.ols_rol_sped_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_sped_data)
 
         # self.ols_pit_publisher: Publisher = self.create_publisher(
         #         Float64MultiArray, 'ols_pit', 10)
@@ -398,65 +415,65 @@ class OLSNode(Node):
         self.ols_rol_large_timer = self.create_timer(
             timer_period, self.publish_ols_rol_large_data)
         
-        # self.ols_rol_nondim_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_nondim', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_nondim_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_nondim_data)
+        self.ols_rol_nondim_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_nondim', 10)
+        timer_period: float = 0.02
+        self.ols_rol_nondim_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_nondim_data)
 
-        # self.ols_rol_nondim_inertias_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_nondim_inertias', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_nondim_inertias_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_nondim_inertias_data)
+        self.ols_rol_nondim_inertias_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_nondim_inertias', 10)
+        timer_period: float = 0.02
+        self.ols_rol_nondim_inertias_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_nondim_inertias_data)
 
-        # self.ols_rol_ssa_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_ssa', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_ssa_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_ssa_data)
+        self.ols_rol_ssa_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_ssa', 10)
+        timer_period: float = 0.02
+        self.ols_rol_ssa_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_ssa_data)
 
-        # self.ols_rol_ssa_nondim_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_ssa_nondim', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_ssa_nondim_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_ssa_nondim_data)
+        self.ols_rol_ssa_nondim_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_ssa_nondim', 10)
+        timer_period: float = 0.02
+        self.ols_rol_ssa_nondim_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_ssa_nondim_data)
 
-        # self.ols_rol_ssa_nondim_inertias_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_ssa_nondim_inertias', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_ssa_nondim_inertias_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_ssa_nondim_inertias_data)
+        self.ols_rol_ssa_nondim_inertias_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_ssa_nondim_inertias', 10)
+        timer_period: float = 0.02
+        self.ols_rol_ssa_nondim_inertias_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_ssa_nondim_inertias_data)
 
-        # self.ols_rol_large_nondim_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_large_nondim', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_large_nondim_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_large_nondim_data)
+        self.ols_rol_large_nondim_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_large_nondim', 10)
+        timer_period: float = 0.02
+        self.ols_rol_large_nondim_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_large_nondim_data)
 
-        # self.ols_rol_large_nondim_inertias_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_large_nondim_inertias', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_large_nondim_inertias_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_large_nondim_inertias_data)
+        self.ols_rol_large_nondim_inertias_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_large_nondim_inertias', 10)
+        timer_period: float = 0.02
+        self.ols_rol_large_nondim_inertias_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_large_nondim_inertias_data)
 
-        # self.ols_rol_large_ssa_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_large_ssa', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_large_ssa_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_large_ssa_data)
+        self.ols_rol_large_ssa_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_large_ssa', 10)
+        timer_period: float = 0.02
+        self.ols_rol_large_ssa_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_large_ssa_data)
 
-        # self.ols_rol_large_ssa_nondim_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_large_ssa_nondim', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_large_ssa_nondim_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_large_ssa_nondim_data)
+        self.ols_rol_large_ssa_nondim_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_large_ssa_nondim', 10)
+        timer_period: float = 0.02
+        self.ols_rol_large_ssa_nondim_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_large_ssa_nondim_data)
 
-        # self.ols_rol_large_ssa_nondim_inertias_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_large_ssa_nondim_inertias', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_large_ssa_nondim_inertias_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_large_ssa_nondim_inertias_data)
+        self.ols_rol_large_ssa_nondim_inertias_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_large_ssa_nondim_inertias', 10)
+        timer_period: float = 0.02
+        self.ols_rol_large_ssa_nondim_inertias_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_large_ssa_nondim_inertias_data)
         
     def publish_ols_rol_data(self) -> None:
         self.rol.update_model(self.rol_accel.data[self.accel_delays], [self.rol_velo.data[self.velo_delays], (self.ail_pwm.data[self.ctrl_delays] - 1500) / 1500])
@@ -472,6 +489,36 @@ class OLSNode(Node):
             self.rol.parameters[1]
             ]
         self.ols_rol_publisher.publish(msg)
+                
+    def publish_ols_rol_slowed_data(self) -> None:
+        self.rol_slowed.update_model(self.rol_accel.data[self.accel_delays], [self.rol_velo.data[self.velo_delays], (self.ail_pwm.data[self.ctrl_delays] - 1500) / 1500])
+
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(self.rol_accel.data.item(self.accel_delays)),
+
+            np.float64(self.rol_velo.data.item(self.velo_delays)),
+            np.float64(self.ail_pwm.data.item(self.ctrl_delays)),
+
+            self.rol_slowed.parameters[0],
+            self.rol_slowed.parameters[1]
+            ]
+        self.ols_rol_slowed_publisher.publish(msg)   
+
+    def publish_ols_rol_sped_data(self) -> None:
+        self.rol_sped.update_model(self.rol_accel.data[self.accel_delays], [self.rol_velo.data[self.velo_delays], (self.ail_pwm.data[self.ctrl_delays] - 1500) / 1500])
+
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(self.rol_accel.data.item(self.accel_delays)),
+
+            np.float64(self.rol_velo.data.item(self.velo_delays)),
+            np.float64(self.ail_pwm.data.item(self.ctrl_delays)),
+
+            self.rol_sped.parameters[0],
+            self.rol_sped.parameters[1]
+            ]
+        self.ols_rol_sped_publisher.publish(msg)
         
     # def publish_ols_pit_data(self) -> None:
     #     self.pit.update_model(self.pit_accel.data[0], [self.pit_velo.data[0], self.elv_pwm.data[0]])
@@ -522,287 +569,287 @@ class OLSNode(Node):
             ]
         self.ols_rol_large_publisher.publish(msg)
 
-    # def publish_ols_rol_nondim_data(self) -> None:
-    #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
-    #     airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
-    #     airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+    def publish_ols_rol_nondim_data(self) -> None:
+        R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
+        airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
         
-    #     Z = self.rol_accel.data[0]
-    #     X1 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
-    #     X2 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
+        Z = self.rol_accel.data[0]
+        X1 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
+        X2 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
 
-    #     self.rol_nondim.update_model(Z, [X1, X2])
+        self.rol_nondim.update_model(Z, [X1, X2])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
 
-    #         self.rol_nondim.parameters[0],
-    #         self.rol_nondim.parameters[1]
-    #         ]
-    #     self.ols_rol_nondim_publisher.publish(msg)
+            self.rol_nondim.parameters[0],
+            self.rol_nondim.parameters[1]
+            ]
+        self.ols_rol_nondim_publisher.publish(msg)
 
-    # def publish_ols_rol_nondim_inertias_data(self) -> None:
-    #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
-    #     airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
-    #     airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+    def publish_ols_rol_nondim_inertias_data(self) -> None:
+        R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
+        airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
         
-    #     Z = self.rol_accel.data[0]
-    #     X1 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
-    #     X2 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
-    #     X3 = self.pit_velo.data[0] * self.yaw_velo.data[0]
-    #     X4 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
+        Z = self.rol_accel.data[0]
+        X1 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
+        X2 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
+        X3 = self.pit_velo.data[0] * self.yaw_velo.data[0]
+        X4 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
 
-    #     self.rol_nondim_inertias.update_model(Z, [X1, X2, X3, X4])
+        self.rol_nondim_inertias.update_model(Z, [X1, X2, X3, X4])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
-    #         np.float64(X3.item(0)),
-    #         np.float64(X4.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+            np.float64(X3.item(0)),
+            np.float64(X4.item(0)),
 
-    #         self.rol_nondim_inertias.parameters[0],
-    #         self.rol_nondim_inertias.parameters[1],
-    #         self.rol_nondim_inertias.parameters[2],
-    #         self.rol_nondim_inertias.parameters[3]
-    #         ]
-    #     self.ols_rol_nondim_inertias_publisher.publish(msg)
+            self.rol_nondim_inertias.parameters[0],
+            self.rol_nondim_inertias.parameters[1],
+            self.rol_nondim_inertias.parameters[2],
+            self.rol_nondim_inertias.parameters[3]
+            ]
+        self.ols_rol_nondim_inertias_publisher.publish(msg)
         
-    # def publish_ols_rol_ssa_data(self) -> None:
-    #     self.rol_ssa.update_model(self.rol_accel.data[0], [self.ssa.data[0], self.rol_velo.data[0], self.ail_pwm.data[0]])
+    def publish_ols_rol_ssa_data(self) -> None:
+        self.rol_ssa.update_model(self.rol_accel.data[0], [self.ssa.data[0], self.rol_velo.data[0], self.ail_pwm.data[0]])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(self.rol_accel.data.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(self.rol_accel.data.item(0)),
 
-    #         np.float64(self.ssa.data.item(0)),
-    #         np.float64(self.rol_velo.data.item(0)),
-    #         np.float64(self.ail_pwm.data.item(0)),
+            np.float64(self.ssa.data.item(0)),
+            np.float64(self.rol_velo.data.item(0)),
+            np.float64(self.ail_pwm.data.item(0)),
 
-    #         self.rol_ssa.parameters[0],
-    #         self.rol_ssa.parameters[1],
-    #         self.rol_ssa.parameters[2]
-    #         ]
-    #     self.ols_rol_ssa_publisher.publish(msg)
+            self.rol_ssa.parameters[0],
+            self.rol_ssa.parameters[1],
+            self.rol_ssa.parameters[2]
+            ]
+        self.ols_rol_ssa_publisher.publish(msg)
 
-    # def publish_ols_rol_ssa_nondim_data(self) -> None:
-    #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
-    #     airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
-    #     airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+    def publish_ols_rol_ssa_nondim_data(self) -> None:
+        R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
+        airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
         
-    #     Z = self.rol_accel.data[0]
-    #     X1 = self.dyn_pres.data[0] * self.ssa.data[0]
-    #     X2 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
-    #     X3 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
+        Z = self.rol_accel.data[0]
+        X1 = self.dyn_pres.data[0] * self.ssa.data[0]
+        X2 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
+        X3 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
 
-    #     self.rol_ssa_nondim.update_model(Z, [X1, X2, X3])
+        self.rol_ssa_nondim.update_model(Z, [X1, X2, X3])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
-    #         np.float64(X3.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+            np.float64(X3.item(0)),
 
-    #         self.rol_ssa_nondim.parameters[0],
-    #         self.rol_ssa_nondim.parameters[1],
-    #         self.rol_ssa_nondim.parameters[2]
-    #         ]
-    #     self.ols_rol_ssa_nondim_publisher.publish(msg)
+            self.rol_ssa_nondim.parameters[0],
+            self.rol_ssa_nondim.parameters[1],
+            self.rol_ssa_nondim.parameters[2]
+            ]
+        self.ols_rol_ssa_nondim_publisher.publish(msg)
 
-    # def publish_ols_rol_ssa_nondim_inertias_data(self) -> None:
-    #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
-    #     airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
-    #     airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+    def publish_ols_rol_ssa_nondim_inertias_data(self) -> None:
+        R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
+        airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
         
-    #     Z = self.rol_accel.data[0]
-    #     X1 = self.dyn_pres.data[0] * self.ssa.data[0]
-    #     X2 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
-    #     X3 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
-    #     X4 = self.pit_velo.data[0] * self.yaw_velo.data[0]
-    #     X5 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
+        Z = self.rol_accel.data[0]
+        X1 = self.dyn_pres.data[0] * self.ssa.data[0]
+        X2 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
+        X3 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
+        X4 = self.pit_velo.data[0] * self.yaw_velo.data[0]
+        X5 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
 
-    #     self.rol_ssa_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5])
+        self.rol_ssa_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
-    #         np.float64(X3.item(0)),
-    #         np.float64(X4.item(0)),
-    #         np.float64(X5.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+            np.float64(X3.item(0)),
+            np.float64(X4.item(0)),
+            np.float64(X5.item(0)),
 
-    #         self.rol_ssa_nondim_inertias.parameters[0],
-    #         self.rol_ssa_nondim_inertias.parameters[1],
-    #         self.rol_ssa_nondim_inertias.parameters[2],
-    #         self.rol_ssa_nondim_inertias.parameters[3],
-    #         self.rol_ssa_nondim_inertias.parameters[4]
-    #         ]
-    #     self.ols_rol_ssa_nondim_inertias_publisher.publish(msg)
+            self.rol_ssa_nondim_inertias.parameters[0],
+            self.rol_ssa_nondim_inertias.parameters[1],
+            self.rol_ssa_nondim_inertias.parameters[2],
+            self.rol_ssa_nondim_inertias.parameters[3],
+            self.rol_ssa_nondim_inertias.parameters[4]
+            ]
+        self.ols_rol_ssa_nondim_inertias_publisher.publish(msg)
 
-    # def publish_ols_rol_large_nondim_data(self) -> None:
-    #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
-    #     airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
-    #     airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+    def publish_ols_rol_large_nondim_data(self) -> None:
+        R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
+        airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
         
-    #     Z = self.rol_accel.data[0]
-    #     X1 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
-    #     X2 = self.dyn_pres.data[0] * self.yaw_velo.data[0] / airspeed
-    #     X3 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
-    #     X4 = self.dyn_pres.data[0] * self.rud_pwm.data[0]
+        Z = self.rol_accel.data[0]
+        X1 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
+        X2 = self.dyn_pres.data[0] * self.yaw_velo.data[0] / airspeed
+        X3 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
+        X4 = self.dyn_pres.data[0] * self.rud_pwm.data[0]
 
-    #     self.rol_large_nondim.update_model(Z, [X1, X2, X3, X4])
+        self.rol_large_nondim.update_model(Z, [X1, X2, X3, X4])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
-    #         np.float64(X3.item(0)),
-    #         np.float64(X4.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+            np.float64(X3.item(0)),
+            np.float64(X4.item(0)),
 
-    #         self.rol_large_nondim.parameters[0],
-    #         self.rol_large_nondim.parameters[1],
-    #         self.rol_large_nondim.parameters[2],
-    #         self.rol_large_nondim.parameters[3]
-    #         ]
-    #     self.ols_rol_large_nondim_publisher.publish(msg)
+            self.rol_large_nondim.parameters[0],
+            self.rol_large_nondim.parameters[1],
+            self.rol_large_nondim.parameters[2],
+            self.rol_large_nondim.parameters[3]
+            ]
+        self.ols_rol_large_nondim_publisher.publish(msg)
 
-    # def publish_ols_rol_large_nondim_inertias_data(self) -> None:
-    #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
-    #     airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
-    #     airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+    def publish_ols_rol_large_nondim_inertias_data(self) -> None:
+        R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
+        airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
         
-    #     Z = self.rol_accel.data[0]
-    #     X1 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
-    #     X2 = self.dyn_pres.data[0] * self.yaw_velo.data[0] / airspeed
-    #     X3 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
-    #     X4 = self.dyn_pres.data[0] * self.rud_pwm.data[0]
-    #     X5 = self.pit_velo.data[0] * self.yaw_velo.data[0]
-    #     X6 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
+        Z = self.rol_accel.data[0]
+        X1 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
+        X2 = self.dyn_pres.data[0] * self.yaw_velo.data[0] / airspeed
+        X3 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
+        X4 = self.dyn_pres.data[0] * self.rud_pwm.data[0]
+        X5 = self.pit_velo.data[0] * self.yaw_velo.data[0]
+        X6 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
 
-    #     self.rol_large_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5, X6])
+        self.rol_large_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5, X6])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
-    #         np.float64(X3.item(0)),
-    #         np.float64(X4.item(0)),
-    #         np.float64(X5.item(0)),
-    #         np.float64(X6.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+            np.float64(X3.item(0)),
+            np.float64(X4.item(0)),
+            np.float64(X5.item(0)),
+            np.float64(X6.item(0)),
 
-    #         self.rol_large_nondim_inertias.parameters[0],
-    #         self.rol_large_nondim_inertias.parameters[1],
-    #         self.rol_large_nondim_inertias.parameters[2],
-    #         self.rol_large_nondim_inertias.parameters[3],
-    #         self.rol_large_nondim_inertias.parameters[4],
-    #         self.rol_large_nondim_inertias.parameters[5]
-    #         ]
-    #     self.ols_rol_large_nondim_inertias_publisher.publish(msg)
+            self.rol_large_nondim_inertias.parameters[0],
+            self.rol_large_nondim_inertias.parameters[1],
+            self.rol_large_nondim_inertias.parameters[2],
+            self.rol_large_nondim_inertias.parameters[3],
+            self.rol_large_nondim_inertias.parameters[4],
+            self.rol_large_nondim_inertias.parameters[5]
+            ]
+        self.ols_rol_large_nondim_inertias_publisher.publish(msg)
         
-    # def publish_ols_rol_large_ssa_data(self) -> None:
-    #     self.rol_large_ssa.update_model(self.rol_accel.data[0], [self.ssa.data[0], self.rol_velo.data[0], self.ail_pwm.data[0], self.yaw_velo.data[0], self.rud_pwm.data[0]])
+    def publish_ols_rol_large_ssa_data(self) -> None:
+        self.rol_large_ssa.update_model(self.rol_accel.data[0], [self.ssa.data[0], self.rol_velo.data[0], self.ail_pwm.data[0], self.yaw_velo.data[0], self.rud_pwm.data[0]])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(self.rol_accel.data.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(self.rol_accel.data.item(0)),
 
-    #         np.float64(self.ssa.data.item(0)),
-    #         np.float64(self.rol_velo.data.item(0)),
-    #         np.float64(self.ail_pwm.data.item(0)),
-    #         np.float64(self.yaw_velo.data.item(0)),
-    #         np.float64(self.rud_pwm.data.item(0)),
+            np.float64(self.ssa.data.item(0)),
+            np.float64(self.rol_velo.data.item(0)),
+            np.float64(self.ail_pwm.data.item(0)),
+            np.float64(self.yaw_velo.data.item(0)),
+            np.float64(self.rud_pwm.data.item(0)),
 
-    #         self.rol_large_ssa.parameters[0],
-    #         self.rol_large_ssa.parameters[1],
-    #         self.rol_large_ssa.parameters[2],
-    #         self.rol_large_ssa.parameters[3],
-    #         self.rol_large_ssa.parameters[4]
-    #         ]
-    #     self.ols_rol_large_ssa_publisher.publish(msg)
+            self.rol_large_ssa.parameters[0],
+            self.rol_large_ssa.parameters[1],
+            self.rol_large_ssa.parameters[2],
+            self.rol_large_ssa.parameters[3],
+            self.rol_large_ssa.parameters[4]
+            ]
+        self.ols_rol_large_ssa_publisher.publish(msg)
 
-    # def publish_ols_rol_large_ssa_nondim_data(self) -> None:
-    #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
-    #     airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
-    #     airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+    def publish_ols_rol_large_ssa_nondim_data(self) -> None:
+        R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
+        airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
         
-    #     Z = self.rol_accel.data[0]
-    #     X1 = self.dyn_pres.data[0] * self.ssa.data[0]
-    #     X2 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
-    #     X3 = self.dyn_pres.data[0] * self.yaw_velo.data[0] / airspeed
-    #     X4 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
-    #     X5 = self.dyn_pres.data[0] * self.rud_pwm.data[0]
+        Z = self.rol_accel.data[0]
+        X1 = self.dyn_pres.data[0] * self.ssa.data[0]
+        X2 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
+        X3 = self.dyn_pres.data[0] * self.yaw_velo.data[0] / airspeed
+        X4 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
+        X5 = self.dyn_pres.data[0] * self.rud_pwm.data[0]
 
-    #     self.rol_large_ssa_nondim.update_model(Z, [X1, X2, X3, X4, X5])
+        self.rol_large_ssa_nondim.update_model(Z, [X1, X2, X3, X4, X5])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
-    #         np.float64(X3.item(0)),
-    #         np.float64(X4.item(0)),
-    #         np.float64(X5.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+            np.float64(X3.item(0)),
+            np.float64(X4.item(0)),
+            np.float64(X5.item(0)),
 
-    #         self.rol_large_ssa_nondim.parameters[0],
-    #         self.rol_large_ssa_nondim.parameters[1],
-    #         self.rol_large_ssa_nondim.parameters[2],
-    #         self.rol_large_ssa_nondim.parameters[3],
-    #         self.rol_large_ssa_nondim.parameters[4]
-    #         ]
-    #     self.ols_rol_large_ssa_nondim_publisher.publish(msg)
+            self.rol_large_ssa_nondim.parameters[0],
+            self.rol_large_ssa_nondim.parameters[1],
+            self.rol_large_ssa_nondim.parameters[2],
+            self.rol_large_ssa_nondim.parameters[3],
+            self.rol_large_ssa_nondim.parameters[4]
+            ]
+        self.ols_rol_large_ssa_nondim_publisher.publish(msg)
 
-    # def publish_ols_rol_large_ssa_nondim_inertias_data(self) -> None:
-    #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
-    #     airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
-    #     airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
+    def publish_ols_rol_large_ssa_nondim_inertias_data(self) -> None:
+        R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
+        airdensity = self.stat_pres.data[0] / (R_dryair * self.temp.data[0])
+        airspeed = np.sqrt((2 * self.dyn_pres.data[0]) / airdensity)
         
-    #     Z = self.rol_accel.data[0]
-    #     X1 = self.dyn_pres.data[0] * self.ssa.data[0]
-    #     X2 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
-    #     X3 = self.dyn_pres.data[0] * self.yaw_velo.data[0] / airspeed
-    #     X4 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
-    #     X5 = self.dyn_pres.data[0] * self.rud_pwm.data[0]
-    #     X6 = self.pit_velo.data[0] * self.yaw_velo.data[0]
-    #     X7 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
+        Z = self.rol_accel.data[0]
+        X1 = self.dyn_pres.data[0] * self.ssa.data[0]
+        X2 = self.dyn_pres.data[0] * self.rol_velo.data[0] / airspeed
+        X3 = self.dyn_pres.data[0] * self.yaw_velo.data[0] / airspeed
+        X4 = self.dyn_pres.data[0] * self.ail_pwm.data[0]
+        X5 = self.dyn_pres.data[0] * self.rud_pwm.data[0]
+        X6 = self.pit_velo.data[0] * self.yaw_velo.data[0]
+        X7 = self.yaw_accel.data[0] + (self.rol_velo.data[0] * self.pit_velo.data[0])
 
-    #     self.rol_large_ssa_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5, X6, X7])
+        self.rol_large_ssa_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5, X6, X7])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
-    #         np.float64(X3.item(0)),
-    #         np.float64(X4.item(0)),
-    #         np.float64(X5.item(0)),
-    #         np.float64(X6.item(0)),
-    #         np.float64(X7.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+            np.float64(X3.item(0)),
+            np.float64(X4.item(0)),
+            np.float64(X5.item(0)),
+            np.float64(X6.item(0)),
+            np.float64(X7.item(0)),
 
-    #         self.rol_large_ssa_nondim_inertias.parameters[0],
-    #         self.rol_large_ssa_nondim_inertias.parameters[1],
-    #         self.rol_large_ssa_nondim_inertias.parameters[2],
-    #         self.rol_large_ssa_nondim_inertias.parameters[3],
-    #         self.rol_large_ssa_nondim_inertias.parameters[4],
-    #         self.rol_large_ssa_nondim_inertias.parameters[5],
-    #         self.rol_large_ssa_nondim_inertias.parameters[6]
-    #         ]
-    #     self.ols_rol_large_ssa_nondim_inertias_publisher.publish(msg)
+            self.rol_large_ssa_nondim_inertias.parameters[0],
+            self.rol_large_ssa_nondim_inertias.parameters[1],
+            self.rol_large_ssa_nondim_inertias.parameters[2],
+            self.rol_large_ssa_nondim_inertias.parameters[3],
+            self.rol_large_ssa_nondim_inertias.parameters[4],
+            self.rol_large_ssa_nondim_inertias.parameters[5],
+            self.rol_large_ssa_nondim_inertias.parameters[6]
+            ]
+        self.ols_rol_large_ssa_nondim_inertias_publisher.publish(msg)
 
 
 def main(args=None):

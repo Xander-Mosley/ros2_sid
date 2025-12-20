@@ -1252,9 +1252,9 @@ def plot_filter_duration(
     return fig
 
 if __name__ == "__main__":
-    csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/synced_all_data.csv"
+    csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_data.csv"
     
-    models = ['ols_rol_']
+    models = ['ols_rol_nondim_']
     
     start_time = 0
     end_time = 999999
@@ -1300,6 +1300,7 @@ if __name__ == "__main__":
     # TODO: Add FFT plotter
     # TODO: Add Bode plotter
 
-    plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filter_duration_data.csv"))
+    plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))
+    plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_duration_data.csv"))
 
     plt.show()
