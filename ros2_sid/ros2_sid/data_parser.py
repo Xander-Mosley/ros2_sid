@@ -372,45 +372,52 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2025-12-19_AllRollModels/rosbag2_2025_12_20-01_46_45_0.db3'
+    bag_file = '/develop_ws/bag_files/2025-12-22_AllPitchModels/rosbag2_2025_12_22-20_38_50_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
         # '/mavros/imu/data_raw': 'imu_raw',
-        # '/telem': 'telem',
         '/imu_filt': 'imu',
         '/imu_filt_duration': 'filt_duration',
         '/imu_diff': 'imu_diff',
         '/imu_diff_duration': 'diff_duration',
+
+        '/telem': 'telem',
+
         '/mavros/rc/out': 'rcout',
         '/mavros/rc/in': 'rcin',
         '/mavros/local_position/odom': 'odometry',
         # '/mavros/global_position/global': 'gps',
         # '/mavros/global_position/raw/gps_vel': 'gps_vel',
         '/mavros/global_position/rel_alt': 'altitude',
-        # '/mavros/imu/diff_pressure': 'diff_pressure',
+        '/mavros/imu/diff_pressure': 'diff_pressure',
         # '/mavros/imu/static_pressure': 'static_pressure',
         # '/mavros/imu/temperature_baro': 'temperature_baro',
         '/trajectory': 'trajectory',
 
-        '/ols_rol': 'ols_rol',
-        '/ols_rol_slowed': 'ols_rol_slowed',
-        '/ols_rol_sped': 'ols_rol_sped',
-        # '/ols_pit': 'ols_pit',
-        # '/ols_yaw': 'ols_yaw',
-        '/ols_rol_large': 'ols_rol_large',
-
-        '/ols_rol_nondim': 'ols_rol_nondim',
-        '/ols_rol_nondim_inertias': 'ols_rol_nondim_inertias',
-        '/ols_rol_ssa': 'ols_rol_ssa',
-        '/ols_rol_ssa_nondim': 'ols_rol_ssa_nondim',
-        '/ols_rol_ssa_nondim_inertias': 'ols_rol_ssa_nondim_inertias',
+        # '/ols_rol': 'ols_rol',
+        # '/ols_rol_slowed': 'ols_rol_slowed',
+        # '/ols_rol_nondim': 'ols_rol_nondim',
+        # '/ols_rol_nondim_inertias': 'ols_rol_nondim_inertias',
+        # '/ols_rol_ssa': 'ols_rol_ssa',
+        # '/ols_rol_ssa_nondim': 'ols_rol_ssa_nondim',
+        # '/ols_rol_ssa_nondim_inertias': 'ols_rol_ssa_nondim_inertias',
         
-        '/ols_rol_large_nondim': 'ols_rol_large_nondim',
-        '/ols_rol_large_nondim_inertias': 'ols_rol_large_nondim_inertias',
-        '/ols_rol_large_ssa': 'ols_rol_large_ssa',
-        '/ols_rol_large_ssa_nondim': 'ols_rol_large_ssa_nondim',
-        '/ols_rol_large_ssa_nondim_inertias': 'ols_rol_large_ssa_nondim_inertias'
+        # '/ols_rol_large': 'ols_rol_large',
+        # '/ols_rol_large_nondim': 'ols_rol_large_nondim',
+        # '/ols_rol_large_nondim_inertias': 'ols_rol_large_nondim_inertias',
+        # '/ols_rol_large_ssa': 'ols_rol_large_ssa',
+        # '/ols_rol_large_ssa_nondim': 'ols_rol_large_ssa_nondim',
+        # '/ols_rol_large_ssa_nondim_inertias': 'ols_rol_large_ssa_nondim_inertias'
+
+        '/ols_pit': 'ols_pit',
+        '/ols_pit_nondim': 'ols_pit_nondim',
+        '/ols_pit_nondim_inertias': 'ols_pit_nondim_inertias',
+        '/ols_pit_aoa': 'ols_pit_aoa',
+        '/ols_pit_aoa_nondim': 'ols_pit_aoa_nondim',
+        '/ols_pit_aoa_nondim_inertias': 'ols_pit_aoa_nondim_inertias',
+
+        # '/ols_yaw': 'ols_yaw',
         }
     
     output_directory = '/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files'

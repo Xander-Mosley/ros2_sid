@@ -353,7 +353,7 @@ def plot_trajectory(
     fig.set_all_grids(True, alpha=0.5)
     return fig
     
-def plot_input_performance(
+def plot_trajectory_delay(
         dataframes: list[pd.DataFrame],
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
@@ -401,11 +401,11 @@ def plot_input_performance(
 
     fig.define_subplot(1, title="Pitch Over Time", ylabel="Angle\n[deg]")
     fig.add_data(1, trajectory_time, pit_cmd, label="Command", color='black', linestyle="--")
-    fig.add_data(1, odometry_time, pit_deg, label="Response", color='tab:red')
+    fig.add_scatter(1, odometry_time, pit_deg, label="Response", color='tab:red')
 
     fig.define_subplot(2, title="Yaw Over Time", ylabel="Command Angle\n[deg]", y2label="Response Angle\n[deg]", xlabel="Time [s]")
     fig.add_data(2, trajectory_time, yaw_cmd, color='black', linestyle="--")
-    fig.add_data_secondary_y(2, odometry_time, yaw_deg, color='tab:green', axis_color='green')
+    fig.add_scatter_secondary_y(2, odometry_time, yaw_deg, color='tab:green', axis_color='green')
 
     fig.set_all_legends(loc='upper right', fontsize='medium')
     fig.set_all_grids(True, alpha=0.5)
@@ -446,7 +446,7 @@ def landing_performance(folder_path, start_time, end_time):
 
 def control_performance(folder_path, start_time, end_time):
     # plot_trajectory(pd.read_csv(f"{folder_path}trajectory_data.csv"), start_time, end_time)
-    plot_input_performance([
+    plot_trajectory_delay([
         pd.read_csv(f"{folder_path}trajectory_data.csv"),
         pd.read_csv(f"{folder_path}odometry_data.csv")
         ], start_time, end_time, time_offset=0.0)

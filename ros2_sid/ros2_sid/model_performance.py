@@ -1252,34 +1252,34 @@ def plot_filter_duration(
     return fig
 
 if __name__ == "__main__":
-    csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_data.csv"
+    csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_aoa_data.csv"
     
-    models = ['ols_rol_nondim_']
+    models = ['ols_pit_aoa_']
     
     start_time = 0
     end_time = 999999
     # TODO: Add model labels as well
     plot_labels = {
-    "subtitle": "Roll Models",
-    "time": "Time [s]",
-    "measured_output": "Measured Roll\nAcceleration [deg/s²]",
-    "output_amp": "Roll Acceleration\n[deg/s²]",
-    "output_percent_confidence": "Confidence [%]",
-    "cod_amp": "R²",
-    "residuals": "Roll Acceleration\nResiduals [deg/s²]",
-    "mse": "Roll Acceleration\nSquared Error\n[(deg/s²)²]",
-    "param_1_amp": "Roll Velocity\nParameter [1/s]",
-    "param_2_amp": "Aileron Parameter\n[1/s²]",
-    "param_3_amp": "Yaw Velocity\nParameter [1/s]",
-    "param_4_amp": "Rudder Parameter\n[1/s²]",
-    "param_1_cod_amp": "Roll Velocity\nParameter's r²\n[%]",
-    "param_2_cod_amp": "Aileron\nParameter's r²\n[%]",
-    "param_3_cod_amp": "Yaw Velocity\nParameter's r²\n[%]",
-    "param_4_cod_amp": "Rudder\nParameter's r²\n[%]",
-    "param_1_cond_amp": "Roll Velocity\nParameter's\nConditioning",
-    "param_2_cond_amp": "Aileron\nParameter's\nConditioning",
-    "param_3_cond_amp": "Yaw Velocity\nParameter's\nConditioning",
-    "param_4_cond_amp": "Rudder\nParameter's\nConditioning",
+    # "subtitle": "Roll Models",
+    # "time": "Time [s]",
+    # "measured_output": "Measured Roll\nAcceleration [deg/s²]",
+    # "output_amp": "Roll Acceleration\n[deg/s²]",
+    # "output_percent_confidence": "Confidence [%]",
+    # "cod_amp": "R²",
+    # "residuals": "Roll Acceleration\nResiduals [deg/s²]",
+    # "mse": "Roll Acceleration\nSquared Error\n[(deg/s²)²]",
+    # "param_1_amp": "Roll Velocity\nParameter [1/s]",
+    # "param_2_amp": "Aileron Parameter\n[1/s²]",
+    # "param_3_amp": "Yaw Velocity\nParameter [1/s]",
+    # "param_4_amp": "Rudder Parameter\n[1/s²]",
+    # "param_1_cod_amp": "Roll Velocity\nParameter's r²\n[%]",
+    # "param_2_cod_amp": "Aileron\nParameter's r²\n[%]",
+    # "param_3_cod_amp": "Yaw Velocity\nParameter's r²\n[%]",
+    # "param_4_cod_amp": "Rudder\nParameter's r²\n[%]",
+    # "param_1_cond_amp": "Roll Velocity\nParameter's\nConditioning",
+    # "param_2_cond_amp": "Aileron\nParameter's\nConditioning",
+    # "param_3_cond_amp": "Yaw Velocity\nParameter's\nConditioning",
+    # "param_4_cond_amp": "Rudder\nParameter's\nConditioning",
     }
 
     csv = pd.read_csv(csv_path)
@@ -1300,7 +1300,7 @@ if __name__ == "__main__":
     # TODO: Add FFT plotter
     # TODO: Add Bode plotter
 
-    plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))
-    plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_duration_data.csv"))
+    # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))
+    # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_duration_data.csv"))
 
     plt.show()
