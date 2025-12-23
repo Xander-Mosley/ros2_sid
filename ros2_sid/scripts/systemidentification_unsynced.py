@@ -81,7 +81,7 @@ class OLSNode(Node):
 
         # initialize model structure objects
         self.rol = ModelStructure(2)
-        # self.rol_slowed = ModelStructure(2)
+        self.rol_slowed = ModelStructure(2)
         # self.rol_nondim = ModelStructure(2)
         # self.rol_nondim_inertias = ModelStructure(4)
         # self.rol_ssa = ModelStructure(3)
@@ -335,11 +335,11 @@ class OLSNode(Node):
         self.ols_rol_timer = self.create_timer(
             timer_period, self.publish_ols_rol_data)
 
-        # self.ols_rol_slowed_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_slowed', 10)
-        # timer_period: float = 0.25
-        # self.ols_rol_slowed_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_slowed_data)
+        self.ols_rol_slowed_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_slowed', 10)
+        timer_period: float = 0.25
+        self.ols_rol_slowed_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_slowed_data)
         
         # self.ols_rol_nondim_publisher: Publisher = self.create_publisher(
         #         Float64MultiArray, 'ols_rol_nondim', 10)
@@ -538,20 +538,24 @@ class OLSNode(Node):
             ]
         self.ols_rol_publisher.publish(msg)
 
-    # def publish_ols_rol_slowed_data(self) -> None:
-    #     self.rol_slowed.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], (self.ail_pwm.data[1] - 1500) / 1500])
+    def publish_ols_rol_slowed_data(self) -> None:
+        Z = self.rol_accel.data[0]
+        X1 = self.rol_velo.data[0]
+        X2 = self.ail_pwm.data[0]
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(self.rol_accel.data.item(0)),
+        self.rol_slowed.update_model(Z, [X1, X2])
 
-    #         np.float64(self.rol_velo.data.item(0)),
-    #         np.float64(self.ail_pwm.data.item(1)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         self.rol_slowed.parameters[0],
-    #         self.rol_slowed.parameters[1]
-    #         ]
-    #     self.ols_rol_slowed_publisher.publish(msg)   
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+
+            self.rol_slowed.parameters[0],
+            self.rol_slowed.parameters[1]
+            ]
+        self.ols_rol_slowed_publisher.publish(msg)   
 
     # def publish_ols_rol_nondim_data(self) -> None:
     #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
