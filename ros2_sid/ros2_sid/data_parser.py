@@ -372,7 +372,7 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2025-12-22_AllPitchModels/rosbag2_2025_12_22-20_38_50_0.db3'
+    bag_file = '/develop_ws/bag_files/2025-12-23_AllYawModels/rosbag2_2025_12_23-18_00_48_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
@@ -410,14 +410,27 @@ if __name__ == "__main__":
         # '/ols_rol_large_ssa_nondim': 'ols_rol_large_ssa_nondim',
         # '/ols_rol_large_ssa_nondim_inertias': 'ols_rol_large_ssa_nondim_inertias'
 
-        '/ols_pit': 'ols_pit',
-        '/ols_pit_nondim': 'ols_pit_nondim',
-        '/ols_pit_nondim_inertias': 'ols_pit_nondim_inertias',
-        '/ols_pit_aoa': 'ols_pit_aoa',
-        '/ols_pit_aoa_nondim': 'ols_pit_aoa_nondim',
-        '/ols_pit_aoa_nondim_inertias': 'ols_pit_aoa_nondim_inertias',
+        # '/ols_pit': 'ols_pit',
+        # '/ols_pit_nondim': 'ols_pit_nondim',
+        # '/ols_pit_nondim_inertias': 'ols_pit_nondim_inertias',
+        # '/ols_pit_aoa': 'ols_pit_aoa',
+        # '/ols_pit_aoa_nondim': 'ols_pit_aoa_nondim',
+        # '/ols_pit_aoa_nondim_inertias': 'ols_pit_aoa_nondim_inertias',
 
-        # '/ols_yaw': 'ols_yaw',
+
+        '/ols_yaw': 'ols_yaw',
+        '/ols_yaw_nondim': 'ols_yaw_nondim',
+        '/ols_yaw_nondim_inertias': 'ols_yaw_nondim_inertias',
+        '/ols_yaw_ssa': 'ols_yaw_ssa',
+        '/ols_yaw_ssa_nondim': 'ols_yaw_ssa_nondim',
+        '/ols_yaw_ssa_nondim_inertias': 'ols_yaw_ssa_nondim_inertias',
+        
+        '/ols_yaw_large': 'ols_yaw_large',
+        '/ols_yaw_large_nondim': 'ols_yaw_large_nondim',
+        '/ols_yaw_large_nondim_inertias': 'ols_yaw_large_nondim_inertias',
+        '/ols_yaw_large_ssa': 'ols_yaw_large_ssa',
+        '/ols_yaw_large_ssa_nondim': 'ols_yaw_large_ssa_nondim',
+        '/ols_yaw_large_ssa_nondim_inertias': 'ols_yaw_large_ssa_nondim_inertias'
         }
     
     output_directory = '/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files'

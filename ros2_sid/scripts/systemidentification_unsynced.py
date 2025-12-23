@@ -80,7 +80,7 @@ class OLSNode(Node):
         ModelStructure.class_eff = 0.999
 
         # initialize model structure objects
-        # self.rol = ModelStructure(2)
+        self.rol = ModelStructure(2)
         # self.rol_slowed = ModelStructure(2)
         # self.rol_nondim = ModelStructure(2)
         # self.rol_nondim_inertias = ModelStructure(4)
@@ -88,14 +88,14 @@ class OLSNode(Node):
         # self.rol_ssa_nondim = ModelStructure(3)
         # self.rol_ssa_nondim_inertias = ModelStructure(5)
 
-        # self.rol_large = ModelStructure(4)
+        self.rol_large = ModelStructure(4)
         # self.rol_large_nondim = ModelStructure(4)
         # self.rol_large_nondim_inertias = ModelStructure(6)
         # self.rol_large_ssa = ModelStructure(5)
         # self.rol_large_ssa_nondim = ModelStructure(5)
         # self.rol_large_ssa_nondim_inertias = ModelStructure(7)
 
-        # self.pit = ModelStructure(2)
+        self.pit = ModelStructure(2)
         # self.pit_nondim = ModelStructure(2)
         # self.pit_nondim_inertias = ModelStructure(4)
         # self.pit_aoa = ModelStructure(3)
@@ -103,13 +103,13 @@ class OLSNode(Node):
         # self.pit_aoa_nondim_inertias = ModelStructure(5)
 
         self.yaw = ModelStructure(2)
-        self.yaw_nondim = ModelStructure(2)
-        self.yaw_nondim_inertias = ModelStructure(4)
-        self.yaw_ssa = ModelStructure(3)
-        self.yaw_ssa_nondim = ModelStructure(3)
-        self.yaw_ssa_nondim_inertias = ModelStructure(5)
+        # self.yaw_nondim = ModelStructure(2)
+        # self.yaw_nondim_inertias = ModelStructure(4)
+        # self.yaw_ssa = ModelStructure(3)
+        # self.yaw_ssa_nondim = ModelStructure(3)
+        # self.yaw_ssa_nondim_inertias = ModelStructure(5)
 
-        # self.yaw_large = ModelStructure(4)
+        self.yaw_large = ModelStructure(4)
         # self.yaw_large_nondim = ModelStructure(4)
         # self.yaw_large_nondim_inertias = ModelStructure(6)
         # self.yaw_large_ssa = ModelStructure(5)
@@ -329,11 +329,11 @@ class OLSNode(Node):
 
 
     def setup_all_publishers(self) -> None:
-        # self.ols_rol_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_data)
+        self.ols_rol_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol', 10)
+        timer_period: float = 0.02
+        self.ols_rol_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_data)
 
         # self.ols_rol_slowed_publisher: Publisher = self.create_publisher(
         #         Float64MultiArray, 'ols_rol_slowed', 10)
@@ -372,11 +372,11 @@ class OLSNode(Node):
         #     timer_period, self.publish_ols_rol_ssa_nondim_inertias_data)
 
 
-        # self.ols_rol_large_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_rol_large', 10)
-        # timer_period: float = 0.02
-        # self.ols_rol_large_timer = self.create_timer(
-        #     timer_period, self.publish_ols_rol_large_data)
+        self.ols_rol_large_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_rol_large', 10)
+        timer_period: float = 0.02
+        self.ols_rol_large_timer = self.create_timer(
+            timer_period, self.publish_ols_rol_large_data)
 
         # self.ols_rol_large_nondim_publisher: Publisher = self.create_publisher(
         #         Float64MultiArray, 'ols_rol_large_nondim', 10)
@@ -409,11 +409,11 @@ class OLSNode(Node):
         #     timer_period, self.publish_ols_rol_large_ssa_nondim_inertias_data)
 
 
-        # self.ols_pit_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_pit', 10)
-        # timer_period: float = 0.02
-        # self.ols_pit_timer = self.create_timer(
-        #     timer_period, self.publish_ols_pit_data)
+        self.ols_pit_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_pit', 10)
+        timer_period: float = 0.02
+        self.ols_pit_timer = self.create_timer(
+            timer_period, self.publish_ols_pit_data)
         
         # self.ols_pit_nondim_publisher: Publisher = self.create_publisher(
         #         Float64MultiArray, 'ols_pit_nondim', 10)
@@ -452,42 +452,42 @@ class OLSNode(Node):
         self.ols_yaw_timer = self.create_timer(
             timer_period, self.publish_ols_yaw_data)
         
-        self.ols_yaw_nondim_publisher: Publisher = self.create_publisher(
-                Float64MultiArray, 'ols_yaw_nondim', 10)
-        timer_period: float = 0.02
-        self.ols_yaw_nondim_timer = self.create_timer(
-            timer_period, self.publish_ols_yaw_nondim_data)
-        
-        self.ols_yaw_nondim_inertias_publisher: Publisher = self.create_publisher(
-                Float64MultiArray, 'ols_yaw_nondim_inertias', 10)
-        timer_period: float = 0.02
-        self.ols_yaw_nondim_inertias_timer = self.create_timer(
-            timer_period, self.publish_ols_yaw_nondim_inertias_data)
-        
-        self.ols_yaw_ssa_publisher: Publisher = self.create_publisher(
-                Float64MultiArray, 'ols_yaw_ssa', 10)
-        timer_period: float = 0.02
-        self.ols_yaw_ssa_timer = self.create_timer(
-            timer_period, self.publish_ols_yaw_ssa_data)
-        
-        self.ols_yaw_ssa_nondim_publisher: Publisher = self.create_publisher(
-                Float64MultiArray, 'ols_yaw_ssa_nondim', 10)
-        timer_period: float = 0.02
-        self.ols_yaw_ssa_nondim_timer = self.create_timer(
-            timer_period, self.publish_ols_yaw_ssa_nondim_data)
-        
-        self.ols_yaw_ssa_nondim_inertias_publisher: Publisher = self.create_publisher(
-                Float64MultiArray, 'ols_yaw_ssa_nondim_inertias', 10)
-        timer_period: float = 0.02
-        self.ols_yaw_ssa_nondim_inertias_timer = self.create_timer(
-            timer_period, self.publish_ols_yaw_ssa_nondim_inertias_data)
-
-
-        # self.ols_yaw_large_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_yaw_large', 10)
+        # self.ols_yaw_nondim_publisher: Publisher = self.create_publisher(
+        #         Float64MultiArray, 'ols_yaw_nondim', 10)
         # timer_period: float = 0.02
-        # self.ols_yaw_large_timer = self.create_timer(
-        #     timer_period, self.publish_ols_ya_large_data)
+        # self.ols_yaw_nondim_timer = self.create_timer(
+        #     timer_period, self.publish_ols_yaw_nondim_data)
+        
+        # self.ols_yaw_nondim_inertias_publisher: Publisher = self.create_publisher(
+        #         Float64MultiArray, 'ols_yaw_nondim_inertias', 10)
+        # timer_period: float = 0.02
+        # self.ols_yaw_nondim_inertias_timer = self.create_timer(
+        #     timer_period, self.publish_ols_yaw_nondim_inertias_data)
+        
+        # self.ols_yaw_ssa_publisher: Publisher = self.create_publisher(
+        #         Float64MultiArray, 'ols_yaw_ssa', 10)
+        # timer_period: float = 0.02
+        # self.ols_yaw_ssa_timer = self.create_timer(
+        #     timer_period, self.publish_ols_yaw_ssa_data)
+        
+        # self.ols_yaw_ssa_nondim_publisher: Publisher = self.create_publisher(
+        #         Float64MultiArray, 'ols_yaw_ssa_nondim', 10)
+        # timer_period: float = 0.02
+        # self.ols_yaw_ssa_nondim_timer = self.create_timer(
+        #     timer_period, self.publish_ols_yaw_ssa_nondim_data)
+        
+        # self.ols_yaw_ssa_nondim_inertias_publisher: Publisher = self.create_publisher(
+        #         Float64MultiArray, 'ols_yaw_ssa_nondim_inertias', 10)
+        # timer_period: float = 0.02
+        # self.ols_yaw_ssa_nondim_inertias_timer = self.create_timer(
+        #     timer_period, self.publish_ols_yaw_ssa_nondim_inertias_data)
+
+
+        self.ols_yaw_large_publisher: Publisher = self.create_publisher(
+                Float64MultiArray, 'ols_yaw_large', 10)
+        timer_period: float = 0.02
+        self.ols_yaw_large_timer = self.create_timer(
+            timer_period, self.publish_ols_yaw_large_data)
         
         # self.ols_yaw_large_nondim_publisher: Publisher = self.create_publisher(
         #         Float64MultiArray, 'ols_yaw_large_nondim', 10)
@@ -501,38 +501,42 @@ class OLSNode(Node):
         # self.ols_yaw_large_nondim_inertias_timer = self.create_timer(
         #     timer_period, self.publish_ols_yaw_large_nondim_inertias_data)
         
-        # self.ols_yaw_large_aoa_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_yaw_large_aoa', 10)
+        # self.ols_yaw_large_ssa_publisher: Publisher = self.create_publisher(
+        #         Float64MultiArray, 'ols_yaw_large_ssa', 10)
         # timer_period: float = 0.02
-        # self.ols_yaw_large_aoa_timer = self.create_timer(
-        #     timer_period, self.publish_ols_large_yaw_ssa_data)
+        # self.ols_yaw_large_ssa_timer = self.create_timer(
+        #     timer_period, self.publish_ols_yaw_large_ssa_data)
         
-        # self.ols_yaw_large_aoa_nondim_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_yaw_large_aoa_nondim', 10)
+        # self.ols_yaw_large_ssa_nondim_publisher: Publisher = self.create_publisher(
+        #         Float64MultiArray, 'ols_yaw_large_ssa_nondim', 10)
         # timer_period: float = 0.02
-        # self.ols_yaw_large_aoa_nondim_timer = self.create_timer(
+        # self.ols_yaw_large_ssa_nondim_timer = self.create_timer(
         #     timer_period, self.publish_ols_yaw_large_ssa_nondim_data)
         
-        # self.ols_yaw_large_aoa_nondim_inertias_publisher: Publisher = self.create_publisher(
-        #         Float64MultiArray, 'ols_yaw_large_aoa_nondim_inertias', 10)
+        # self.ols_yaw_large_ssa_nondim_inertias_publisher: Publisher = self.create_publisher(
+        #         Float64MultiArray, 'ols_yaw_large_ssa_nondim_inertias', 10)
         # timer_period: float = 0.02
-        # self.ols_yaw_large_aoa_nondim_inertias_timer = self.create_timer(
+        # self.ols_yaw_large_ssa_nondim_inertias_timer = self.create_timer(
         #     timer_period, self.publish_ols_yaw_large_ssa_nondim_inertias_data)
 
-    # def publish_ols_rol_data(self) -> None:
-    #     self.rol.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], (self.ail_pwm.data[1] - 1500) / 1500])
+    def publish_ols_rol_data(self) -> None:
+        Z = self.rol_accel.data[0]
+        X1 = self.rol_velo.data[0]
+        X2 = self.ail_pwm.data[0]
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(self.rol_accel.data.item(0)),
+        self.rol.update_model(Z, [X1, X2])
 
-    #         np.float64(self.rol_velo.data.item(0)),
-    #         np.float64(self.ail_pwm.data.item(1)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         self.rol.parameters[0],
-    #         self.rol.parameters[1]
-    #         ]
-    #     self.ols_rol_publisher.publish(msg)
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+
+            self.rol.parameters[0],
+            self.rol.parameters[1]
+            ]
+        self.ols_rol_publisher.publish(msg)
 
     # def publish_ols_rol_slowed_data(self) -> None:
     #     self.rol_slowed.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], (self.ail_pwm.data[1] - 1500) / 1500])
@@ -677,24 +681,30 @@ class OLSNode(Node):
     #     self.ols_rol_ssa_nondim_inertias_publisher.publish(msg)
 
 
-    # def publish_ols_rol_large_data(self) -> None:
-    #     self.rol_large.update_model(self.rol_accel.data[0], [self.rol_velo.data[0], self.ail_pwm.data[1], self.yaw_velo.data[0], self.rud_pwm.data[1]])
+    def publish_ols_rol_large_data(self) -> None:
+        Z = self.rol_accel.data[0]
+        X1 = self.rol_velo.data[0]
+        X2 = self.ail_pwm.data[0]
+        X3 = self.yaw_velo.data[0]
+        X4 = self.rud_pwm.data[0]
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(self.rol_accel.data.item(0)),
+        self.rol_large.update_model(Z, [X1, X2, X3, X4])
 
-    #         np.float64(self.rol_velo.data.item(0)),
-    #         np.float64(self.ail_pwm.data.item(1)),
-    #         np.float64(self.yaw_velo.data.item(0)),
-    #         np.float64(self.rud_pwm.data.item(1)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         self.rol_large.parameters[0],
-    #         self.rol_large.parameters[1],
-    #         self.rol_large.parameters[2],
-    #         self.rol_large.parameters[3]
-    #         ]
-    #     self.ols_rol_large_publisher.publish(msg)
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
+            np.float64(X3.item(0)),
+            np.float64(X4.item(0)),
+
+            self.rol_large.parameters[0],
+            self.rol_large.parameters[1],
+            self.rol_large.parameters[2],
+            self.rol_large.parameters[3]
+            ]
+        self.ols_rol_large_publisher.publish(msg)
 
     # def publish_ols_rol_large_nondim_data(self) -> None:
     #     R_dryair = 287.05    # [J/kg-K], specific gas constant of dry air. TODO: Consider humidity of the air?
@@ -852,24 +862,24 @@ class OLSNode(Node):
     #     self.ols_rol_large_ssa_nondim_inertias_publisher.publish(msg)
 
 
-    # def publish_ols_pit_data(self) -> None:
-    #     Z = self.pit_accel.data[0]
-    #     X1 = self.pit_velo.data[0]
-    #     X2 = self.elv_pwm.data[0]
+    def publish_ols_pit_data(self) -> None:
+        Z = self.pit_accel.data[0]
+        X1 = self.pit_velo.data[0]
+        X2 = self.elv_pwm.data[0]
         
-    #     self.pit.update_model(Z, [X1, X2])
+        self.pit.update_model(Z, [X1, X2])
 
-    #     msg: Float64MultiArray = Float64MultiArray()
-    #     msg.data = [
-    #         np.float64(Z.item(0)),
+        msg: Float64MultiArray = Float64MultiArray()
+        msg.data = [
+            np.float64(Z.item(0)),
 
-    #         np.float64(X1.item(0)),
-    #         np.float64(X2.item(0)),
+            np.float64(X1.item(0)),
+            np.float64(X2.item(0)),
 
-    #         self.pit.parameters[0],
-    #         self.pit.parameters[1]
-    #         ]
-    #     self.ols_pit_publisher.publish(msg)
+            self.pit.parameters[0],
+            self.pit.parameters[1]
+            ]
+        self.ols_pit_publisher.publish(msg)
 
     # def publish_ols_pit_nondim_data(self) -> None:
     #     Z = self.pit_accel.data[0]
@@ -1011,35 +1021,135 @@ class OLSNode(Node):
             ]
         self.ols_yaw_publisher.publish(msg)
 
-    def publish_ols_yaw_nondim_data(self) -> None:
+    # def publish_ols_yaw_nondim_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
+    #     X1 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X2 = moment_coefficients * self.rud_pwm.data[0]
+
+    #     self.yaw_nondim.update_model(Z, [X1, X2])
+
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
+
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+
+    #         self.yaw_nondim.parameters[0],
+    #         self.yaw_nondim.parameters[1]
+    #         ]
+    #     self.ols_yaw_nondim_publisher.publish(msg)
+
+    # def publish_ols_yaw_nondim_inertias_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
+    #     X1 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X2 = moment_coefficients * self.rud_pwm.data[0]
+    #     X3 = self.rol_velo.data[0] * self.pit_velo.data[0]
+    #     X4 = self.rol_accel.data[0] - (self.pit_velo.data[0] * self.yaw_velo.data[0])
+
+    #     self.yaw_nondim_inertias.update_model(Z, [X1, X2, X3, X4])
+
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
+
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+    #         np.float64(X4.item(0)),
+
+    #         self.yaw_nondim_inertias.parameters[0],
+    #         self.yaw_nondim_inertias.parameters[1],
+    #         self.yaw_nondim_inertias.parameters[2],
+    #         self.yaw_nondim_inertias.parameters[3]
+    #         ]
+    #     self.ols_yaw_nondim_inertias_publisher.publish(msg)
+
+    # def publish_ols_yaw_ssa_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     X1 = self.ssa.data[0]
+    #     X2 = self.yaw_velo.data[0]
+    #     X3 = self.rud_pwm.data[0]
+
+    #     self.yaw_ssa.update_model(Z, [X1, X2, X3])
+
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
+
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+
+    #         self.yaw_ssa.parameters[0],
+    #         self.yaw_ssa.parameters[1],
+    #         self.yaw_ssa.parameters[2]
+    #         ]
+    #     self.ols_yaw_ssa_publisher.publish(msg)
+
+    # def publish_ols_yaw_ssa_nondim_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
+    #     X1 = moment_coefficients * self.ssa.data[0]
+    #     X2 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X3 = moment_coefficients * self.rud_pwm.data[0]
+
+    #     self.yaw_ssa_nondim.update_model(Z, [X1, X2, X3])
+
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
+
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+
+    #         self.yaw_ssa_nondim.parameters[0],
+    #         self.yaw_ssa_nondim.parameters[1],
+    #         self.yaw_ssa_nondim.parameters[2]
+    #         ]
+    #     self.ols_yaw_ssa_nondim_publisher.publish(msg)
+
+    # def publish_ols_yaw_ssa_nondim_inertias_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
+    #     X1 = moment_coefficients * self.ssa.data[0]
+    #     X2 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X3 = moment_coefficients * self.rud_pwm.data[0]
+    #     X4 = self.rol_velo.data[0] * self.pit_velo.data[0]
+    #     X5 = self.rol_accel.data[0] - (self.pit_velo.data[0] * self.yaw_velo.data[0])
+
+    #     self.yaw_ssa_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5])
+
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
+
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+    #         np.float64(X4.item(0)),
+    #         np.float64(X5.item(0)),
+
+    #         self.yaw_ssa_nondim_inertias.parameters[0],
+    #         self.yaw_ssa_nondim_inertias.parameters[1],
+    #         self.yaw_ssa_nondim_inertias.parameters[2],
+    #         self.yaw_ssa_nondim_inertias.parameters[3],
+    #         self.yaw_ssa_nondim_inertias.parameters[4]
+    #         ]
+    #     self.ols_yaw_ssa_nondim_inertias_publisher.publish(msg)
+
+
+    def publish_ols_yaw_large_data(self) -> None:
         Z = self.yaw_accel.data[0]
-        moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
-        X1 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
-        X2 = moment_coefficients * self.rud_pwm.data[0]
+        X1 = self.yaw_velo.data[0]
+        X2 = self.rud_pwm.data[0]
+        X3 = self.rol_velo.data[0]
+        X4 = self.ail_pwm.data[0]
 
-        self.yaw_nondim.update_model(Z, [X1, X2])
-
-        msg: Float64MultiArray = Float64MultiArray()
-        msg.data = [
-            np.float64(Z.item(0)),
-
-            np.float64(X1.item(0)),
-            np.float64(X2.item(0)),
-
-            self.yaw_nondim.parameters[0],
-            self.yaw_nondim.parameters[1]
-            ]
-        self.ols_yaw_nondim_publisher.publish(msg)
-
-    def publish_ols_yaw_nondim_inertias_data(self) -> None:
-        Z = self.yaw_accel.data[0]
-        moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
-        X1 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
-        X2 = moment_coefficients * self.rud_pwm.data[0]
-        X3 = self.rol_velo.data[0] * self.pit_velo.data[0]
-        X4 = self.rol_accel.data[0] - (self.pit_velo.data[0] * self.yaw_velo.data[0])
-
-        self.yaw_nondim_inertias.update_model(Z, [X1, X2, X3, X4])
+        self.yaw_large.update_model(Z, [X1, X2, X3, X4])
 
         msg: Float64MultiArray = Float64MultiArray()
         msg.data = [
@@ -1050,87 +1160,163 @@ class OLSNode(Node):
             np.float64(X3.item(0)),
             np.float64(X4.item(0)),
 
-            self.yaw_nondim_inertias.parameters[0],
-            self.yaw_nondim_inertias.parameters[1],
-            self.yaw_nondim_inertias.parameters[2],
-            self.yaw_nondim_inertias.parameters[3]
+            self.yaw_large.parameters[0],
+            self.yaw_large.parameters[1],
+            self.yaw_large.parameters[2],
+            self.yaw_large.parameters[3]
             ]
-        self.ols_yaw_nondim_inertias_publisher.publish(msg)
+        self.ols_yaw_large_publisher.publish(msg)
 
-    def publish_ols_yaw_ssa_data(self) -> None:
-        Z = self.yaw_accel.data[0]
-        X1 = self.ssa.data[0]
-        X2 = self.yaw_velo.data[0]
-        X3 = self.rud_pwm.data[0]
+    # def publish_ols_yaw_large_nondim_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
+    #     X1 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X2 = moment_coefficients * self.rud_pwm.data[0]
+    #     X3 = moment_coefficients * self.rol_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X4 = moment_coefficients * self.ail_pwm.data[0]
 
-        self.yaw_ssa.update_model(Z, [X1, X2, X3])
+    #     self.yaw_large_nondim.update_model(Z, [X1, X2, X3, X4])
 
-        msg: Float64MultiArray = Float64MultiArray()
-        msg.data = [
-            np.float64(Z.item(0)),
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
 
-            np.float64(X1.item(0)),
-            np.float64(X2.item(0)),
-            np.float64(X3.item(0)),
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+    #         np.float64(X4.item(0)),
 
-            self.yaw_ssa.parameters[0],
-            self.yaw_ssa.parameters[1],
-            self.yaw_ssa.parameters[2]
-            ]
-        self.ols_yaw_ssa_publisher.publish(msg)
+    #         self.yaw_large_nondim.parameters[0],
+    #         self.yaw_large_nondim.parameters[1],
+    #         self.yaw_large_nondim.parameters[2],
+    #         self.yaw_large_nondim.parameters[3]
+    #         ]
+    #     self.ols_yaw_large_nondim_publisher.publish(msg)
 
-    def publish_ols_yaw_ssa_nondim_data(self) -> None:
-        Z = self.yaw_accel.data[0]
-        moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
-        X1 = moment_coefficients * self.ssa.data[0]
-        X2 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
-        X3 = moment_coefficients * self.rud_pwm.data[0]
+    # def publish_ols_yaw_large_nondim_inertias_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
+    #     X1 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X2 = moment_coefficients * self.rud_pwm.data[0]
+    #     X3 = moment_coefficients * self.rol_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X4 = moment_coefficients * self.ail_pwm.data[0]
+    #     X5 = self.rol_velo.data[0] * self.pit_velo.data[0]
+    #     X6 = self.rol_accel.data[0] - (self.pit_velo.data[0] * self.yaw_velo.data[0])
 
-        self.yaw_ssa_nondim.update_model(Z, [X1, X2, X3])
+    #     self.yaw_large_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5, X6])
 
-        msg: Float64MultiArray = Float64MultiArray()
-        msg.data = [
-            np.float64(Z.item(0)),
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
 
-            np.float64(X1.item(0)),
-            np.float64(X2.item(0)),
-            np.float64(X3.item(0)),
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+    #         np.float64(X4.item(0)),
+    #         np.float64(X5.item(0)),
+    #         np.float64(X6.item(0)),
 
-            self.yaw_ssa_nondim.parameters[0],
-            self.yaw_ssa_nondim.parameters[1],
-            self.yaw_ssa_nondim.parameters[2]
-            ]
-        self.ols_yaw_ssa_nondim_publisher.publish(msg)
+    #         self.yaw_large_nondim_inertias.parameters[0],
+    #         self.yaw_large_nondim_inertias.parameters[1],
+    #         self.yaw_large_nondim_inertias.parameters[2],
+    #         self.yaw_large_nondim_inertias.parameters[3],
+    #         self.yaw_large_nondim_inertias.parameters[4],
+    #         self.yaw_large_nondim_inertias.parameters[5]
+    #         ]
+    #     self.ols_yaw_large_nondim_inertias_publisher.publish(msg)
 
-    def publish_ols_yaw_ssa_nondim_inertias_data(self) -> None:
-        Z = self.yaw_accel.data[0]
-        moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
-        X1 = moment_coefficients * self.ssa.data[0]
-        X2 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
-        X3 = moment_coefficients * self.rud_pwm.data[0]
-        X4 = self.rol_velo.data[0] * self.pit_velo.data[0]
-        X5 = self.rol_accel.data[0] - (self.pit_velo.data[0] * self.yaw_velo.data[0])
+    # def publish_ols_yaw_large_ssa_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     X1 = self.ssa.data[0]
+    #     X2 = self.yaw_velo.data[0]
+    #     X3 = self.rud_pwm.data[0]
+    #     X4 = self.rol_velo.data[0]
+    #     X5 = self.ail_pwm.data[0]
 
-        self.yaw_ssa_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5])
+    #     self.yaw_large_ssa.update_model(Z, [X1, X2, X3, X4, X5])
 
-        msg: Float64MultiArray = Float64MultiArray()
-        msg.data = [
-            np.float64(Z.item(0)),
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
 
-            np.float64(X1.item(0)),
-            np.float64(X2.item(0)),
-            np.float64(X3.item(0)),
-            np.float64(X4.item(0)),
-            np.float64(X5.item(0)),
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+    #         np.float64(X4.item(0)),
+    #         np.float64(X5.item(0)),
 
-            self.yaw_ssa_nondim_inertias.parameters[0],
-            self.yaw_ssa_nondim_inertias.parameters[1],
-            self.yaw_ssa_nondim_inertias.parameters[2],
-            self.yaw_ssa_nondim_inertias.parameters[3],
-            self.yaw_ssa_nondim_inertias.parameters[4]
-            ]
-        self.ols_yaw_ssa_nondim_inertias_publisher.publish(msg)
-        
+    #         self.yaw_large_ssa.parameters[0],
+    #         self.yaw_large_ssa.parameters[1],
+    #         self.yaw_large_ssa.parameters[2],
+    #         self.yaw_large_ssa.parameters[3],
+    #         self.yaw_large_ssa.parameters[4]
+    #         ]
+    #     self.ols_yaw_large_ssa_publisher.publish(msg)
+
+    # def publish_ols_yaw_large_ssa_nondim_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
+    #     X1 = moment_coefficients * self.ssa.data[0]
+    #     X2 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X3 = moment_coefficients * self.rud_pwm.data[0]
+    #     X4 = moment_coefficients * self.rol_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X5 = moment_coefficients * self.ail_pwm.data[0]
+
+    #     self.yaw_large_ssa_nondim.update_model(Z, [X1, X2, X3, X4, X5])
+
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
+
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+    #         np.float64(X4.item(0)),
+    #         np.float64(X5.item(0)),
+
+    #         self.yaw_large_ssa_nondim.parameters[0],
+    #         self.yaw_large_ssa_nondim.parameters[1],
+    #         self.yaw_large_ssa_nondim.parameters[2],
+    #         self.yaw_large_ssa_nondim.parameters[3],
+    #         self.yaw_large_ssa_nondim.parameters[4]
+    #         ]
+    #     self.ols_yaw_large_ssa_nondim_publisher.publish(msg)
+
+    # def publish_ols_yaw_large_ssa_nondim_inertias_data(self) -> None:
+    #     Z = self.yaw_accel.data[0]
+    #     moment_coefficients = self.dyn_pres.data[0] * self.wing_area * self.wing_span / 1  # assuming Iz=1 for now
+    #     X1 = moment_coefficients * self.ssa.data[0]
+    #     X2 = moment_coefficients * self.yaw_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X3 = moment_coefficients * self.rud_pwm.data[0]
+    #     X4 = moment_coefficients * self.rol_velo.data[0] * (self.wing_span / (2 * self.airspeed.data[0]))
+    #     X5 = moment_coefficients * self.ail_pwm.data[0]
+    #     X6 = self.rol_velo.data[0] * self.pit_velo.data[0]
+    #     X7 = self.rol_accel.data[0] - (self.pit_velo.data[0] * self.yaw_velo.data[0])
+
+    #     self.yaw_large_ssa_nondim_inertias.update_model(Z, [X1, X2, X3, X4, X5, X6, X7])
+
+    #     msg: Float64MultiArray = Float64MultiArray()
+    #     msg.data = [
+    #         np.float64(Z.item(0)),
+
+    #         np.float64(X1.item(0)),
+    #         np.float64(X2.item(0)),
+    #         np.float64(X3.item(0)),
+    #         np.float64(X4.item(0)),
+    #         np.float64(X5.item(0)),
+    #         np.float64(X6.item(0)),
+    #         np.float64(X7.item(0)),
+
+    #         self.yaw_large_ssa_nondim_inertias.parameters[0],
+    #         self.yaw_large_ssa_nondim_inertias.parameters[1],
+    #         self.yaw_large_ssa_nondim_inertias.parameters[2],
+    #         self.yaw_large_ssa_nondim_inertias.parameters[3],
+    #         self.yaw_large_ssa_nondim_inertias.parameters[4],
+    #         self.yaw_large_ssa_nondim_inertias.parameters[5],
+    #         self.yaw_large_ssa_nondim_inertias.parameters[6]
+    #         ]
+    #     self.ols_yaw_large_ssa_nondim_inertias_publisher.publish(msg)
+
 
 def main(args=None):
     rclpy.init(args=args)

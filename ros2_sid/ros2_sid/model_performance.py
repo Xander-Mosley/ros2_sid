@@ -1252,9 +1252,9 @@ def plot_filter_duration(
     return fig
 
 if __name__ == "__main__":
-    csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_aoa_data.csv"
+    csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_nondim_data.csv"
     
-    models = ['ols_pit_aoa_']
+    models = ['ols_yaw_nondim_']
     
     start_time = 0
     end_time = 999999
