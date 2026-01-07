@@ -527,6 +527,18 @@ class RecursiveFourierTransform:
                 raise ValueError("frequencies must be non-negative")
             cls.default_frequencies = frequencies.copy()
 
+def ordinary_least_squares(
+        measured_output: np.ndarray,
+        regressors: np.ndarray
+        ) -> np.ndarray:
+    if measured_output.shape[0] != regressors.shape[0]:
+        raise ValueError("Number of samples in measured_output and regressors must match")
+    parameters = np.real(
+        np.linalg.pinv(regressors.T @ regressors)
+            @ (regressors.T @ measured_output)
+        ).ravel()
+    return parameters
+
 
 if (__name__ == '__main__'):
     warnings.warn(
