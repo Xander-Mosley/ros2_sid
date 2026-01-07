@@ -442,6 +442,92 @@ class ModelStructure(metaclass=_ModelStructureMeta):
                 inst.complex_products *= delta_cp
 
 
+class RecursiveFourierTransform:
+    default_eff: float = 1.0
+    default_frequencies: np.ndarray = np.arange(0.1, 1.54, 0.04)
+
+    def __init__(
+            self,
+            eff: Optional[float] = None,
+            frequencies: Optional[np.ndarray] = None
+            ) -> None:
+        
+        self._eff = self.default_eff if eff is None else eff
+        self._frequencies = (
+            self.default_frequencies.copy()
+            if frequencies is None else frequencies.copy()
+        )
+
+        if not (0.0 <= self._eff <= 1.0):
+            raise ValueError("eff should be in [0, 1]")
+        if self._frequencies.ndim != 1:
+            raise ValueError("frequencies must be a 1D array")
+        if np.any(self._frequencies < 0):
+            raise ValueError("frequencies must be non-negative")
+
+        self._complex_products = np.zeros(self._frequencies.size, dtype=complex)
+        self._frequencydata = np.zeros(self._frequencies.size, dtype=complex)
+        
+        self._omega = -1j * self._frequencies
+        self._phase_initialized = False
+
+    def update_cp_time(self, current_time: float) -> None:
+        self._complex_products = np.exp(self._omega * current_time)
+        self._phase_initialized = True
+    
+    def update_cp_timestep(self, time_step: float) -> None:
+        if not self._phase_initialized:
+            raise RuntimeError("Call update_cp_time() before update_cp_timestep()")
+        self._complex_products *= np.exp(self._omega * time_step)
+
+    def update_spectrum(
+            self,
+            timedata: float,
+            ) -> None:
+        
+        self._frequencydata = (
+            self._eff * self._frequencydata +
+            timedata * self._complex_products
+            )
+    
+    @property
+    def current_spectrum(self) -> np.ndarray:
+        return self._frequencydata.copy()
+    
+    @property
+    def eff(self) -> float:
+        return self._eff
+
+    @property
+    def frequencies(self) -> np.ndarray:
+        return self._frequencies.copy()
+
+    @classmethod
+    def set_defaults(
+            cls,
+            *,
+            eff: Optional[float] = None,
+            frequencies: Optional[np.ndarray] = None
+            ) -> None:
+        
+        if eff is not None:
+            if not isinstance(eff, (int, float)):
+                raise TypeError("eff must be a float")
+            eff = float(eff)
+            if not (0.0 <= eff <= 1.0):
+                raise ValueError("default eff must be between 0.0 and 1.0")
+            cls.default_eff = eff
+
+        if frequencies is not None:
+            if not isinstance(frequencies, np.ndarray):
+                raise TypeError("frequencies must be a numpy array")
+            if frequencies.ndim != 1:
+                raise ValueError("frequencies must be a 1D array")
+            if np.any(frequencies < 0):
+                raise ValueError("frequencies must be non-negative")
+            cls.default_frequencies = frequencies.copy()
+
+
 if (__name__ == '__main__'):
     warnings.warn(
         "This script defines the structures necessary for real-time "
