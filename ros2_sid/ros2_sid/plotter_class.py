@@ -660,7 +660,7 @@ class PlotFigure:
             label
             )
         if axis_color:
-            self.color_axis(ax_pos, axis_color)
+            self.color_axis_secondary_y(ax_pos, axis_color)
         return scatter_obj 
 
     def add_bar(
@@ -748,7 +748,7 @@ class PlotFigure:
             label
             )
         if axis_color:
-            self.color_axis(ax_pos, axis_color)
+            self.color_axis_secondary_y(ax_pos, axis_color)
         return bar_container
 
     def add_fill_between(

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import re
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Dict, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -360,16 +360,16 @@ def extract_model(dataframe, prefix):
     
     return dataframe[extracted_cols]
 
-def process_models(dataframes: list[pd.DataFrame]):
-    for i, df in enumerate(dataframes):
+def process_models(dataframes: Dict[str, pd.DataFrame]):
+    for name, df in dataframes.items():
         if df.empty:
-            raise ValueError(f"DataFrame at index {i} is empty.")
+            raise ValueError(f"DataFrame named {name} is empty.")
         if 'timestamp' not in df.columns:
-            raise ValueError(f"DataFrame at index {i} missing 'timestamp' column.")
+            raise ValueError(f"DataFrame named {name} missing 'timestamp' column.")
         
         prefix = next((match.group(1) for col in df.columns if (match := re.fullmatch(r"(.*)measured_output", col))), None)
         if prefix is None:
-            raise ValueError(f"DataFrame at index {i} missing a 'prefix_measured_output' column.")
+            raise ValueError(f"DataFrame named {name} missing a 'prefix_measured_output' column.")
         
         regressor_cols = sorted(
             [col for col in df.columns if 'regressor_' in col],
@@ -380,11 +380,11 @@ def process_models(dataframes: list[pd.DataFrame]):
             key=_extract_param_number
             )
         if len(regressor_cols) == 0:
-            raise ValueError(f"DataFrame at index {i} missing a 'prefix_regressor_#' column.")
+            raise ValueError(f"DataFrame named {name} missing a 'prefix_regressor_#' column.")
         if len(parameter_cols) == 0:
-            raise ValueError(f"DataFrame at index {i} missing a 'prefix_parameter_#' column.")
+            raise ValueError(f"DataFrame named {name} missing a 'prefix_parameter_#' column.")
         if (len(regressor_cols) != len(parameter_cols)):
-            raise ValueError(f"DataFrame at index {i} has a mismatched number of regressors ({len(regressor_cols)}) and parameters ({len(parameter_cols)}).")
+            raise ValueError(f"DataFrame named {name} has a mismatched number of regressors ({len(regressor_cols)}) and parameters ({len(parameter_cols)}).")
         
         # modeled output
         regressors = df[regressor_cols].to_numpy()
@@ -416,7 +416,6 @@ def process_models(dataframes: list[pd.DataFrame]):
         mse_label = f"{prefix}mse"
         df.insert(loc=6, column=mse_label, value=mse)
         total_mse = _sliding_mse(df[f"{prefix}measured_output"], df[f"{prefix}modeled_output"], window_size=6)
-        print(total_mse)
         
         # coefficient of determination (cod)
         num_regressors = len([col for col in df.columns if re.match(rf"{prefix}regressor_\d+$", col)])
@@ -1251,7 +1250,37 @@ def plot_filter_duration(
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
-if __name__ == "__main__":
+
+def main():
+    start_time = 0
+    end_time = 999999
+
+    csv_files = {
+        "Small Roll Model": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
+    }
+
+    plot_labels = {
+        "subtitle": "Roll Models",
+    }
+
+    model_dataframes: Dict[str, pd.DataFrame] = {}
+    for name, info in csv_files.items():
+        try:
+            df = pd.read_csv(info["path"])
+            model_dataframes[name] = extract_model(df, info["prefix"])
+        except Exception as error:
+            raise RuntimeError(f"Failed processing '{name}'") from error
+    processed_models = process_models(model_dataframes)
+
+    # for name, df in processed_models.items():
+    #     print(f"\n{name}")
+    #     print("-" * len(name))
+    #     print(list(df.columns))
+
+
+
+
+def old_stuff():
     csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"
     
     models = ['ols_rol_']
@@ -1304,3 +1333,8 @@ if __name__ == "__main__":
     # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_duration_data.csv"))
 
     plt.show()
+
+
+if __name__ == "__main__":
+    main()
+    # old_stuff()

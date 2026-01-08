@@ -404,8 +404,8 @@ def plot_trajectory_delay(
     fig.add_scatter(1, odometry_time, pit_deg, label="Response", color='tab:red')
 
     fig.define_subplot(2, title="Yaw Over Time", ylabel="Command Angle\n[deg]", y2label="Response Angle\n[deg]", xlabel="Time [s]")
-    fig.add_data(2, trajectory_time, yaw_cmd, color='black', linestyle="--")
-    fig.add_scatter_secondary_y(2, odometry_time, yaw_deg, color='tab:green', axis_color='green')
+    fig.add_data(2, trajectory_time, yaw_cmd, label="Command", color='black', linestyle="--")
+    fig.add_scatter_secondary_y(2, odometry_time, yaw_deg, label="Response", color='tab:green', axis_color='green', )
 
     fig.set_all_legends(loc='upper right', fontsize='medium')
     fig.set_all_grids(True, alpha=0.5)
