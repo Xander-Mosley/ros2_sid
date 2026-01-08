@@ -30,7 +30,7 @@ from typing import Optional, Sequence, Union
 import numpy as np
 
 
-__all__ = ['StoredData', 'ModelStructure']
+__all__ = ['StoredData', 'ModelStructure', 'RecursiveFourierTransform', 'ordinary_least_squares']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
@@ -465,7 +465,7 @@ class RecursiveFourierTransform:
         if np.any(self._frequencies < 0):
             raise ValueError("frequencies must be non-negative")
 
-        self._complex_products = np.zeros(self._frequencies.size, dtype=complex)
+        self._complex_products = np.ones(self._frequencies.size, dtype=complex)
         self._frequencydata = np.zeros(self._frequencies.size, dtype=complex)
         
         self._omega = -1j * self._frequencies

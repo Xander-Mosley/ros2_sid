@@ -83,12 +83,11 @@ class IMUDifferentiating(Node):
             self.pit_accel = self.lpf_pit_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.pit_velo.data), self.dt)
             self.yaw_accel = self.lpf_yaw_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.yaw_velo.data), self.dt)
             
-            pub_msg: Float64MultiArray = Float64MultiArray()
-            pub_msg.data = [
-                np.float64(self.rol_accel),
-                np.float64(self.pit_accel),
-                np.float64(self.yaw_accel)
-            ]
+            pub_msg: Imu = Imu()
+            pub_msg.header = sub_msg.header
+            pub_msg.angular_velocity.x = np.float64(self.rol_accel)
+            pub_msg.angular_velocity.y = np.float64(self.pit_accel)
+            pub_msg.angular_velocity.z = np.float64(self.yaw_accel)
             self.imu_diff.publish(pub_msg)
 
             end = time.perf_counter()
@@ -112,7 +111,7 @@ class IMUDifferentiating(Node):
 
     def setup_pubs(self):
         self.imu_diff: Publisher = self.create_publisher(
-            Float64MultiArray, 'imu_diff', 10)
+            Imu, 'imu_diff', 10)
         
         self.imu_diff_duration: Publisher = self.create_publisher(
             Float64MultiArray, 'imu_diff_duration', 10)

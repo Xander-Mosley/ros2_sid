@@ -1252,9 +1252,9 @@ def plot_filter_duration(
     return fig
 
 if __name__ == "__main__":
-    csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_slowed_data.csv"
+    csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"
     
-    models = ['ols_rol_slowed_']
+    models = ['ols_rol_']
     
     start_time = 0
     end_time = 999999
