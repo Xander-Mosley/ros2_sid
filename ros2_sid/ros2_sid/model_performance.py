@@ -1190,18 +1190,21 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
             raise RuntimeError(f"Failed processing '{name}'") from error
     processed_models = process_models(model_dataframes)
 
+    # TODO: Allow for separate figures to be plotted. Simple if-else statement once all plots are complete.
     plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
     plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
     plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
     plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-    
-    plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    # plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)   # TODO: Need to add the gridspec to the PlotFigure class (if possible).
+    plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
     plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
     plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
     plt.show()
-
+    
+    # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions
 
 def main():
+    # TODO: Isolated this into three scripts: model_processing, model_performance, and model_spectrums.
     csv_files = {
         "Small Roll": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
     }
@@ -1222,60 +1225,5 @@ def main():
 
     plot_models(csv_files, start_time, end_time, plot_labels)
 
-
-
-def old_stuff():
-    # csv_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"
-    
-    # models = ['ols_rol_']
-    
-    # start_time = 0
-    # end_time = 999999
-    # # TODO: Add model labels as well
-    # plot_labels = {
-    # # "subtitle": "Roll Models",
-    # # "time": "Time [s]",
-    # # "measured_output": "Measured Roll\nAcceleration [deg/s²]",
-    # # "output_amp": "Roll Acceleration\n[deg/s²]",
-    # # "output_percent_confidence": "Confidence [%]",
-    # # "cod_amp": "R²",
-    # # "residuals": "Roll Acceleration\nResiduals [deg/s²]",
-    # # "mse": "Roll Acceleration\nSquared Error\n[(deg/s²)²]",
-    # # "param_1_amp": "Roll Velocity\nParameter [1/s]",
-    # # "param_2_amp": "Aileron Parameter\n[1/s²]",
-    # # "param_3_amp": "Yaw Velocity\nParameter [1/s]",
-    # # "param_4_amp": "Rudder Parameter\n[1/s²]",
-    # # "param_1_cod_amp": "Roll Velocity\nParameter's r²\n[%]",
-    # # "param_2_cod_amp": "Aileron\nParameter's r²\n[%]",
-    # # "param_3_cod_amp": "Yaw Velocity\nParameter's r²\n[%]",
-    # # "param_4_cod_amp": "Rudder\nParameter's r²\n[%]",
-    # # "param_1_cond_amp": "Roll Velocity\nParameter's\nConditioning",
-    # # "param_2_cond_amp": "Aileron\nParameter's\nConditioning",
-    # # "param_3_cond_amp": "Yaw Velocity\nParameter's\nConditioning",
-    # # "param_4_cond_amp": "Rudder\nParameter's\nConditioning",
-    # }
-
-    # csv = pd.read_csv(csv_path)
-    # model_dfs = {prefix: extract_model(csv, prefix) for prefix in models}
-    # processed_models = process_models(list(model_dfs.values()))
-    # TODO: ADD BATCH RESULTS!
-    # plot_models(processed_models, start_time, end_time, plot_labels)
-    # plot_regressor_data(processed_models, start_time, end_time, plot_labels)
-    # plot_confidence(processed_models,  start_time, end_time, plot_labels)
-    # plot_percent_confidence(processed_models,  start_time, end_time, plot_labels)
-    # plot_error(processed_models, start_time, end_time, plot_labels)
-    # plot_fit(processed_models,  start_time, end_time, plot_labels)
-    # TODO: Review the R² calculations.
-    # plot_conditioning(processed_models, start_time, end_time, plot_labels)
-    # plot_correlation(processed_models, start_time, end_time, plot_labels)
-
-    # TODO: Add FFT plotter
-    # TODO: Add Bode plotter
-
-    # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))
-    # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_duration_data.csv"))
-    pass
-
 if __name__ == "__main__":
     main()
-    # old_stuff()

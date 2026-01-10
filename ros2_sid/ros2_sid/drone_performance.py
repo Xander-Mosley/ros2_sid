@@ -412,6 +412,7 @@ def plot_trajectory_delay(
     return fig
 
 
+
 def flight_data(folder_path, start_time, end_time):
     plot_overall(
         [pd.read_csv(f"{folder_path}rcout_data.csv"),
@@ -466,7 +467,6 @@ def main():
     landing_performance(folder_path, start_time, end_time)
     control_performance(folder_path, start_time, end_time)
     plt.show()
-
 
 if __name__ == "__main__":
     main()
