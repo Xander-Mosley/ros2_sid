@@ -388,6 +388,17 @@ class PlotFigure:
         for ax in self.all_axes:
             ax.grid(enabled, **kwargs)
 
+    def autoscale_from_lines(self, index: int, margin: float = 0.1):
+        ax = self.axes[index]
+        lines = ax.get_lines()
+        if not lines:
+            return
+
+        ydata = np.concatenate([line.get_ydata() for line in lines])
+        ymin, ymax = ydata.min(), ydata.max()
+        pad = (ymax - ymin) * margin
+        ax.set_ylim(ymin - pad, ymax + pad)
+
     def set_log_scale(
         self,
         ax_pos: int,
