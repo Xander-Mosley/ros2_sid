@@ -811,96 +811,104 @@ def plot_percent_confidence(
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
-
 def plot_error(
         dataframes: dict[str, pd.DataFrame],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
-        ) -> None:
+        ) -> PlotFigure:
     
     if not dataframes:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
-        
-    fig = plt.figure(figsize=(12, 6))
-    gs = GridSpec(2, 2, figure=fig)
-    ax_upper_left = fig.add_subplot(gs[0, 0])
-    ax_lower_left = fig.add_subplot(gs[1, 0])
-    ax_right = fig.add_subplot(gs[:, 1])
-    axs = [ax_upper_left, ax_lower_left, ax_right]
+
+    layout = {
+        0: (slice(0, 1), slice(0, 1)),   # upper-left
+        1: (slice(1, 2), slice(0, 1)),   # lower-left
+        2: (slice(0, 2), slice(1, 2)),   # right (spans rows)
+    }
+    fig = PlotFigure(nrows=2, ncols=2, figsize=(12, 6), gridspec=True, layout=layout)
+    base_title = "Model Performance - Error"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+    fig.set_figure_title(f"{base_title}\n{subtitle}")
+
+    terms = plot_labels.get("terms", {})
+    term_info = terms.get(0, {})
+    units = term_info.get("units", "")
     
-    base_title = "Parameter Estimator Performance - Figure 4"
-    subtitle = plot_labels.get("subtitle", "Multiple Models")
-    full_title = f"{base_title}\n{subtitle}" if subtitle else base_title
-    fig.suptitle(full_title, fontsize=14, weight='bold')
+    fig.define_subplot(
+        0,
+        title="Residuals Over Time",
+        ylabel=f"Residuals {units}",
+        xlabel=plot_labels.get("time", "Time [s]"),
+        grid=True,
+    )
+    fig.define_subplot(
+        1,
+        title="Mean Squared Error (MSE) Over Time",
+        ylabel="MSE",
+        xlabel=plot_labels.get("time", "Time [s]"),
+        grid=True,
+    )
+    fig.define_subplot(
+        2,
+        title="Residuals vs Measured Output",
+        ylabel=f"Residuals {units}",
+        xlabel=f"Measured Output {units}",
+        grid=True,
+    )
+
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    model_colors = {
+        name: color_cycle[i % len(color_cycle)]
+        for i, name in enumerate(dataframes.keys())
+    }
     
-    for i, df in enumerate(dataframes):
+    for i, (name, df) in enumerate(dataframes.items()):
         if df.empty:
-            print(f"Skipping empty DataFrame at index {i}")
+            print(f"Skipping empty DataFrame named {name}.")
             continue
         if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame at index {i} due to missing 'timestamp'")
+            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
             continue
-            
-        prefix = next((match.group(1) for col in df.columns if (match := re.fullmatch(r"(.*)measured_output", col))), None)
-        if prefix is None:
-            raise ValueError(f"DataFrame at index {i} missing a 'prefix_measured_output' column.")
         
         if start_time is not None:
             df = df[df["timestamp"] >= start_time]
         if end_time is not None:
             df = df[df["timestamp"] <= end_time]
 
+        prefix = _extract_model_prefix(df)
+
         time = df["timestamp"]
         measured_output = df[f"{prefix}measured_output"]
         residuals = df[f"{prefix}residuals"]
         mse = df[f"{prefix}mse"]
-    
-        model_color = color_cycle[i % len(color_cycle)]
         
         # --- Subplot 1 (upper left) ---
-        axs[0].scatter(time, residuals, label=prefix, s=10, alpha=0.7, color=model_color)
-        axs[0].plot(time, residuals, linewidth=1, alpha=0.3, color=model_color)
+        fig.add_scatter(0, time, residuals, label=name, color=model_colors[name], s=10, alpha=0.7)
+        fig.add_data(0, time, residuals, color=model_colors[name], alpha=0.3, linewidth=1)
         
         # --- Subplot 2 (lower left) ---
-        axs[1].scatter(time, mse, label=prefix, s=10, alpha=0.7, color=model_color)
-        axs[1].plot(time, mse, linewidth=1, alpha=0.3, color=model_color)
+        fig.add_scatter(1, time, mse, label=name, color=model_colors[name], s=10, alpha=0.7)
+        fig.add_data(1, time, mse, color=model_colors[name], alpha=0.3, linewidth=1)
         
         # --- Subplot 3 (right) ---
-        axs[2].scatter(measured_output, residuals, label=prefix, s=10, alpha=0.7, color=model_color)
+        fig.add_scatter(2, measured_output, residuals, label=name, color=model_colors[name], s=10, alpha=0.7)
         
-    # --- Final Formatting ---
-    axs[0].set_title("Residuals Over Time")
-    axs[0].set_ylabel(plot_labels.get("residuals", "Residuals"))
-    axs[0].set_xlabel(plot_labels.get("time", "Time [s]"))
-    
-    axs[1].set_title("Mean Squared Error (MSE) Over Time")
-    axs[1].set_ylabel(plot_labels.get("mse", "MSE"))
-    axs[1].set_xlabel(plot_labels.get("time", "Time [s]"))
-    
-    axs[2].set_title("Residuals vs Measured Output")
-    axs[2].set_ylabel(plot_labels.get("residuals", "Residuals"))
-    axs[2].set_xlabel(plot_labels.get("measured_output", "Measured Output"))
-    lims = [
-        min(axs[2].get_xlim()[0], axs[2].get_ylim()[0]),
-        max(axs[2].get_xlim()[1], axs[2].get_ylim()[1])
-        ]
-    axs[2].set_xlim(lims[0], lims[1])
-    axs[2].set_ylim(lims[0], lims[1])
-    axs[2].set_aspect('equal')
-    
-    for ax in axs:
-        formatter = ScalarFormatter(useMathText=True)
-        formatter.set_scientific(True)
-        formatter.set_powerlimits((-3, 3))
-        ax.yaxis.set_major_formatter(formatter)
-        ax.grid(True)
-        axs[0].legend(loc='upper right', fontsize='medium')
+    ax = fig._get_ax(2)
+    lims = (
+        min(ax.get_xlim()[0], ax.get_ylim()[0]),
+        max(ax.get_xlim()[1], ax.get_ylim()[1]),
+    )
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+    ax.set_aspect("equal")
 
+    fig.set_all_legends(loc='upper right', fontsize='medium')
+    fig.set_all_grids(True, alpha=0.5)
+    return fig
 
 def plot_fit(
         dataframes: Dict[str, pd.DataFrame],
@@ -1180,7 +1188,6 @@ def plot_filter_duration(
 
 
 
-
 def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
     model_dataframes: Dict[str, pd.DataFrame] = {}
     for name, info in csv_files.items():
@@ -1191,18 +1198,28 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
             raise RuntimeError(f"Failed processing '{name}'") from error
     processed_models = process_models(model_dataframes)
 
-    # TODO: Allow for separate figures to be plotted. Simple if-else statement once all plots are complete.
-    # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-    # plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-    # plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-    # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-    plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)   # TODO: Need to add the gridspec to the PlotFigure class (if possible).
-    # plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
-    # plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-    # plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-    plt.show()
+    if not separate:
+        # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
+        plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
+        plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
+        # plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions
+    else:
+        for i in enumerate(processed_models.items()):
+            # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
     
-    # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions
+    plt.show()
 
 def main():
     # TODO: Isolated this into three scripts: model_processing, model_performance, and model_spectrums.
