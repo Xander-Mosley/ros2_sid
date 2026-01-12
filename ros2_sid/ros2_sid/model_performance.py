@@ -813,11 +813,12 @@ def plot_percent_confidence(
 
 
 def plot_error(
-        dataframes: list[pd.DataFrame],
+        dataframes: dict[str, pd.DataFrame],
+        *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
-        ):
+        ) -> None:
     
     if not dataframes:
         raise ValueError("No models provided.")
@@ -1191,14 +1192,14 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
     processed_models = process_models(model_dataframes)
 
     # TODO: Allow for separate figures to be plotted. Simple if-else statement once all plots are complete.
-    plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-    plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-    plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-    plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-    # plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)   # TODO: Need to add the gridspec to the PlotFigure class (if possible).
-    plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
-    plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-    plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
+    # plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    # plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
+    plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)   # TODO: Need to add the gridspec to the PlotFigure class (if possible).
+    # plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
+    # plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    # plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
     plt.show()
     
     # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions

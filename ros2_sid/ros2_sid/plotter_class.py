@@ -46,6 +46,7 @@ import matplotlib
 matplotlib.use("TkAgg")  # or "Qt5Agg", "GTK3Agg", depending on your system
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.gridspec import GridSpec
 
 ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
 
@@ -64,6 +65,7 @@ class PlotFigure:
     common plot types (lines, scatter, bars, histograms, etc.).
     """
 
+
     def __init__(
         self,
         fig_title: Optional[str] = None,
@@ -71,54 +73,77 @@ class PlotFigure:
         ncols: int = 1,
         figsize: Tuple[float, float] = (8, 6),
         sharex: bool = False,
-        sharey: bool = False
-        ) -> None:
+        sharey: bool = False,
+        gridspec: bool = False,
+        layout: Optional[dict[int, Tuple[slice, slice]]] = None,
+    ) -> None:
         """
-        Initialize a PlotFigure with a grid of subplots.
+        Initialize a PlotFigure with optional GridSpec layout.
 
         Parameters
         ----------
-        fig_title : Optional[str], default = None
-            Title for the entire figure.
-        nrows : int, default = 1
-            Number of subplot rows.
-        ncols : int, default = 1
-            Number of subplot columns.
-        figsize : Tuple[float, float], default = (8, 6)
-            Size of the figure in inches.
-        sharex : bool, default = False
-            Share x-axis among subplots.
-        sharey : bool, default = False
-            Share y-axis among subplots.
+        gridspec : bool, default = False
+            Use matplotlib GridSpec instead of plt.subplots.
+        layout : Optional[dict]
+            Mapping of subplot index -> (row_slice, col_slice)
+            Example:
+                {
+                    0: (slice(0, 2), slice(0, 3)),
+                    1: (slice(2, 3), slice(0, 1)),
+                    2: (slice(2, 3), slice(1, 3)),
+                }
         """
-        self.fig, self.axes = plt.subplots(
-            nrows=nrows,
-            ncols=ncols,
-            figsize=figsize,
-            sharex=sharex,
-            sharey=sharey
-            )
-        self.nrows, self.ncols = nrows, ncols
-        self.plot_data: dict[Tuple[int, Optional[str]], object] = {}
-        self.secondary_axes: dict[int, Axes] = {}
 
+        self.fig = plt.figure(figsize=figsize)
+        self._axes: dict[int, Axes] = {}
+        self.axes = self._axes
+        self.secondary_axes: dict[int, Axes] = {}
+        self.plot_data: dict[Tuple[int, Optional[str]], object] = {}
+
+        self.nrows, self.ncols = nrows, ncols
+
+        # Standard uniform layout
+        if not gridspec:
+            axs = self.fig.subplots(
+                nrows=nrows,
+                ncols=ncols,
+                sharex=sharex,
+                sharey=sharey,
+            )
+
+            if isinstance(axs, np.ndarray):
+                for i, ax in enumerate(axs.flat):
+                    self._axes[i] = ax
+            else:
+                self._axes[0] = axs
+
+        # GridSpec layout
+        else:
+            gs = GridSpec(nrows, ncols, figure=self.fig)
+
+            if layout is None:
+                # Uniform GridSpec (same behavior as subplots)
+                idx = 0
+                for r in range(nrows):
+                    for c in range(ncols):
+                        self._axes[idx] = self.fig.add_subplot(gs[r, c])
+                        idx += 1
+            else:
+                # Custom GridSpec layout
+                for ax_pos, (row_slice, col_slice) in layout.items():
+                    self._axes[ax_pos] = self.fig.add_subplot(
+                        gs[row_slice, col_slice]
+                    )
+
+        if layout is not None and not gridspec:
+            raise ValueError("layout requires gridspec=True")
+        
         if fig_title:
             self.fig.suptitle(fig_title, fontsize=14)
 
     @property
     def all_axes(self) -> list[Axes]:
-        """
-        Get all axes in the figure as a flat iterable.
-
-        Returns
-        -------
-        list of matplotlib.axes.Axes
-            Flattened list of subplot axes.
-        """
-        if isinstance(self.axes, np.ndarray):
-            return list(self.axes.flat)
-        return [self.axes]
-
+        return [self._axes[k] for k in sorted(self._axes)]
 
     def _add_plot_data(
         self,
@@ -151,14 +176,9 @@ class PlotFigure:
         return obj
     
     def _axis_index(self, ax: Axes) -> int:
-        """Return the subplot index for a given primary axis."""
-        if isinstance(self.axes, np.ndarray):
-            for i, a in enumerate(self.axes.flat):
-                if a is ax:
-                    return i
-        else:
-            if self.axes is ax:
-                return 0
+        for idx, a in self._axes.items():
+            if a is ax:
+                return idx
         raise ValueError("Axis not found in figure.")
 
     def _ensure_numpy(self, data: Optional[ArrayLike]) -> np.ndarray:
@@ -194,7 +214,7 @@ class PlotFigure:
 
     def _get_ax(self, ax_pos: int) -> Axes:
         """
-        Retrieve a specific subplot axis by index.
+        Retrieve a subplot axis by flat index.
 
         Parameters
         ----------
@@ -204,25 +224,20 @@ class PlotFigure:
         Returns
         -------
         matplotlib.axes.Axes
-            The requested subplot axis.
 
         Raises
         ------
         ValueError
-            If 'ax_pos' is out of range.
+            If the axis index does not exist.
         """
         try:
-            return (
-                self.axes.flat[ax_pos]
-                if isinstance(self.axes, np.ndarray)
-                else self.axes
-                )
-        except IndexError:
+            return self._axes[ax_pos]
+        except KeyError:
             raise ValueError(
                 f"Invalid subplot index {ax_pos}. "
-                f"Figure has {self.nrows * self.ncols} subplots."
-                )
-        
+                f"Available axes: {sorted(self._axes.keys())}"
+            )
+
     def _get_secondary_axis(self, ax_pos: int) -> Axes:
         """
         Get the secondary y-axis for a subplot.
@@ -389,7 +404,7 @@ class PlotFigure:
             ax.grid(enabled, **kwargs)
 
     def autoscale_from_lines(self, index: int, margin: float = 0.1):
-        ax = self.axes[index]
+        ax = self._get_ax(index)
         lines = ax.get_lines()
         if not lines:
             return
