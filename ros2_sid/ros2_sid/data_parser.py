@@ -190,9 +190,9 @@ def parse_imu_diff(msg, relative_time):
         # 'gax': msg.data[0],
         # 'gay': msg.data[1],
         # 'gaz': msg.data[2]
-        'gax': msg.linear_acceleration.x,
-        'gay': msg.linear_acceleration.y,
-        'gaz': msg.linear_acceleration.z
+        'gax': msg.angular_velocity.x,
+        'gay': msg.angular_velocity.y,
+        'gaz': msg.angular_velocity.z
     }
 
 def parse_diff_duration(msg, relative_time):

@@ -468,7 +468,7 @@ class RecursiveFourierTransform:
         self._complex_products = np.ones(self._frequencies.size, dtype=complex)
         self._frequencydata = np.zeros(self._frequencies.size, dtype=complex)
         
-        self._omega = -1j * self._frequencies
+        self._omega = -2j * self._frequencies * np.pi   # went from (-1j * f) to (-2j * pi * f) for the correct rotation
         self._phase_initialized = False
 
     def update_cp_time(self, current_time: float) -> None:
