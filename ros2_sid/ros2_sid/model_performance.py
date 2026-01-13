@@ -759,9 +759,9 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
         plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
         # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
         plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        # plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
-        # plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        # plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
+        plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
         # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions
     else:
         for i in enumerate(processed_models.items()):
@@ -783,11 +783,11 @@ def main():
     }
 
     start_time = 0
-    end_time = 999999
+    end_time = 9999
 
     plot_labels = {
-        "subtitle": "",
-        "time": "Time [s]",
+        # "subtitle": "",
+        # "time": "Time [s]",
 
         "terms":{
             0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
