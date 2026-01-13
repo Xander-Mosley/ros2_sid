@@ -346,8 +346,8 @@ class OLSNode(Node):
             else:
                 self.ail_pwm.update_cp_timestep(dt)
         
-            self.ail_pwm.update_spectrum(msg.channels[0])
-            self.ail_pwm_td.update_data(msg.channels[0])
+            self.ail_pwm.update_spectrum(msg.channels[0] - 1500)
+            self.ail_pwm_td.update_data(msg.channels[0] - 1500)
 
     # def odom_callback(self, msg: Odometry) -> None:
     #     """
@@ -402,7 +402,7 @@ class OLSNode(Node):
     def setup_all_publishers(self) -> None:
         self.ols_rol_publisher: Publisher = self.create_publisher(
                 Float64MultiArray, 'ols_rol', 10)
-        timer_period: float = 0.25
+        timer_period: float = 1/30
         self.ols_rol_timer = self.create_timer(
             timer_period, self.publish_ols_rol_data)
 
