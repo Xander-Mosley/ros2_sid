@@ -356,7 +356,7 @@ def plot_analysis(t, x, y):
     # delay_figure.add_scatter(1, f, group_delay_samples, color="tab:orange", label="Phase Delay (samples)")
     # delay_figure.set_all_legends()
 
-def plot_model_spectrums(filepaths):
+def plot_model_spectrums(filepaths, rft_args=None, plot_labels=None):
     data = {}
     spectrums = {}
 
@@ -365,67 +365,139 @@ def plot_model_spectrums(filepaths):
         "time": df_z["timestamp"].to_numpy(),
         "data": df_z[filepaths["z"]["tag"]].to_numpy()
     }
-    freqs, spectrum = compute_rft_spectrum(data["z"]["time"], data["z"]["data"])
-    spectrums["Z"] = {"frequencies": freqs, "spectrum": spectrum[0]}
+
+    freqs_z, spec_z = compute_rft_spectrum(data["z"]["time"], data["z"]["data"])
+    spectrums["z"] = {
+        "frequencies": freqs_z,
+        "spectrum": spec_z[0]
+    }
 
     data["x"] = {}
-    spectrums["X"] = {}
-    for key, val in filepaths["x"].items():
-        df = pd.read_csv(val["filepath"])
+    spectrums["x"] = {}
+
+    for key, cfg in filepaths["x"].items():
+        df = pd.read_csv(cfg["filepath"])
+        x_data = df[cfg["tag"]].to_numpy()
+
+        # Optional per-regressor preprocessing
+        if key == "2":
+            x_data = x_data - 1500
+
         data["x"][key] = {
             "time": df["timestamp"].to_numpy(),
-            "data": df[val["tag"]].to_numpy()
+            "data": x_data
         }
-        if key == "2":
-            data["x"]["2"]["data"] = data["x"]["2"]["data"] - 1500
-        freqs, spectrum = compute_rft_spectrum(data["x"][key]["time"], data["x"][key]["data"])
-        spectrums["X"][key] = {"frequencies": freqs, "spectrum": spectrum[0]}
-    
-    freq_figure = PlotFigure("Spectrum Analysis - Model Spectrums",  nrows=3, sharex=True)
+
+        freqs, spec = compute_rft_spectrum(data["x"][key]["time"], x_data)
+        spectrums["x"][key] = {
+            "frequencies": freqs,
+            "spectrum": spec[0]
+        }
+
+    n_regressors = len(spectrums["x"])
+    freq_figure = PlotFigure(
+        "Spectrum Analysis - Model Spectrums",
+        nrows=1 + n_regressors,
+        sharex=True
+    )
+
+    z_label = plot_labels["z"]["name"] if plot_labels else "Measured Output"
     freq_figure.define_subplot(0, ylabel="Magnitude", grid=True)
-    freq_figure.add_data(0, spectrums["Z"]["frequencies"], np.abs(spectrums["Z"]["spectrum"]), label="Measured Output")
-    freq_figure.define_subplot(1, ylabel="Magnitude", grid=True)
-    freq_figure.add_data(1, spectrums["X"]["1"]["frequencies"], np.abs(spectrums["X"]["1"]["spectrum"]), label="Regressor 1")
-    freq_figure.define_subplot(2, ylabel="Magnitude", xlabel="Frequency [Hz]", grid=True)
-    freq_figure.add_data(2, spectrums["X"]["2"]["frequencies"], np.abs(spectrums["X"]["2"]["spectrum"]), label="Regressor 2")
+    freq_figure.add_data(
+        0,
+        spectrums["z"]["frequencies"],
+        np.abs(spectrums["z"]["spectrum"]),
+        label=z_label
+    )
+    for i, key in enumerate(spectrums["x"], start=1):
+        label = (
+            plot_labels["x"][key]["name"]
+            if plot_labels else f"Regressor {key}"
+        )
+        freq_figure.define_subplot(i, ylabel="Magnitude", xlabel="Freqyency [Hz]" if i == n_regressors else None, grid=True)
+        freq_figure.add_data(
+            i,
+            spectrums["x"][key]["frequencies"],
+            np.abs(spectrums["x"][key]["spectrum"]),
+            label=label
+        )
     freq_figure.set_all_legends()
 
     def to_dB(x):
         return 20 * np.log10(np.abs(x) + 1e-12)
 
-    if (np.allclose(spectrums["Z"]["frequencies"], spectrums["X"]["1"]["frequencies"]) and
-        np.allclose(spectrums["Z"]["frequencies"], spectrums["X"]["2"]["frequencies"])):
-        bode_figure = PlotFigure("Spectrum Analysis - Bode Plot of Regressors", nrows=2, sharex=True)
+    freqs_match = all(
+        np.allclose(freqs_z, spectrums["x"][k]["frequencies"])
+        for k in spectrums["x"]
+    )
+
+    if freqs_match:
+        bode_figure = PlotFigure(
+            "Spectrum Analysis - Bode Plot of Regressors",
+            nrows=2,
+            sharex=True
+        )
+
         bode_figure.define_subplot(0, ylabel="Magnitude [dB]", grid=True)
         bode_figure.set_log_scale(0, axis='x')
         bode_figure.add_line(0, -3, orientation='h', color='tab:red', label='-3 dB')
-        bode_figure.add_data(0,
-                            spectrums["Z"]["frequencies"],
-                            to_dB(spectrums["Z"]["spectrum"] / spectrums["X"]["1"]["spectrum"]),
-                            label="Magnitude", color="tab:blue")
-        bode_figure.add_data(0,
-                            spectrums["Z"]["frequencies"],
-                            to_dB(spectrums["Z"]["spectrum"] / spectrums["X"]["2"]["spectrum"]),
-                            label="Magnitude", color="tab:orange")
-        bode_figure.define_subplot(1, ylabel="Phase [deg]", xlabel="Frequency [Hz]", grid=True)
+
+        bode_figure.define_subplot(
+            1,
+            ylabel="Phase [deg]",
+            xlabel="Frequency [Hz]",
+            grid=True
+        )
         bode_figure.set_log_scale(1, axis='x')
-        bode_figure.add_data(1,
-                            spectrums["Z"]["frequencies"],
-                            np.angle(spectrums["Z"]["spectrum"] / spectrums["X"]["1"]["spectrum"], deg=True),
-                            label="Phase", color="tab:blue")
-        bode_figure.add_data(1,
-                            spectrums["Z"]["frequencies"],
-                            np.angle(spectrums["Z"]["spectrum"] / spectrums["X"]["2"]["spectrum"], deg=True),
-                            label="Phase", color="tab:orange")
+
+        for key in spectrums["x"]:
+            label = (
+                plot_labels["x"][key]["name"]
+                if plot_labels else f"Regressor {key}"
+            )
+
+            ratio = spectrums["z"]["spectrum"] / spectrums["x"][key]["spectrum"]
+
+            bode_figure.add_data(
+                0, freqs_z, to_dB(ratio), label=label
+            )
+            bode_figure.add_data(
+                1, freqs_z, np.angle(ratio, deg=True), label=label
+            )
+
         bode_figure.set_all_legends()
 
-    plot_normalized_rft_over_time(data["z"]["time"], data["z"]["data"])
-    plot_normalized_rft_over_time(data["x"]["1"]["time"], data["x"]["1"]["data"])
-    plot_normalized_rft_over_time(data["x"]["2"]["time"], data["x"]["2"]["data"])
+    def get_rft_params(rft_args, group, key=None):
+        if rft_args is None:
+            return {"frequencies": None, "eff": None}
 
-    plt.show()
+        if key is None:
+            return rft_args.get(group, {})
 
-def plot_normalized_rft_over_time(time, signal, frequencies=None, eff=1.0):
+        return rft_args.get(group, {}).get(key, {})
+    
+    z_rft = get_rft_params(rft_args, "z")
+
+    plot_normalized_rft_over_time(
+        data["z"]["time"],
+        data["z"]["data"],
+        frequencies=z_rft.get("frequencies"),
+        eff=z_rft.get("eff"), # type: ignore
+        subtitle=plot_labels["z"]["name"] # type: ignore
+    )
+
+    for key in data["x"]:
+        x_rft = get_rft_params(rft_args, "x", key)
+
+        plot_normalized_rft_over_time(
+            data["x"][key]["time"],
+            data["x"][key]["data"],
+            frequencies=x_rft.get("frequencies"),
+            eff=x_rft.get("eff"), # type: ignore
+            subtitle=plot_labels["x"][key]["name"] # type: ignore
+        )
+
+def plot_normalized_rft_over_time(time, signal, frequencies=None, eff=0.999, subtitle=""):
     """
     Compute RFT at each time step, normalize magnitude spectra, and plot 3D surface highlighting peaks.
 
@@ -465,20 +537,54 @@ def plot_normalized_rft_over_time(time, signal, frequencies=None, eff=1.0):
         mag_spectra[i, :] = np.abs(rft.current_spectrum)
 
     # --- Normalize magnitude spectra across each time step ---
-    mag_spectra_norm = mag_spectra / np.max(mag_spectra, axis=1, keepdims=True)
+    mag_spectra_norm = mag_spectra / np.max(mag_spectra)
+
+    # max_freq_indicies = np.argmax(mag_spectra_norm, axis=1)
+    # max_frequencies = frequencies[max_freq_indicies]
 
     plt.figure(figsize=(12, 6))
     plt.pcolormesh(time, frequencies, mag_spectra_norm.T, shading='auto', cmap='viridis')
+    # plt.plot(time, max_frequencies, color='white', lw=2, label='Max Frequency')
     plt.xlabel('Time [s]')
     plt.ylabel('Frequency [Hz]')
     plt.colorbar(label='Normalized Magnitude')
-    plt.title('Time-Resolved Normalized RFT Spectrum')
+    plt.title(f'Time-Resolved Normalized RFT Spectrum\n{subtitle}')
+    # plt.legend()
 
-# def plot_for_biweekly(t, y):
-#     time_figure = PlotFigure("Signal Analysis - Time Domain")
-#     time_figure.define_subplot(0, ylabel="Amplitude", xlabel="Time [s]", grid=True)
-#     time_figure.add_data(0, t, y, label="Output", color="tab:orange")
-#     time_figure.set_all_legends()
+def plot_timestep_distribution(file_directory, file_name):
+    df = pd.read_csv(file_directory + file_name)
+
+    df = df.sort_values("timestamp")
+    df["dt"] = df["timestamp"].diff()
+    dt = df["dt"].dropna()
+
+    mean_dt = dt.mean()
+    num_sigma = 2
+    std_dt = dt.std()
+    low_end = mean_dt - num_sigma * std_dt
+    high_end = mean_dt + num_sigma * std_dt
+
+    figtitle = f"Distribution of Time Step Sizes\nLog: {file_name}"
+    dt_dist = PlotFigure(fig_title=figtitle)
+    dt_dist.define_subplot(0, ylabel="Frequency", xlabel="Time Step, dt [s]")
+    dt_dist.add_hist(0, dt, 74, edgecolor="black")
+    dt_dist.add_line(0, low_end, 'v', label=f"Mean - {num_sigma}σ = {low_end:.3} s", color="grey", linestyle="--")
+    dt_dist.add_line(0, mean_dt, 'v', label=f"Mean = {mean_dt:.3} s", color="red", linewidth=2)
+    dt_dist.add_line(0, high_end, 'v', label=f"Mean + {num_sigma}σ = {high_end:.3} s", color="grey", linestyle="--")
+    dt_dist.set_all_legends()
+
+def plot_timestep_overtime(file_directory, file_name):
+    df = pd.read_csv(file_directory + file_name)
+
+    df = df.sort_values("timestamp")
+    df["dt"] = df["timestamp"].diff()
+    df["dt"][0] = 0
+
+    figtitle = f"Time Step Sizes Over Time\nLog: {file_name}"
+    dt_vt = PlotFigure(fig_title=figtitle)
+    dt_vt.define_subplot(0, ylabel="Time Step, dt [s]", xlabel="Time [s]")
+    dt_vt.add_data(0, df["timestamp"], df["dt"])
+    dt_vt.set_all_legends()
 
 
 def _analyze_input_signals():
@@ -507,25 +613,60 @@ def _analyze_input_signals():
     # plot_analysis(t, fx, xp)
     # plot_analysis(t, xp, fxp)
     # plot_analysis(t, x, fxp)
-    # plot_for_biweekly(t, fxp)
 
     plt.show()
 
 def _analyze_regressor_spectrums():
     filepaths = {
-        "z": {"tag": "gax", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_diff_data.csv"},
+        "z": {"tag": "gax",
+              "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_diff_data.csv"},
         "x": {
             "1": {"tag": "gx", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"},
             "2": {"tag": "rcout_ch1", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/rcout_data.csv"},
         }
     }
 
-    plot_model_spectrums(filepaths=filepaths)
+    rft_args = {
+        "z": {
+            "frequencies": None, "eff": 0.995
+        },
+        "x": {
+            "1": {"frequencies": None, "eff": 0.995},
+            "2": {"frequencies": None, "eff": 0.969},
+        }
+    }
+    
+    plot_labels = {
+        "z": {"name": "Roll Angular Acceleration", "unit": "m/s²"},
+        "x": {
+            "1": {"name": "Roll Angular Rate", "unit": "rad/s"},
+            "2": {"name": "Aileron Command", "unit": "µs"},
+        }
+    }
+
+    plot_model_spectrums(filepaths=filepaths, rft_args=rft_args, plot_labels=plot_labels)
+
+    plt.show()
+
+def _analyze_time_steps():
+    file_directory = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/"
+
+    plot_timestep_distribution(file_directory=file_directory, file_name="imu_diff_data.csv")
+    plot_timestep_distribution(file_directory=file_directory, file_name="imu_data.csv")
+    plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
+    # plot_timestep_overtime(file_directory=file_directory, file_name="imu_diff_data.csv")
+    # plot_timestep_overtime(file_directory=file_directory, file_name="imu_data.csv")
+    # plot_timestep_overtime(file_directory=file_directory, file_name="rcout_data.csv")
+
+    plt.show()
+
+
 
 
 def main():
     # _analyze_input_signals()
     _analyze_regressor_spectrums()
+    # _analyze_time_steps()
 
 if __name__ == "__main__":
     main()

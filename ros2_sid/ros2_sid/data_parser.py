@@ -375,7 +375,7 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2026-01-13_FasterModel_30Hz/rosbag2_2026_01_13-16_35_32_0.db3'
+    bag_file = '/develop_ws/bag_files/rosbag2_2026_01_15-18_15_29/rosbag2_2026_01_15-18_15_29_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',

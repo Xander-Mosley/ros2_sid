@@ -64,9 +64,9 @@ class OLSNode(Node):
         self.ail_pwm_td = StoredData(1, 1)
 
         RecursiveFourierTransform.set_defaults(eff=0.999)
-        self.rol_velo = RecursiveFourierTransform()
-        self.rol_accel = RecursiveFourierTransform()
-        self.ail_pwm = RecursiveFourierTransform()
+        self.rol_velo = RecursiveFourierTransform(eff=0.999)
+        self.rol_accel = RecursiveFourierTransform(eff=0.999)
+        self.ail_pwm = RecursiveFourierTransform(eff=0.999)
 
         self.imu_time = deque([0.0, 0.0],maxlen=2)
         self.acc_time = deque([0.0, 0.0],maxlen=2)
@@ -402,7 +402,7 @@ class OLSNode(Node):
     def setup_all_publishers(self) -> None:
         self.ols_rol_publisher: Publisher = self.create_publisher(
                 Float64MultiArray, 'ols_rol', 10)
-        timer_period: float = 1/30
+        timer_period: float = 1/25
         self.ols_rol_timer = self.create_timer(
             timer_period, self.publish_ols_rol_data)
 

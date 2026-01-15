@@ -268,7 +268,7 @@ def _test_maneuver() -> None:
 
     maneuver = np.column_stack((time, signal, pit_trim, empty))
 
-    save_maneuver(maneuver)
+    # save_maneuver(maneuver)
     plot_maneuver(maneuver)
     plot_maneuver_spectrum(maneuver)
     plt.show()
