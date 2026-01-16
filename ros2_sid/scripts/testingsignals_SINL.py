@@ -178,7 +178,7 @@ class PubInputSignals(Node):
         long_trim = np.ones_like(long_time) * np.deg2rad(-3.5)
         self.allsines = np.array([long_time, long_empty, long_trim, long_empty]).T
 
-        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/doublet_7deg_15s_0.1-1.5.csv"
+        file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/maneuvers/doublet_7deg_15s_1Hz.csv"
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
         time = data[:, 0]
         empty = np.zeros_like(time)

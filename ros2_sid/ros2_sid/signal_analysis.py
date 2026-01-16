@@ -566,7 +566,7 @@ def plot_timestep_distribution(file_directory, file_name):
 
     figtitle = f"Distribution of Time Step Sizes\nLog: {file_name}"
     dt_dist = PlotFigure(fig_title=figtitle)
-    dt_dist.define_subplot(0, ylabel="Frequency", xlabel="Time Step, dt [s]")
+    dt_dist.define_subplot(0, ylabel="Quantity", xlabel="Time Step, dt [s]")
     dt_dist.add_hist(0, dt, 74, edgecolor="black")
     dt_dist.add_line(0, low_end, 'v', label=f"Mean - {num_sigma}σ = {low_end:.3} s", color="grey", linestyle="--")
     dt_dist.add_line(0, mean_dt, 'v', label=f"Mean = {mean_dt:.3} s", color="red", linewidth=2)
@@ -653,7 +653,7 @@ def _analyze_time_steps():
 
     plot_timestep_distribution(file_directory=file_directory, file_name="imu_diff_data.csv")
     plot_timestep_distribution(file_directory=file_directory, file_name="imu_data.csv")
-    plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
+    # plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
     # plot_timestep_overtime(file_directory=file_directory, file_name="imu_diff_data.csv")
     # plot_timestep_overtime(file_directory=file_directory, file_name="imu_data.csv")
     # plot_timestep_overtime(file_directory=file_directory, file_name="rcout_data.csv")
@@ -665,8 +665,8 @@ def _analyze_time_steps():
 
 def main():
     # _analyze_input_signals()
-    _analyze_regressor_spectrums()
-    # _analyze_time_steps()
+    # _analyze_regressor_spectrums()
+    _analyze_time_steps()
 
 if __name__ == "__main__":
     main()

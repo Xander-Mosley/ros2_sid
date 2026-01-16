@@ -165,10 +165,17 @@ class OLSNode(Node):
             qos_profile=SENSOR_QOS
         )
 
-        self.rcout_sub: Subscription = self.create_subscription(
-            RCOut,
-            '/mavros/rc/out',
-            self.rcout_callback,
+        # self.rcout_sub: Subscription = self.create_subscription(
+        #     RCOut,
+        #     '/mavros/rc/out',
+        #     self.rcout_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
+
+        self.replay_rcout_sub: Subscription = self.create_subscription(
+            Float64MultiArray,
+            '/replay/RCOU/data',
+            self.replay_rcout_callback,
             qos_profile=SENSOR_QOS
         )
 
@@ -326,13 +333,39 @@ class OLSNode(Node):
             self.rol_accel.update_spectrum(msg.angular_velocity.x)
             self.rol_accel_td.update_data(msg.angular_velocity.x)
 
-    def rcout_callback(self, msg: RCOut) -> None:
-        # self.ail_pwm.update_data(msg.channels[0])
-        # self.elv_pwm.update_data(msg.channels[1])
-        # self.rud_pwm.update_data(msg.channels[2])
+    # def rcout_callback(self, msg: RCOut) -> None:
+    #     # self.ail_pwm.update_data(msg.channels[0])
+    #     # self.elv_pwm.update_data(msg.channels[1])
+    #     # self.rud_pwm.update_data(msg.channels[2])
         
+    #     global RCO_PASS
+    #     new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
+    #     if new_nanosec_data < self.rco_time[-1]:
+    #         new_nanosec_data += 1.0
+    #     dt = new_nanosec_data - self.rco_time[-1]
+    #     if dt > (1 / 150):
+    #         self.rco_time.append(new_nanosec_data)
+    #         if len(self.rco_time) > 0 and all(x >= 1.0 for x in self.rco_time):
+    #             self.rco_time = deque([x - 1.0 for x in self.rco_time], maxlen=self.rco_time.maxlen)
+    #         if RCO_PASS:
+    #             RCO_PASS = False
+    #             self.ail_pwm.update_cp_time(self.rco_time[-1])
+    #         else:
+    #             self.ail_pwm.update_cp_timestep(dt)
+        
+    #         self.ail_pwm.update_spectrum(msg.channels[0] - 1500)
+    #         self.ail_pwm_td.update_data(msg.channels[0] - 1500)
+
+    def replay_rcout_callback(self, msg: Float64MultiArray) -> None:
         global RCO_PASS
-        new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
+
+        seconds = int(msg.data[0])
+        nanoseconds = int(round((msg.data[0] - seconds) * 1_000_000_000))
+        if nanoseconds >= 1_000_000_000:
+            seconds += 1
+            nanoseconds = 0
+        
+        new_nanosec_data: float = nanoseconds * 1E-9
         if new_nanosec_data < self.rco_time[-1]:
             new_nanosec_data += 1.0
         dt = new_nanosec_data - self.rco_time[-1]
@@ -346,8 +379,8 @@ class OLSNode(Node):
             else:
                 self.ail_pwm.update_cp_timestep(dt)
         
-            self.ail_pwm.update_spectrum(msg.channels[0] - 1500)
-            self.ail_pwm_td.update_data(msg.channels[0] - 1500)
+            self.ail_pwm.update_spectrum(msg.data[2] - 1500)
+            self.ail_pwm_td.update_data(msg.data[2] - 1500)
 
     # def odom_callback(self, msg: Odometry) -> None:
     #     """

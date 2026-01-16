@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 from re import S
 from collections import deque
 
@@ -23,7 +24,6 @@ from ros2_sid.signal_processing import (
     ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_VDT_2O
     )
 
-FIRST_PASS = True
 
 class IMUFiltering(Node):
     def __init__(self, ns=''):
@@ -49,17 +49,23 @@ class IMUFiltering(Node):
 
 
     def setup_subs(self):
-        self.imu_sub: Subscription = self.create_subscription(
-            Imu,
-            '/mavros/imu/data',
-            self.imu_callback,
+        # self.imu_sub: Subscription = self.create_subscription(
+        #     Imu,
+        #     '/mavros/imu/data',
+        #     self.imu_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
+        
+        self.replay_imu_sub: Subscription = self.create_subscription(
+            Float64MultiArray,
+            '/replay/IMU/data',
+            self.replay_imu_callback,
             qos_profile=SENSOR_QOS
         )
 
     def imu_callback(self, sub_msg: Imu) -> None:
         start = time.perf_counter()
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
-        global FIRST_PASS
 
         self.livetime_sec = sub_msg.header.stamp.sec
         new_nanosec_data: float = sub_msg.header.stamp.nanosec * 1E-9
@@ -100,6 +106,35 @@ class IMUFiltering(Node):
                 np.float64(self.min_elapsed),
             ]
             self.imu_filt_duration.publish(pub_msg_2)
+
+    def replay_imu_callback(self, sub_msg: Float64MultiArray) -> None:
+        seconds = int(sub_msg.data[0])
+        nanoseconds = int(round((sub_msg.data[0] - seconds) * 1_000_000_000))
+        if nanoseconds >= 1_000_000_000:
+            seconds += 1
+            nanoseconds = 0
+
+        new_nanosec_data: float = nanoseconds * 1E-9
+        if new_nanosec_data < self.livetime_nano[-1]:
+            new_nanosec_data += 1.0
+
+        dt = new_nanosec_data - self.livetime_nano[-1]
+        if dt > (1 / 150):
+            self.livetime_nano.append(new_nanosec_data)
+            if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
+                self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
+
+            self.pit_velo = self.lpf_pit_velo.update(sub_msg.data[5], dt)
+            self.rol_velo = self.lpf_rol_velo.update(sub_msg.data[6], dt)
+            self.yaw_velo = self.lpf_yaw_velo.update(sub_msg.data[7], dt)
+            
+            pub_msg: Imu = Imu()
+            pub_msg.header.stamp.sec = seconds
+            pub_msg.header.stamp.nanosec = nanoseconds
+            pub_msg.angular_velocity.x = np.float64(self.rol_velo)
+            pub_msg.angular_velocity.y = np.float64(self.pit_velo)
+            pub_msg.angular_velocity.z = np.float64(self.yaw_velo)
+            self.imu_filt.publish(pub_msg)
 
 
     def setup_pubs(self):

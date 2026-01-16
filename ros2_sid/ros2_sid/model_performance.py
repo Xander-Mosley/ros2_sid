@@ -783,7 +783,7 @@ def main():
     }
 
     start_time = 0
-    end_time = 9999
+    end_time = 55
 
     plot_labels = {
         # "subtitle": "",
