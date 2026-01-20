@@ -23,7 +23,7 @@ from std_msgs.msg import Float64, Float64MultiArray, String
 
 
 from drone_interfaces.msg import CtlTraj, Telem
-from ros2_sid.rt_ols import ModelStructure, StoredData, RecursiveFourierTransform, ordinary_least_squares
+from ros2_sid.rt_ols import CircularBuffer, RecursiveFourierTransform, RegressorData, ordinary_least_squares
 from ros2_sid.rotation_utils import euler_from_quaternion
 from ros2_sid.signal_processing import (
     linear_diff, poly_diff,
@@ -31,11 +31,6 @@ from ros2_sid.signal_processing import (
     ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_VDT_2O
     )
 
-
-FIRST_PASS = True
-IMU_PASS = True
-ACC_PASS = True
-RCO_PASS = True
 
 class OLSNode(Node):
     def __init__(self, ns=''):
@@ -45,33 +40,25 @@ class OLSNode(Node):
         self.setup_all_publishers()
 
     def setup_variables(self) -> None:
-        # initialize stored data objects
-        # self.livetime_sec = StoredData(5, 1)
-        # self.livetime_nano = deque([0.0, 0.0, 0.0, 0.0, 0.0],maxlen=5)
-        # self.rol_velo = StoredData(5, 1)
-        # self.pit_velo = StoredData(5, 1)
-        # self.yaw_velo = StoredData(5, 1)
-        # self.rol_accel = StoredData(5, 1)
-        # self.pit_accel = StoredData(5, 1)
-        # self.yaw_accel = StoredData(5, 1)
+        self.imu_time = CircularBuffer(2)
+        self.acc_time = CircularBuffer(2)
+        self.rco_time = CircularBuffer(2)
 
-        # self.ail_pwm = StoredData(5, 1)
-        # self.elv_pwm = StoredData(5, 1)
-        # self.rud_pwm = StoredData(5, 1)
+        self._imu_pass = True
+        self._acc_pass = True
+        self._rco_pass = True
 
-        self.rol_velo_td = StoredData(1, 1)
-        self.rol_accel_td = StoredData(1, 1)
-        self.ail_pwm_td = StoredData(1, 1)
+        self.rol_velo = RegressorData(delay=1, eff=0.999)
+        self.pit_velo = RegressorData(delay=1, eff=0.999)
+        self.yaw_velo = RegressorData(delay=1, eff=0.999)
+        
+        self.rol_accel = RegressorData(delay=1, eff=0.999)
+        self.pit_accel = RegressorData(delay=1, eff=0.999)
+        self.yaw_accel = RegressorData(delay=1, eff=0.999)
 
-        RecursiveFourierTransform.set_defaults(eff=0.999)
-        self.rol_velo = RecursiveFourierTransform(eff=0.999)
-        self.rol_accel = RecursiveFourierTransform(eff=0.999)
-        self.ail_pwm = RecursiveFourierTransform(eff=0.999)
-
-        self.imu_time = deque([0.0, 0.0],maxlen=2)
-        self.acc_time = deque([0.0, 0.0],maxlen=2)
-        self.rco_time = deque([0.0, 0.0],maxlen=2)
-
+        self.ail_pwm = RegressorData(delay=1, eff=0.999)
+        self.elv_pwm = RegressorData(delay=1, eff=0.999)
+        self.rud_pwm = RegressorData(delay=1, eff=0.999)
 
         # self.aoa = StoredData(1, 1)
         # self.ssa = StoredData(1, 1)
@@ -90,53 +77,8 @@ class OLSNode(Node):
         # self.wing_area = 1.065634   # [m²]
         # self.wing_chord = 0.2755    # [m]
 
-        # self.dt = 0.0
-
-
-        # define class variables
-        # ModelStructure.class_eff = 0.999
-
-        # initialize model structure objects
-        # self.rol = ModelStructure(2)
-        # self.rol_slowed = ModelStructure(2)
-        # self.rol_nondim = ModelStructure(2)
-        # self.rol_nondim_inertias = ModelStructure(4)
-        # self.rol_ssa = ModelStructure(3)
-        # self.rol_ssa_nondim = ModelStructure(3)
-        # self.rol_ssa_nondim_inertias = ModelStructure(5)
-
-        # self.rol_large = ModelStructure(4)
-        # self.rol_large_nondim = ModelStructure(4)
-        # self.rol_large_nondim_inertias = ModelStructure(6)
-        # self.rol_large_ssa = ModelStructure(5)
-        # self.rol_large_ssa_nondim = ModelStructure(5)
-        # self.rol_large_ssa_nondim_inertias = ModelStructure(7)
-
-        # self.pit = ModelStructure(2)
-        # self.pit_nondim = ModelStructure(2)
-        # self.pit_nondim_inertias = ModelStructure(4)
-        # self.pit_aoa = ModelStructure(3)
-        # self.pit_aoa_nondim = ModelStructure(3)
-        # self.pit_aoa_nondim_inertias = ModelStructure(5)
-
-        # self.yaw = ModelStructure(2)
-        # self.yaw_nondim = ModelStructure(2)
-        # self.yaw_nondim_inertias = ModelStructure(4)
-        # self.yaw_ssa = ModelStructure(3)
-        # self.yaw_ssa_nondim = ModelStructure(3)
-        # self.yaw_ssa_nondim_inertias = ModelStructure(5)
-
-        # self.yaw_large = ModelStructure(4)
-        # self.yaw_large_nondim = ModelStructure(4)
-        # self.yaw_large_nondim_inertias = ModelStructure(6)
-        # self.yaw_large_ssa = ModelStructure(5)
-        # self.yaw_large_ssa_nondim = ModelStructure(5)
-        # self.yaw_large_ssa_nondim_inertias = ModelStructure(7)
-
-
 
     def setup_all_subscriptions(self) -> None:
-        # # TODO: Subscribe to more published data.
         # self.imu_sub: Subscription = self.create_subscription(
         #     Imu,
         #     '/mavros/imu/data',
@@ -208,179 +150,136 @@ class OLSNode(Node):
         # )
 
     # def imu_callback(self, msg: Imu) -> None:
-    #     # start = time.perf_counter()
-    #     # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
-    #     global FIRST_PASS
-
-    #     self.livetime_sec.update_data(msg.header.stamp.sec)
     #     new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-    #     if new_nanosec_data < self.livetime_nano[-1]:
+    #     if self.imu_time.size > 0 and new_nanosec_data < self.imu_time.latest:
     #         new_nanosec_data += 1.0
+    #     if self.imu_time.size > 0:
+    #         dt = new_nanosec_data - self.imu_time.latest
+    #     else:
+    #         dt = 0.0
+    #     if dt > (1.0 / 150.0) or self.imu_time.size == 0:
+    #         self.imu_time.add(new_nanosec_data)
+    #         if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
+    #             self.imu_time.apply_to_all(lambda x: x - 1.0)
 
-    #     self.dt = new_nanosec_data - self.livetime_nano[-1]
-    #     if self.dt > (1 / 150):
-    #         self.livetime_nano.append(new_nanosec_data)
-    #         if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
-    #             self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
-
-    #         # ModelStructure.update_shared_cp_time(self.livetime_nano[0])     # TODO: Test if this works better with seconds or nanoseconds
-    #         if FIRST_PASS:
-    #             FIRST_PASS = False
-    #             ModelStructure.update_shared_cp_time(self.livetime_nano[0])
-    #             # self.max_elapsed = 0
-    #             # self.min_elapsed = 1
-    #             # self.ema_elapsed = 0
+    #         if self._imu_pass:
+    #             self._imu_pass = False
+    #             for velo in [self.rol_velo, self.pit_velo, self.yaw_velo]:
+    #                 velo.spectrum.update_cp_time(self.imu_time.oldest)
     #         else:
-    #             ModelStructure.update_shared_cp_timestep(self.dt)
+    #             for velo in [self.rol_velo, self.pit_velo, self.yaw_velo]:
+    #                 velo.spectrum.update_cp_timestep(dt)
 
-    #         self.rol_velo.update_data(self.lpf_rol_velo.update(msg.angular_velocity.x, self.dt))
-    #         self.pit_velo.update_data(self.lpf_pit_velo.update(msg.angular_velocity.y, self.dt))
-    #         self.yaw_velo.update_data(self.lpf_yaw_velo.update(msg.angular_velocity.z, self.dt))
-
-    #         self.rol_accel.update_data(self.lpf_rol_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data), self.dt))
-    #         self.pit_accel.update_data(self.lpf_pit_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.pit_velo.data), self.dt))
-    #         self.yaw_accel.update_data(self.lpf_yaw_accel.update(poly_diff(np.array(self.livetime_nano)[::-1], self.yaw_velo.data), self.dt))
-
-    #         # first_filter_record = {
-    #         #     "dt": self.dt,
-    #         #     "new_data": msg.angular_velocity.x,
-    #         #     "filtered_data": self.lpf_rol_velo.current()
-    #         # }
-    #         # deriv_record = {
-    #         #     "time": np.array(self.livetime_nano)[::-1],
-    #         #     "input_data": self.rol_velo.data,
-    #         #     "input_time": poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data)
-    #         # }
-    #         # second_filter_record = {
-    #         #     "dt": self.dt,
-    #         #     "new_data": poly_diff(np.array(self.livetime_nano)[::-1], self.rol_velo.data),
-    #         #     "filtered_data": self.lpf_rol_accel.current()
-    #         # }
-    #         # with open("first_filter_record.pkl", "ab") as f1:
-    #         #     pkl.dump(first_filter_record, f1)
-    #         # with open("deriv_record.pkl", "ab") as f2:
-    #         #     pkl.dump(deriv_record, f2)
-    #         # with open("second_filter_record.pkl", "ab") as f3:
-    #         #     pkl.dump(second_filter_record, f3)
-
-    #         # end = time.perf_counter()
-    #         # elapsed = end - start
-    #         # self.max_elapsed = np.max([self.max_elapsed, elapsed])
-    #         # self.min_elapsed = np.min([self.min_elapsed, elapsed])
-    #         # num_pts = 99
-    #         # alpha = 2 / (num_pts + 1)
-    #         # self.ema_elapsed = (alpha * elapsed) + ((1-alpha) * self.ema_elapsed)
-    #         # print(f"imu_callback runtime - avg: {self.ema_elapsed*1e3:.3f} ms\tmax: {self.max_elapsed*1e3:.3f} ms\tmin: {self.min_elapsed*1e3:.3f} ms")
-
+    #         self.rol_velo.update(msg.angular_velocity.x)
+    #         self.pit_velo.update(msg.angular_velocity.y)
+    #         self.yaw_velo.update(msg.angular_velocity.z)
     # def telem_callback(self, msg: Telem) -> None:
     #     self.aoa.update_data(msg.alpha)
     #     self.ssa.update_data(msg.beta)
-
     def imu_filtered_callback(self, msg: Imu) -> None:
-        # global FIRST_PASS
-        # if FIRST_PASS:
-        #     FIRST_PASS = False
-        #     self.last_time = None
-        # now = time.monotonic()
-        # if self.last_time is not None:
-        #     ModelStructure.update_shared_cp_timestep(now - self.last_time)
-        # else:
-        #     ModelStructure.update_shared_cp_time(0)
-        # self.last_time = now
-        
-        # self.rol_velo.update_data(msg.angular_velocity.x)
-        # self.pit_velo.update_data(msg.angular_velocity.y)
-        # self.yaw_velo.update_data(msg.angular_velocity.z)
-        
-        global IMU_PASS
         new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-        if new_nanosec_data < self.imu_time[-1]:
+        if self.imu_time.size > 0 and new_nanosec_data < self.imu_time.latest:
             new_nanosec_data += 1.0
-        dt = new_nanosec_data - self.imu_time[-1]
-        if dt > (1 / 150):
-            self.imu_time.append(new_nanosec_data)
-            if len(self.imu_time) > 0 and all(x >= 1.0 for x in self.imu_time):
-                self.imu_time = deque([x - 1.0 for x in self.imu_time], maxlen=self.imu_time.maxlen)
-            if IMU_PASS:
-                IMU_PASS = False
-                self.rol_velo.update_cp_time(self.imu_time[-1])
+        if self.imu_time.size > 0:
+            dt = new_nanosec_data - self.imu_time.latest
+        else:
+            dt = 0.0
+        if dt > (1.0 / 150.0) or self.imu_time.size == 0:
+            self.imu_time.add(new_nanosec_data)
+            if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
+                self.imu_time.apply_to_all(lambda x: x - 1.0)
+
+            if self._imu_pass:
+                self._imu_pass = False
+                for velo in [self.rol_velo, self.pit_velo, self.yaw_velo]:
+                    velo.spectrum.update_cp_time(self.imu_time.oldest)
             else:
-                self.rol_velo.update_cp_timestep(dt)
-            
-            self.rol_velo.update_spectrum(msg.angular_velocity.x)
-            self.rol_velo_td.update_data(msg.angular_velocity.x)
+                for velo in [self.rol_velo, self.pit_velo, self.yaw_velo]:
+                    velo.spectrum.update_cp_timestep(dt)
+
+            self.rol_velo.update(msg.angular_velocity.x)
+            self.pit_velo.update(msg.angular_velocity.y)
+            self.yaw_velo.update(msg.angular_velocity.z)
 
     def imu_differentiated_callback(self, msg: Imu) -> None:
-        # self.rol_accel.update_data(msg.data[0])
-        # self.pit_accel.update_data(msg.data[1])
-        # self.yaw_accel.update_data(msg.data[2])
-        
-        global ACC_PASS
         new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-        if new_nanosec_data < self.acc_time[-1]:
+        if self.acc_time.size > 0 and new_nanosec_data < self.acc_time.latest:
             new_nanosec_data += 1.0
-        dt = new_nanosec_data - self.acc_time[-1]
-        if dt > (1 / 150):
-            self.acc_time.append(new_nanosec_data)
-            if len(self.acc_time) > 0 and all(x >= 1.0 for x in self.acc_time):
-                self.acc_time = deque([x - 1.0 for x in self.acc_time], maxlen=self.acc_time.maxlen)
-            if ACC_PASS:
-                ACC_PASS = False
-                self.rol_accel.update_cp_time(self.acc_time[-1])
+        if self.acc_time.size > 0:
+            dt = new_nanosec_data - self.acc_time.latest
+        else:
+            dt = 0.0
+        if dt > (1.0 / 150.0) or self.acc_time.size == 0:
+            self.acc_time.add(new_nanosec_data)
+            if self.acc_time.size > 0 and np.all(self.acc_time.get_all() >= 1.0):
+                self.acc_time.apply_to_all(lambda x: x - 1.0)
+
+            if self._acc_pass:
+                self._acc_pass = False
+                for accel in [self.rol_accel, self.pit_accel, self.yaw_accel]:
+                    accel.spectrum.update_cp_time(self.acc_time.oldest)
             else:
-                self.rol_accel.update_cp_timestep(dt)
-        
-            self.rol_accel.update_spectrum(msg.angular_velocity.x)
-            self.rol_accel_td.update_data(msg.angular_velocity.x)
+                for accel in [self.rol_accel, self.pit_accel, self.yaw_accel]:
+                    accel.spectrum.update_cp_timestep(dt)
+
+            self.rol_accel.update(msg.angular_velocity.x)
+            self.pit_accel.update(msg.angular_velocity.y)
+            self.yaw_accel.update(msg.angular_velocity.z)
 
     # def rcout_callback(self, msg: RCOut) -> None:
-    #     # self.ail_pwm.update_data(msg.channels[0])
-    #     # self.elv_pwm.update_data(msg.channels[1])
-    #     # self.rud_pwm.update_data(msg.channels[2])
-        
-    #     global RCO_PASS
     #     new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-    #     if new_nanosec_data < self.rco_time[-1]:
+    #     if self.rco_time.size > 0 and new_nanosec_data < self.rco_time.latest:
     #         new_nanosec_data += 1.0
-    #     dt = new_nanosec_data - self.rco_time[-1]
-    #     if dt > (1 / 150):
-    #         self.rco_time.append(new_nanosec_data)
-    #         if len(self.rco_time) > 0 and all(x >= 1.0 for x in self.rco_time):
-    #             self.rco_time = deque([x - 1.0 for x in self.rco_time], maxlen=self.rco_time.maxlen)
-    #         if RCO_PASS:
-    #             RCO_PASS = False
-    #             self.ail_pwm.update_cp_time(self.rco_time[-1])
+    #     if self.rco_time.size > 0:
+    #         dt = new_nanosec_data - self.rco_time.latest
+    #     else:
+    #         dt = 0.0
+    #     if dt > (1.0 / 150.0) or self.rco_time.size == 0:
+    #         self.rco_time.add(new_nanosec_data)
+    #         if self.rco_time.size > 0 and np.all(self.rco_time.get_all() >= 1.0):
+    #             self.rco_time.apply_to_all(lambda x: x - 1.0)
+
+    #         if self._rco_pass:
+    #             self._rco_pass = False
+    #             for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+    #                 pwm.spectrum.update_cp_time(self.rco_time.oldest)
     #         else:
-    #             self.ail_pwm.update_cp_timestep(dt)
-        
-    #         self.ail_pwm.update_spectrum(msg.channels[0] - 1500)
-    #         self.ail_pwm_td.update_data(msg.channels[0] - 1500)
+    #             for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+    #                 pwm.spectrum.update_cp_timestep(dt)
 
+    #         self.ail_pwm.update(msg.channels[0] - 1500)
+    #         self.elv_pwm.update(msg.channels[1] - 1500)
+    #         self.rud_pwm.update(msg.channels[2] - 1500)
     def replay_rcout_callback(self, msg: Float64MultiArray) -> None:
-        global RCO_PASS
-
         seconds = int(msg.data[0])
         nanoseconds = int(round((msg.data[0] - seconds) * 1_000_000_000))
         if nanoseconds >= 1_000_000_000:
             seconds += 1
             nanoseconds = 0
-        
+
         new_nanosec_data: float = nanoseconds * 1E-9
-        if new_nanosec_data < self.rco_time[-1]:
+        if self.rco_time.size > 0 and new_nanosec_data < self.rco_time.latest:
             new_nanosec_data += 1.0
-        dt = new_nanosec_data - self.rco_time[-1]
-        if dt > (1 / 150):
-            self.rco_time.append(new_nanosec_data)
-            if len(self.rco_time) > 0 and all(x >= 1.0 for x in self.rco_time):
-                self.rco_time = deque([x - 1.0 for x in self.rco_time], maxlen=self.rco_time.maxlen)
-            if RCO_PASS:
-                RCO_PASS = False
-                self.ail_pwm.update_cp_time(self.rco_time[-1])
+        if self.rco_time.size > 0:
+            dt = new_nanosec_data - self.rco_time.latest
+        else:
+            dt = 0.0
+        if dt > (1.0 / 150.0) or self.rco_time.size == 0:
+            self.rco_time.add(new_nanosec_data)
+            if self.rco_time.size > 0 and np.all(self.rco_time.get_all() >= 1.0):
+                self.rco_time.apply_to_all(lambda x: x - 1.0)
+
+            if self._rco_pass:
+                self._rco_pass = False
+                for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+                    pwm.spectrum.update_cp_time(self.rco_time.oldest)
             else:
-                self.ail_pwm.update_cp_timestep(dt)
-        
-            self.ail_pwm.update_spectrum(msg.data[2] - 1500)
-            self.ail_pwm_td.update_data(msg.data[2] - 1500)
+                for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+                    pwm.spectrum.update_cp_timestep(dt)
+
+            self.ail_pwm.update(msg.data[2] - 1500)
+            self.elv_pwm.update(msg.data[3] - 1500)
+            self.rud_pwm.update(msg.data[5] - 1500)
 
     # def odom_callback(self, msg: Odometry) -> None:
     #     """
