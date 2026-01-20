@@ -782,8 +782,8 @@ def main():
         "Small Roll": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
     }
 
-    start_time = 0
-    end_time = 55
+    start_time = 185
+    end_time = 235
 
     plot_labels = {
         # "subtitle": "",

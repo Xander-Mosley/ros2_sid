@@ -622,16 +622,16 @@ def _analyze_regressor_spectrums():
               "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_diff_data.csv"},
         "x": {
             "1": {"tag": "gx", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"},
-            "2": {"tag": "rcout_ch1", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/rcout_data.csv"},
+            # "2": {"tag": "rcout_ch1", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/rcout_data.csv"},
         }
     }
 
     rft_args = {
         "z": {
-            "frequencies": None, "eff": 0.995
+            "frequencies": None, "eff": 0.999
         },
         "x": {
-            "1": {"frequencies": None, "eff": 0.995},
+            "1": {"frequencies": None, "eff": 0.999},
             "2": {"frequencies": None, "eff": 0.969},
         }
     }
@@ -665,8 +665,8 @@ def _analyze_time_steps():
 
 def main():
     # _analyze_input_signals()
-    # _analyze_regressor_spectrums()
-    _analyze_time_steps()
+    _analyze_regressor_spectrums()
+    # _analyze_time_steps()
 
 if __name__ == "__main__":
     main()
