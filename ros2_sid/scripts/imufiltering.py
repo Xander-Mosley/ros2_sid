@@ -34,6 +34,7 @@ class IMUFiltering(Node):
         
     def setup_vars(self):
         self.imu_time = CircularBuffer(2)
+        self.imu_time.add(0)
 
         self.rol_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
         self.pit_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
@@ -46,30 +47,27 @@ class IMUFiltering(Node):
 
 
     def setup_subs(self):
-        # self.imu_sub: Subscription = self.create_subscription(
-        #     Imu,
-        #     '/mavros/imu/data',
-        #     self.imu_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
-        
-        self.replay_imu_sub: Subscription = self.create_subscription(
-            Float64MultiArray,
-            '/replay/IMU/data',
-            self.replay_imu_callback,
+        self.imu_sub: Subscription = self.create_subscription(
+            Imu,
+            '/mavros/imu/data',
+            self.imu_callback,
             qos_profile=SENSOR_QOS
         )
+        
+        # self.replay_imu_sub: Subscription = self.create_subscription(
+        #     Float64MultiArray,
+        #     '/replay/IMU/data',
+        #     self.replay_imu_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
 
     def imu_callback(self, sub_msg: Imu) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
         start = time.perf_counter()
 
         new_nanosec_data: float = sub_msg.header.stamp.nanosec * 1E-9
-        if self.imu_time.size > 0 and new_nanosec_data < self.imu_time.latest:
+        if new_nanosec_data < self.imu_time.latest:
             new_nanosec_data += 1.0
-        if self.imu_time.size == 0:
-            self.imu_time.add(new_nanosec_data)
-            return
         dt = new_nanosec_data - self.imu_time.latest
         if dt >= (1.0 / 100.0):
             self.imu_time.add(new_nanosec_data)
@@ -110,13 +108,10 @@ class IMUFiltering(Node):
             nanoseconds = 0
 
         new_nanosec_data: float = nanoseconds * 1E-9
-        if self.imu_time.size > 0 and new_nanosec_data < self.imu_time.latest:
+        if new_nanosec_data < self.imu_time.latest:
             new_nanosec_data += 1.0
-        if self.imu_time.size == 0:
-            self.imu_time.add(new_nanosec_data)
-            return
         dt = new_nanosec_data - self.imu_time.latest
-        if dt > (1.0 / 150.0):
+        if dt > (1.0 / 100.0):
             self.imu_time.add(new_nanosec_data)
             if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
                 self.imu_time.apply_to_all(lambda x: x - 1.0)

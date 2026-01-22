@@ -580,12 +580,12 @@ class RecursiveFourierTransform:
 class RegressorData:
     def __init__(
             self,
-            delay: int = 1,
+            delay: int = 0,
             eff: Optional[float] = None,
             frequencies: Optional[np.ndarray] = None
             ) -> None:
         
-        self.timedata = CircularBuffer(capacity=delay)
+        self.timedata = CircularBuffer(capacity=delay+1)
         self.timedata.fill_all(0)
         self.spectrum = RecursiveFourierTransform(eff=eff, frequencies=frequencies)
 

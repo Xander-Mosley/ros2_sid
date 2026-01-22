@@ -33,14 +33,11 @@ class IMUDifferentiating(Node):
         
     def setup_vars(self):
         self.acc_time = CircularBuffer(5)
-        self.acc_time.fill_all(0)
+        self.acc_time.add(0)
 
         self.rol_velo = CircularBuffer(5)
         self.pit_velo = CircularBuffer(5)
         self.yaw_velo = CircularBuffer(5)
-        self.rol_velo.fill_all(0)
-        self.pit_velo.fill_all(0)
-        self.yaw_velo.fill_all(0)
 
         self.rol_accel_lpf = ButterworthLowPass_VDT_2O(1.54)
         self.pit_accel_lpf = ButterworthLowPass_VDT_2O(1.54)
@@ -67,11 +64,8 @@ class IMUDifferentiating(Node):
         new_nanosec_data: float = sub_msg.header.stamp.nanosec * 1E-9
         if self.acc_time.size > 0 and new_nanosec_data < self.acc_time.latest:
             new_nanosec_data += 1.0
-        if self.acc_time.size == 0:
-            self.acc_time.add(new_nanosec_data)
-            return
         dt = new_nanosec_data - self.acc_time.latest
-        if dt > (1.0 / 150.0):
+        if dt > (1.0 / 100.0):
             self.acc_time.add(new_nanosec_data)
             if self.acc_time.size > 0 and np.all(self.acc_time.get_all() >= 1.0):
                 self.acc_time.apply_to_all(lambda x: x - 1.0)
@@ -79,12 +73,14 @@ class IMUDifferentiating(Node):
             self.rol_velo.add(sub_msg.angular_velocity.x)
             self.pit_velo.add(sub_msg.angular_velocity.y)
             self.yaw_velo.add(sub_msg.angular_velocity.z)
-
+            if self.rol_velo.size < self.rol_velo._capacity:
+                return
+            
             pub_msg: Imu = Imu()
             pub_msg.header = sub_msg.header
-            pub_msg.angular_velocity.x = self.rol_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.rol_velo.get_all()), dt)
-            pub_msg.angular_velocity.y = self.pit_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.pit_velo.get_all()), dt)
-            pub_msg.angular_velocity.z = self.yaw_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.yaw_velo.get_all()), dt)
+            pub_msg.angular_velocity.x = self.rol_accel_lpf.update(poly_diff(self.acc_time.get_all()[::-1], self.rol_velo.get_all()[::-1]), dt)
+            pub_msg.angular_velocity.y = self.pit_accel_lpf.update(poly_diff(self.acc_time.get_all()[::-1], self.pit_velo.get_all()[::-1]), dt)
+            pub_msg.angular_velocity.z = self.yaw_accel_lpf.update(poly_diff(self.acc_time.get_all()[::-1], self.yaw_velo.get_all()[::-1]), dt)
             self.imu_diff.publish(pub_msg)
 
             end = time.perf_counter()

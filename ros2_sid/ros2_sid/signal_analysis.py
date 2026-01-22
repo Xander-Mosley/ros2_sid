@@ -394,6 +394,35 @@ def plot_model_spectrums(filepaths, rft_args=None, plot_labels=None):
             "spectrum": spec[0]
         }
 
+    n_regressors = len(data["x"])
+    time_figure = PlotFigure(
+        "Spectrum Analysis - Time Periods",
+        nrows=1 + n_regressors,
+        sharex=True
+    )
+
+    z_label = plot_labels["z"]["name"] if plot_labels else "Measured Output"
+    time_figure.define_subplot(0, ylabel="Amplitude", grid=True)
+    time_figure.add_data(
+        0,
+        data["z"]["time"],
+        data["z"]["data"],
+        label=z_label
+    )
+    for i, key in enumerate(data["x"], start=1):
+        label = (
+            plot_labels["x"][key]["name"]
+            if plot_labels else f"Regressor {key}"
+        )
+        time_figure.define_subplot(i, ylabel="Amplitude", xlabel="Time [s]" if i == n_regressors else None, grid=True)
+        time_figure.add_data(
+            i,
+            data["x"][key]["time"],
+            data["x"][key]["data"],
+            label=label
+        )
+    time_figure.set_all_legends()
+
     n_regressors = len(spectrums["x"])
     freq_figure = PlotFigure(
         "Spectrum Analysis - Model Spectrums",
@@ -589,14 +618,16 @@ def plot_timestep_overtime(file_directory, file_name):
 
 def _analyze_input_signals():
     # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/saved_maneuver.csv"
-    file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"
+    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"
     # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_raw_data.csv"
     # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/telem_data.csv"
+    file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"
 
     df = pd.read_csv(file_path)
     print("Columns in CSV:", df.columns.tolist())
     t = df['timestamp'].to_numpy()
-    x = df['gx'].to_numpy()
+    # x = df['gx'].to_numpy()
+    x = df['ols_rol_regressor_1'].to_numpy()
 
     start, end = 0, 999999999
     t = t[start:end]
@@ -666,7 +697,7 @@ def _analyze_time_steps():
 
 def main():
     _analyze_input_signals()
-    # _analyze_regressor_spectrums()
+    _analyze_regressor_spectrums()
     # _analyze_time_steps()
 
 if __name__ == "__main__":
