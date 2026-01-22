@@ -65,7 +65,7 @@ class IMUDifferentiating(Node):
         if self.acc_time.size > 0 and new_nanosec_data < self.acc_time.latest:
             new_nanosec_data += 1.0
         dt = new_nanosec_data - self.acc_time.latest
-        if dt > (1.0 / 100.0):
+        if dt > (1.0 / 150.0):
             self.acc_time.add(new_nanosec_data)
             if self.acc_time.size > 0 and np.all(self.acc_time.get_all() >= 1.0):
                 self.acc_time.apply_to_all(lambda x: x - 1.0)
@@ -78,9 +78,9 @@ class IMUDifferentiating(Node):
             
             pub_msg: Imu = Imu()
             pub_msg.header = sub_msg.header
-            pub_msg.angular_velocity.x = self.rol_accel_lpf.update(poly_diff(self.acc_time.get_all()[::-1], self.rol_velo.get_all()[::-1]), dt)
-            pub_msg.angular_velocity.y = self.pit_accel_lpf.update(poly_diff(self.acc_time.get_all()[::-1], self.pit_velo.get_all()[::-1]), dt)
-            pub_msg.angular_velocity.z = self.yaw_accel_lpf.update(poly_diff(self.acc_time.get_all()[::-1], self.yaw_velo.get_all()[::-1]), dt)
+            pub_msg.angular_velocity.x = self.rol_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.rol_velo.get_all()), dt)
+            pub_msg.angular_velocity.y = self.pit_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.pit_velo.get_all()), dt)
+            pub_msg.angular_velocity.z = self.yaw_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.yaw_velo.get_all()), dt)
             self.imu_diff.publish(pub_msg)
 
             end = time.perf_counter()
@@ -99,6 +99,9 @@ class IMUDifferentiating(Node):
                 self.min_elapsed,
             ]
             self.imu_diff_duration.publish(pub_msg_2)
+
+        else:
+            print("Skipped discontinuity.")
 
 
     def setup_pubs(self):

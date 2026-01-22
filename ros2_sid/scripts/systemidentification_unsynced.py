@@ -41,25 +41,25 @@ class OLSNode(Node):
         self.setup_all_publishers()
 
     def setup_variables(self) -> None:
-        self.imu_time = CircularBuffer(2)
-        self.acc_time = CircularBuffer(2)
-        self.rco_time = CircularBuffer(2)
+        self.imu_time = CircularBuffer(1)
+        self.acc_time = CircularBuffer(1)
+        self.rco_time = CircularBuffer(1)
 
         self._imu_pass = True
         self._acc_pass = True
         self._rco_pass = True
 
-        self.rol_velo = RegressorData(delay=0, eff=0.999)
-        self.pit_velo = RegressorData(delay=0, eff=0.999)
-        self.yaw_velo = RegressorData(delay=0, eff=0.999)
+        self.rol_velo = RegressorData(eff=0.999)
+        self.pit_velo = RegressorData(eff=0.999)
+        self.yaw_velo = RegressorData(eff=0.999)
         
-        self.rol_accel = RegressorData(delay=0, eff=0.999)
-        self.pit_accel = RegressorData(delay=0, eff=0.999)
-        self.yaw_accel = RegressorData(delay=0, eff=0.999)
+        self.rol_accel = RegressorData(eff=0.999)
+        self.pit_accel = RegressorData(eff=0.999)
+        self.yaw_accel = RegressorData(eff=0.999)
 
-        self.ail_pwm = RegressorData(delay=11, eff=0.999)
-        self.elv_pwm = RegressorData(delay=11, eff=0.999)
-        self.rud_pwm = RegressorData(delay=11, eff=0.999)
+        self.ail_pwm = RegressorData(eff=0.999)
+        self.elv_pwm = RegressorData(eff=0.999)
+        self.rud_pwm = RegressorData(eff=0.999)
 
         # self.aoa = StoredData(1, 1)
         # self.ssa = StoredData(1, 1)
@@ -171,6 +171,8 @@ class OLSNode(Node):
             self.rol_velo.update(msg.angular_velocity.x)
             self.pit_velo.update(msg.angular_velocity.y)
             self.yaw_velo.update(msg.angular_velocity.z)
+        else:
+            print("Skipped discontinuity.")
     def imu_filtered_callback(self, msg: Imu) -> None:
         new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
         if self.imu_time.size > 0 and new_nanosec_data < self.imu_time.latest:
@@ -224,6 +226,8 @@ class OLSNode(Node):
             self.rol_accel.update(msg.angular_velocity.x)
             self.pit_accel.update(msg.angular_velocity.y)
             self.yaw_accel.update(msg.angular_velocity.z)
+        else:
+            print("Skipped discontinuity.")
 
     def rcout_callback(self, msg: RCOut) -> None:
         new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
@@ -249,6 +253,8 @@ class OLSNode(Node):
             self.ail_pwm.update(msg.channels[0] - 1500)
             self.elv_pwm.update(msg.channels[1] - 1500)
             self.rud_pwm.update(msg.channels[2] - 1500)
+        else:
+            print("Skipped discontinuity.")
     def replay_rcout_callback(self, msg: Float64MultiArray) -> None:
         seconds = int(msg.data[0])
         nanoseconds = int(round((msg.data[0] - seconds) * 1_000_000_000))

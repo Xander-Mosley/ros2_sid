@@ -69,7 +69,7 @@ class IMUFiltering(Node):
         if new_nanosec_data < self.imu_time.latest:
             new_nanosec_data += 1.0
         dt = new_nanosec_data - self.imu_time.latest
-        if dt >= (1.0 / 100.0):
+        if dt >= (1.0 / 150.0):
             self.imu_time.add(new_nanosec_data)
             if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
                 self.imu_time.apply_to_all(lambda x: x - 1.0)
@@ -98,6 +98,9 @@ class IMUFiltering(Node):
             ]
             self.imu_filt_duration.publish(pub_msg_2)
 
+        else:
+            print("Skipped discontinuity.")
+
     def replay_imu_callback(self, sub_msg: Float64MultiArray) -> None:
         start = time.perf_counter()
 
@@ -111,7 +114,7 @@ class IMUFiltering(Node):
         if new_nanosec_data < self.imu_time.latest:
             new_nanosec_data += 1.0
         dt = new_nanosec_data - self.imu_time.latest
-        if dt > (1.0 / 100.0):
+        if dt > (1.0 / 150.0):
             self.imu_time.add(new_nanosec_data)
             if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
                 self.imu_time.apply_to_all(lambda x: x - 1.0)
@@ -140,6 +143,9 @@ class IMUFiltering(Node):
                 self.min_elapsed,
             ]
             self.imu_filt_duration.publish(pub_msg_2)
+
+        else:
+            print("Skipped discontinuity.")
 
 
     def setup_pubs(self):

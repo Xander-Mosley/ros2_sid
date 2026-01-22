@@ -636,11 +636,11 @@ def _analyze_input_signals():
     # x = x[::2]
     
     fx = apply_filter(t, x, 'Butter2_VDT', 1.54)
-    xp = rolling_diff(t, fx, "poly")
+    xp = rolling_diff(t, x, "poly")
     fxp = apply_filter(t, xp, 'Butter2_VDT', 1.54)
 
     time_statistics(t)
-    plt.plot(t, fxp)
+    plt.plot(t, xp)
     # plot_analysis(t, x, fx)
     # plot_analysis(t, fx, xp)
     # plot_analysis(t, xp, fxp)
