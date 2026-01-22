@@ -175,7 +175,7 @@ def poly_diff(
         raise ValueError("Number of samples must exceed polynomial order.")
 
     if eval_point == "center":
-        eval_idx = len(time) // 2   # TODO: Ensure this is the center of five data points. Center of six data points?
+        eval_idx = len(time) // 2
     elif eval_point == "start":
         eval_idx = 0
     elif eval_point == "end":
@@ -443,6 +443,10 @@ class ButterworthLowPass:
         self.y_filtered = y_new
 
         return y_new
+    
+    @property
+    def current(self) -> float:
+        return self.y_filtered
 
 class ButterworthLowPass_VDT:
     """
@@ -531,6 +535,10 @@ class ButterworthLowPass_VDT:
         self.y_filtered = y_new
 
         return y_new
+    
+    @property
+    def current(self) -> float:
+        return self.y_filtered
 
 class ButterworthLowPass_VDT_2O:
     """
@@ -630,7 +638,8 @@ class ButterworthLowPass_VDT_2O:
 
         return y_new
     
-    def current(self):
+    @property
+    def current(self) -> float:
         return self.y_filtered[0]
 
 

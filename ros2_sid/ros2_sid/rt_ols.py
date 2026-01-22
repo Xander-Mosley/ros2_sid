@@ -483,6 +483,12 @@ class CircularBuffer:
 
     def apply_to_all(self, func) -> None:
         self._data[:self._size] = func(self.get_all())
+        
+    def fill_all(self, value: float) -> None:
+        self._data.fill(value)
+        self._index = 0
+        self._size = self._capacity
+
     
 
 class RecursiveFourierTransform:
@@ -580,6 +586,7 @@ class RegressorData:
             ) -> None:
         
         self.timedata = CircularBuffer(capacity=delay)
+        self.timedata.fill_all(0)
         self.spectrum = RecursiveFourierTransform(eff=eff, frequencies=frequencies)
 
     def update(self, new_value) -> None:
