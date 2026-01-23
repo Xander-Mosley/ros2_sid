@@ -3,12 +3,9 @@
 import math
 import threading
 from re import S
-from collections import deque
 
 import numpy as np
 import mavros
-import pickle as pkl
-import time
 import rclpy
 from rclpy.duration import Duration
 from rclpy.node import Node
@@ -26,11 +23,6 @@ from std_msgs.msg import Float64, Float64MultiArray, String
 from drone_interfaces.msg import CtlTraj, Telem
 from ros2_sid.rt_ols import CircularBuffer, RecursiveFourierTransform, RegressorData, ordinary_least_squares
 from ros2_sid.rotation_utils import euler_from_quaternion
-from ros2_sid.signal_processing import (
-    linear_diff, poly_diff,
-    LowPassFilter, LowPassFilter_VDT,
-    ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_VDT_2O
-    )
 
 
 class OLSNode(Node):
@@ -85,7 +77,7 @@ class OLSNode(Node):
         self.imu_filt_sub: Subscription = self.create_subscription(
             Imu,
             '/imu_filt',
-            self.imu_filt_callback,
+            self.imu_callback,
             qos_profile=SENSOR_QOS
         )
 
@@ -144,7 +136,7 @@ class OLSNode(Node):
         #     qos_profile=SENSOR_QOS
         # )
 
-    def imu_filt_callback(self, msg: Imu) -> None:
+    def imu_callback(self, msg: Imu) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
 
         new_sec: float = msg.header.stamp.sec
@@ -208,39 +200,30 @@ class OLSNode(Node):
             self.ail_pwm.update(msg.channels[0] - 1500)
             self.elv_pwm.update(msg.channels[1] - 1500)
             self.rud_pwm.update(msg.channels[2] - 1500)
+
         else:
             print(f"RCOut update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-    # def replay_rcout_callback(self, msg: Float64MultiArray) -> None:
-    #     seconds = int(msg.data[0])
-    #     nanoseconds = int(round((msg.data[0] - seconds) * 1_000_000_000))
-    #     if nanoseconds >= 1_000_000_000:
-    #         seconds += 1
-    #         nanoseconds = 0
+    def replay_rcout_callback(self, msg: Float64MultiArray) -> None:
+        new_sec, new_nanosec = divmod(msg.data[0], 1.0)
+        dt = (new_nanosec - self.rco_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.rco_prev_nanosec = new_nanosec
 
-    #     new_nanosec_data: float = nanoseconds * 1E-9
-    #     if self.rco_time.size > 0 and new_nanosec_data < self.rco_time.latest:
-    #         new_nanosec_data += 1.0
-    #     if self.rco_time.size > 0:
-    #         dt = new_nanosec_data - self.rco_time.latest
-    #     else:
-    #         dt = 0.0
-    #     if dt > (1.0 / 150.0) or self.rco_time.size == 0:
-    #         self.rco_time.add(new_nanosec_data)
-    #         if self.rco_time.size > 0 and np.all(self.rco_time.get_all() >= 1.0):
-    #             self.rco_time.apply_to_all(lambda x: x - 1.0)
+            if self._rco_first_pass:
+                self._rco_first_pass = False
+                for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+                    pwm.spectrum.update_cp_time(self.rco_prev_nanosec)
+            else:
+                for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+                    pwm.spectrum.update_cp_timestep(dt)
 
-    #         if self._rco_pass:
-    #             self._rco_pass = False
-    #             for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
-    #                 pwm.spectrum.update_cp_time(self.rco_time.oldest)
-    #         else:
-    #             for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
-    #                 pwm.spectrum.update_cp_timestep(dt)
+            self.ail_pwm.update(msg.data[2] - 1500)
+            self.elv_pwm.update(msg.data[3] - 1500)
+            self.rud_pwm.update(msg.data[5] - 1500)
 
-    #         self.ail_pwm.update(msg.data[2] - 1500)
-    #         self.elv_pwm.update(msg.data[3] - 1500)
-    #         self.rud_pwm.update(msg.data[5] - 1500)
+        else:
+            print(f"RCOut update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
     # def telem_callback(self, msg: Telem) -> None:
     #     self.aoa.update_data(msg.alpha)

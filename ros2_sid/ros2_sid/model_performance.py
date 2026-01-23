@@ -785,8 +785,8 @@ def main():
         # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
     }
 
-    start_time = 0
-    end_time = 9999999
+    start_time = 60
+    end_time = 108
 
     plot_labels = {
         # "subtitle": "",
