@@ -31,8 +31,8 @@ class IMUFiltering(Node):
         self.setup_pubs()
         
     def setup_vars(self):
-        self.imu_prev_nanosec = 0.0
         self.minimum_dt = 1.0 / 100.0
+        self.imu_prev_nanosec = 0.0
 
         self.rol_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
         self.pit_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
@@ -40,9 +40,9 @@ class IMUFiltering(Node):
         
         num_pts = 99
         self.alpha = 2 / (num_pts + 1)
-        self.max_elapsed = 0
-        self.min_elapsed = 1_000_000_000
-        self.ema_elapsed = 0
+        self.imu_max_elapsed = 0
+        self.imu_min_elapsed = 1_000_000_000
+        self.imu_ema_elapsed = 0
 
 
     def setup_subs(self):
@@ -79,20 +79,20 @@ class IMUFiltering(Node):
             end = time.perf_counter()
 
             elapsed = end - start
-            self.max_elapsed = np.max([self.max_elapsed, elapsed])
-            self.min_elapsed = np.min([self.min_elapsed, elapsed])
-            self.ema_elapsed = (self.alpha * elapsed) + ((1-self.alpha) * self.ema_elapsed)            
+            self.imu_max_elapsed = np.max([self.imu_max_elapsed, elapsed])
+            self.imu_min_elapsed = np.min([self.imu_min_elapsed, elapsed])
+            self.imu_ema_elapsed = (self.alpha * elapsed) + ((1-self.alpha) * self.imu_ema_elapsed)            
             pub_msg_2: Float64MultiArray = Float64MultiArray()
             pub_msg_2.data = [
                 elapsed,
-                self.ema_elapsed,
-                self.max_elapsed,
-                self.min_elapsed,
+                self.imu_ema_elapsed,
+                self.imu_max_elapsed,
+                self.imu_min_elapsed,
             ]
             self.imu_filt_duration.publish(pub_msg_2)
 
         else:
-            print(f"IMU update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+            print(f"IMU filter skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
     def replay_imu_callback(self, sub_msg: Float64MultiArray) -> None:
         start = time.perf_counter()
@@ -113,20 +113,20 @@ class IMUFiltering(Node):
             end = time.perf_counter()
 
             elapsed = end - start
-            self.max_elapsed = np.max([self.max_elapsed, elapsed])
-            self.min_elapsed = np.min([self.min_elapsed, elapsed])
-            self.ema_elapsed = (self.alpha * elapsed) + ((1-self.alpha) * self.ema_elapsed)            
+            self.imu_max_elapsed = np.max([self.imu_max_elapsed, elapsed])
+            self.imu_min_elapsed = np.min([self.imu_min_elapsed, elapsed])
+            self.imu_ema_elapsed = (self.alpha * elapsed) + ((1-self.alpha) * self.imu_ema_elapsed)            
             pub_msg_2: Float64MultiArray = Float64MultiArray()
             pub_msg_2.data = [
                 elapsed,
-                self.ema_elapsed,
-                self.max_elapsed,
-                self.min_elapsed,
+                self.imu_ema_elapsed,
+                self.imu_max_elapsed,
+                self.imu_min_elapsed,
             ]
             self.imu_filt_duration.publish(pub_msg_2)
 
         else:
-            print(f"IMU update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+            print(f"IMU filter skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
 
     def setup_pubs(self):

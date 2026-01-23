@@ -36,18 +36,20 @@ from ros2_sid.signal_processing import (
 class OLSNode(Node):
     def __init__(self, ns=''):
         super().__init__('ols_node')
-        self.setup_variables()
-        self.setup_all_subscriptions()
-        self.setup_all_publishers()
+        self.setup_vars()
+        self.setup_subs()
+        self.setup_pubs()
 
-    def setup_variables(self) -> None:
-        self.imu_time = CircularBuffer(1)
-        self.acc_time = CircularBuffer(1)
-        self.rco_time = CircularBuffer(1)
+    def setup_vars(self) -> None:
+        self.minimum_dt = 1.0 / 100.0
 
-        self._imu_pass = True
-        self._acc_pass = True
-        self._rco_pass = True
+        self.imu_prev_nanosec = 0.0
+        self.acc_prev_nanosec = 0.0
+        self.rco_prev_nanosec = 0.0
+
+        self._imu_first_pass = True
+        self._acc_first_pass = True
+        self._rco_first_pass = True
 
         self.rol_velo = RegressorData(eff=0.999)
         self.pit_velo = RegressorData(eff=0.999)
@@ -79,30 +81,18 @@ class OLSNode(Node):
         # self.wing_chord = 0.2755    # [m]
 
 
-    def setup_all_subscriptions(self) -> None:
-        # self.imu_sub: Subscription = self.create_subscription(
-        #     Imu,
-        #     '/mavros/imu/data',
-        #     self.imu_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
-        self.imu_filtered_sub: Subscription = self.create_subscription(
+    def setup_subs(self) -> None:
+        self.imu_filt_sub: Subscription = self.create_subscription(
             Imu,
             '/imu_filt',
-            self.imu_filtered_callback,
+            self.imu_filt_callback,
             qos_profile=SENSOR_QOS
         )
-        # self.telem_sub: Subscription = self.create_subscription(
-        #     Telem,
-        #     '/telem',
-        #     self.telem_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
 
-        self.imu_differentiated_sub: Subscription = self.create_subscription(
+        self.imu_diff_sub: Subscription = self.create_subscription(
             Imu,
             '/imu_diff',
-            self.imu_differentiated_callback,
+            self.imu_diff_callback,
             qos_profile=SENSOR_QOS
         )
 
@@ -116,6 +106,13 @@ class OLSNode(Node):
         #     Float64MultiArray,
         #     '/replay/RCOU/data',
         #     self.replay_rcout_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
+
+        # self.telem_sub: Subscription = self.create_subscription(
+        #     Telem,
+        #     '/telem',
+        #     self.telem_callback,
         #     qos_profile=SENSOR_QOS
         # )
 
@@ -147,23 +144,19 @@ class OLSNode(Node):
         #     qos_profile=SENSOR_QOS
         # )
 
-    def imu_callback(self, msg: Imu) -> None:
-        new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-        if self.imu_time.size > 0 and new_nanosec_data < self.imu_time.latest:
-            new_nanosec_data += 1.0
-        if self.imu_time.size > 0:
-            dt = new_nanosec_data - self.imu_time.latest
-        else:
-            dt = 0.0
-        if dt > (1.0 / 150.0) or self.imu_time.size == 0:
-            self.imu_time.add(new_nanosec_data)
-            if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
-                self.imu_time.apply_to_all(lambda x: x - 1.0)
+    def imu_filt_callback(self, msg: Imu) -> None:
+        # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
 
-            if self._imu_pass:
-                self._imu_pass = False
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.imu_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.imu_prev_nanosec = new_nanosec
+
+            if self._imu_first_pass:
+                self._imu_first_pass = False
                 for velo in [self.rol_velo, self.pit_velo, self.yaw_velo]:
-                    velo.spectrum.update_cp_time(self.imu_time.oldest)
+                    velo.spectrum.update_cp_time(self.imu_prev_nanosec)
             else:
                 for velo in [self.rol_velo, self.pit_velo, self.yaw_velo]:
                     velo.spectrum.update_cp_timestep(dt)
@@ -171,54 +164,21 @@ class OLSNode(Node):
             self.rol_velo.update(msg.angular_velocity.x)
             self.pit_velo.update(msg.angular_velocity.y)
             self.yaw_velo.update(msg.angular_velocity.z)
+
         else:
-            print("Skipped discontinuity.")
-    def imu_filtered_callback(self, msg: Imu) -> None:
-        new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-        if self.imu_time.size > 0 and new_nanosec_data < self.imu_time.latest:
-            new_nanosec_data += 1.0
-        if self.imu_time.size > 0:
-            dt = new_nanosec_data - self.imu_time.latest
-        else:
-            dt = 0.0
-        if dt > (1.0 / 150.0) or self.imu_time.size == 0:
-            self.imu_time.add(new_nanosec_data)
-            if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
-                self.imu_time.apply_to_all(lambda x: x - 1.0)
+            print(f"IMU update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-            if self._imu_pass:
-                self._imu_pass = False
-                for velo in [self.rol_velo, self.pit_velo, self.yaw_velo]:
-                    velo.spectrum.update_cp_time(self.imu_time.oldest)
-            else:
-                for velo in [self.rol_velo, self.pit_velo, self.yaw_velo]:
-                    velo.spectrum.update_cp_timestep(dt)
+    def imu_diff_callback(self, msg: Imu) -> None:
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.acc_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.acc_prev_nanosec = new_nanosec
 
-            self.rol_velo.update(msg.angular_velocity.x)
-            self.pit_velo.update(msg.angular_velocity.y)
-            self.yaw_velo.update(msg.angular_velocity.z)
-    # def telem_callback(self, msg: Telem) -> None:
-        # self.aoa.update_data(msg.alpha)
-        # self.ssa.update_data(msg.beta)
-
-
-    def imu_differentiated_callback(self, msg: Imu) -> None:
-        new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-        if self.acc_time.size > 0 and new_nanosec_data < self.acc_time.latest:
-            new_nanosec_data += 1.0
-        if self.acc_time.size > 0:
-            dt = new_nanosec_data - self.acc_time.latest
-        else:
-            dt = 0.0
-        if dt > (1.0 / 150.0) or self.acc_time.size == 0:
-            self.acc_time.add(new_nanosec_data)
-            if self.acc_time.size > 0 and np.all(self.acc_time.get_all() >= 1.0):
-                self.acc_time.apply_to_all(lambda x: x - 1.0)
-
-            if self._acc_pass:
-                self._acc_pass = False
+            if self._acc_first_pass:
+                self._acc_first_pass = False
                 for accel in [self.rol_accel, self.pit_accel, self.yaw_accel]:
-                    accel.spectrum.update_cp_time(self.acc_time.oldest)
+                    accel.spectrum.update_cp_time(self.acc_prev_nanosec)
             else:
                 for accel in [self.rol_accel, self.pit_accel, self.yaw_accel]:
                     accel.spectrum.update_cp_timestep(dt)
@@ -226,26 +186,21 @@ class OLSNode(Node):
             self.rol_accel.update(msg.angular_velocity.x)
             self.pit_accel.update(msg.angular_velocity.y)
             self.yaw_accel.update(msg.angular_velocity.z)
+
         else:
-            print("Skipped discontinuity.")
+            print(f"ACCEL update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
     def rcout_callback(self, msg: RCOut) -> None:
-        new_nanosec_data: float = msg.header.stamp.nanosec * 1E-9
-        if self.rco_time.size > 0 and new_nanosec_data < self.rco_time.latest:
-            new_nanosec_data += 1.0
-        if self.rco_time.size > 0:
-            dt = new_nanosec_data - self.rco_time.latest
-        else:
-            dt = 0.0
-        if dt > (1.0 / 150.0) or self.rco_time.size == 0:
-            self.rco_time.add(new_nanosec_data)
-            if self.rco_time.size > 0 and np.all(self.rco_time.get_all() >= 1.0):
-                self.rco_time.apply_to_all(lambda x: x - 1.0)
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.rco_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.rco_prev_nanosec = new_nanosec
 
-            if self._rco_pass:
-                self._rco_pass = False
+            if self._rco_first_pass:
+                self._rco_first_pass = False
                 for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
-                    pwm.spectrum.update_cp_time(self.rco_time.oldest)
+                    pwm.spectrum.update_cp_time(self.rco_prev_nanosec)
             else:
                 for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
                     pwm.spectrum.update_cp_timestep(dt)
@@ -254,37 +209,42 @@ class OLSNode(Node):
             self.elv_pwm.update(msg.channels[1] - 1500)
             self.rud_pwm.update(msg.channels[2] - 1500)
         else:
-            print("Skipped discontinuity.")
-    def replay_rcout_callback(self, msg: Float64MultiArray) -> None:
-        seconds = int(msg.data[0])
-        nanoseconds = int(round((msg.data[0] - seconds) * 1_000_000_000))
-        if nanoseconds >= 1_000_000_000:
-            seconds += 1
-            nanoseconds = 0
+            print(f"RCOut update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-        new_nanosec_data: float = nanoseconds * 1E-9
-        if self.rco_time.size > 0 and new_nanosec_data < self.rco_time.latest:
-            new_nanosec_data += 1.0
-        if self.rco_time.size > 0:
-            dt = new_nanosec_data - self.rco_time.latest
-        else:
-            dt = 0.0
-        if dt > (1.0 / 150.0) or self.rco_time.size == 0:
-            self.rco_time.add(new_nanosec_data)
-            if self.rco_time.size > 0 and np.all(self.rco_time.get_all() >= 1.0):
-                self.rco_time.apply_to_all(lambda x: x - 1.0)
+    # def replay_rcout_callback(self, msg: Float64MultiArray) -> None:
+    #     seconds = int(msg.data[0])
+    #     nanoseconds = int(round((msg.data[0] - seconds) * 1_000_000_000))
+    #     if nanoseconds >= 1_000_000_000:
+    #         seconds += 1
+    #         nanoseconds = 0
 
-            if self._rco_pass:
-                self._rco_pass = False
-                for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
-                    pwm.spectrum.update_cp_time(self.rco_time.oldest)
-            else:
-                for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
-                    pwm.spectrum.update_cp_timestep(dt)
+    #     new_nanosec_data: float = nanoseconds * 1E-9
+    #     if self.rco_time.size > 0 and new_nanosec_data < self.rco_time.latest:
+    #         new_nanosec_data += 1.0
+    #     if self.rco_time.size > 0:
+    #         dt = new_nanosec_data - self.rco_time.latest
+    #     else:
+    #         dt = 0.0
+    #     if dt > (1.0 / 150.0) or self.rco_time.size == 0:
+    #         self.rco_time.add(new_nanosec_data)
+    #         if self.rco_time.size > 0 and np.all(self.rco_time.get_all() >= 1.0):
+    #             self.rco_time.apply_to_all(lambda x: x - 1.0)
 
-            self.ail_pwm.update(msg.data[2] - 1500)
-            self.elv_pwm.update(msg.data[3] - 1500)
-            self.rud_pwm.update(msg.data[5] - 1500)
+    #         if self._rco_pass:
+    #             self._rco_pass = False
+    #             for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+    #                 pwm.spectrum.update_cp_time(self.rco_time.oldest)
+    #         else:
+    #             for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+    #                 pwm.spectrum.update_cp_timestep(dt)
+
+    #         self.ail_pwm.update(msg.data[2] - 1500)
+    #         self.elv_pwm.update(msg.data[3] - 1500)
+    #         self.rud_pwm.update(msg.data[5] - 1500)
+
+    # def telem_callback(self, msg: Telem) -> None:
+    #     self.aoa.update_data(msg.alpha)
+    #     self.ssa.update_data(msg.beta)
 
     # def odom_callback(self, msg: Odometry) -> None:
     #     """
@@ -335,7 +295,7 @@ class OLSNode(Node):
     #     self.temp.update_data(msg.temperature + 273.15)     # [°K]
 
 
-    def setup_all_publishers(self) -> None:
+    def setup_pubs(self) -> None:
         publisher_periods = {
             "ols_rol": 1 / 25,
             # "ols_rol_nondim": 0.02,
@@ -392,6 +352,7 @@ class OLSNode(Node):
                 period,
                 callback,
             )
+
     def _publish_ols(
             self,
             publisher_name: str,
@@ -410,27 +371,26 @@ class OLSNode(Node):
         self._publish_ols("ols_rol",
                           self.rol_accel,
                           [self.rol_velo, self.ail_pwm])
-        
+
     def publish_ols_rol_large_data(self) -> None:
         self._publish_ols("ols_rol_large",
                           self.rol_accel,
                           [self.rol_velo, self.ail_pwm, self.yaw_velo, self.rud_pwm])
-        
+
     def publish_ols_pit_data(self) -> None:
         self._publish_ols("ols_pit",
                           self.pit_accel,
                           [self.pit_velo, self.elv_pwm])
-        
+
     def publish_ols_yaw_data(self) -> None:
         self._publish_ols("ols_yaw",
                           self.yaw_accel,
                           [self.yaw_velo, self.rud_pwm])
-        
+
     def publish_ols_yaw_large_data(self) -> None:
         self._publish_ols("ols_yaw_large",
                           self.yaw_accel,
                           [self.yaw_velo, self.rud_pwm, self.rol_velo, self.ail_pwm])
-
 
 
 def main(args=None):

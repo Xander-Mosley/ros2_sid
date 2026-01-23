@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
+
 from re import S
-from collections import deque
 
 import numpy as np
 import mavros
@@ -32,9 +32,9 @@ class IMUDifferentiating(Node):
         self.setup_pubs()
         
     def setup_vars(self):
+        self.minimum_dt = 1.0 / 100.0
         self.acc_times = CircularBuffer(5)
         self.acc_times.add(0)
-        self.minimum_dt = 1.0 / 100.0
 
         self.rol_velo = CircularBuffer(5)
         self.pit_velo = CircularBuffer(5)
