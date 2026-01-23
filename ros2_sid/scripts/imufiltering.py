@@ -17,7 +17,7 @@ from sensor_msgs.msg import Imu
 from std_msgs.msg import Float64, Float64MultiArray, String
 
 
-from ros2_sid.rt_ols import ModelStructure, StoredData
+from ros2_sid.rt_ols import CircularBuffer
 from ros2_sid.signal_processing import (
     linear_diff, poly_diff,
     LowPassFilter, LowPassFilter_VDT,
@@ -33,14 +33,12 @@ class IMUFiltering(Node):
         self.setup_pubs()
         
     def setup_vars(self):
-        self.livetime_sec = 0.0
-        self.livetime_nano = deque([0.0, 0.0, 0.0, 0.0, 0.0],maxlen=5)
-        self.lpf_rol_velo = ButterworthLowPass_VDT_2O(1.54)
-        self.lpf_pit_velo = ButterworthLowPass_VDT_2O(1.54)
-        self.lpf_yaw_velo = ButterworthLowPass_VDT_2O(1.54)
-        self.rol_velo = 0.0
-        self.pit_velo = 0.0
-        self.yaw_velo = 0.0
+        self.imu_time = CircularBuffer(2)
+        self.imu_time.add(0)
+
+        self.rol_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
+        self.pit_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
+        self.yaw_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
         
         self.elapsed = 0
         self.max_elapsed = 0
@@ -64,50 +62,48 @@ class IMUFiltering(Node):
         # )
 
     def imu_callback(self, sub_msg: Imu) -> None:
-        start = time.perf_counter()
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
+        start = time.perf_counter()
 
-        self.livetime_sec = sub_msg.header.stamp.sec
         new_nanosec_data: float = sub_msg.header.stamp.nanosec * 1E-9
-        if new_nanosec_data < self.livetime_nano[-1]:
+        if new_nanosec_data < self.imu_time.latest:
             new_nanosec_data += 1.0
-
-        self.dt = new_nanosec_data - self.livetime_nano[-1]
-        if self.dt > (1 / 150):
-            self.livetime_nano.append(new_nanosec_data)
-            if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
-                self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
-
-            self.pit_velo = self.lpf_pit_velo.update(sub_msg.angular_velocity.y, self.dt)
-            self.rol_velo = self.lpf_rol_velo.update(sub_msg.angular_velocity.x, self.dt)
-            self.yaw_velo = self.lpf_yaw_velo.update(sub_msg.angular_velocity.z, self.dt)
+        dt = new_nanosec_data - self.imu_time.latest
+        if dt >= (1.0 / 150.0):
+            self.imu_time.add(new_nanosec_data)
+            if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
+                self.imu_time.apply_to_all(lambda x: x - 1.0)
             
             pub_msg: Imu = Imu()
             pub_msg.header = sub_msg.header
-            pub_msg.angular_velocity.x = np.float64(self.rol_velo)
-            pub_msg.angular_velocity.y = np.float64(self.pit_velo)
-            pub_msg.angular_velocity.z = np.float64(self.yaw_velo)
+            pub_msg.angular_velocity.x = self.rol_velo_lpf.update(sub_msg.angular_velocity.x, dt)
+            pub_msg.angular_velocity.y = self.pit_velo_lpf.update(sub_msg.angular_velocity.y, dt)
+            pub_msg.angular_velocity.z = self.yaw_velo_lpf.update(sub_msg.angular_velocity.z, dt)
             self.imu_filt.publish(pub_msg)
 
             end = time.perf_counter()
-            self.elapsed = end - start
-            self.max_elapsed = np.max([self.max_elapsed, self.elapsed])
-            self.min_elapsed = np.min([self.min_elapsed, self.elapsed])
+
+            elapsed = end - start
+            self.max_elapsed = np.max([self.max_elapsed, elapsed])
+            self.min_elapsed = np.min([self.min_elapsed, elapsed])
             num_pts = 99
             alpha = 2 / (num_pts + 1)
-            self.ema_elapsed = (alpha * self.elapsed) + ((1-alpha) * self.ema_elapsed)
-            # print(f"imu_callback runtime - {self.elapsed*1e3:.3f} ms\tavg: {self.ema_elapsed*1e3:.3f} ms\tmax: {self.max_elapsed*1e3:.3f} ms\tmin: {self.min_elapsed*1e3:.3f} ms")
-            
+            self.ema_elapsed = (alpha * elapsed) + ((1-alpha) * self.ema_elapsed)            
             pub_msg_2: Float64MultiArray = Float64MultiArray()
             pub_msg_2.data = [
-                np.float64(self.elapsed),
-                np.float64(self.ema_elapsed),
-                np.float64(self.max_elapsed),
-                np.float64(self.min_elapsed),
+                elapsed,
+                self.ema_elapsed,
+                self.max_elapsed,
+                self.min_elapsed,
             ]
             self.imu_filt_duration.publish(pub_msg_2)
 
+        else:
+            print("Skipped discontinuity.")
+
     def replay_imu_callback(self, sub_msg: Float64MultiArray) -> None:
+        start = time.perf_counter()
+
         seconds = int(sub_msg.data[0])
         nanoseconds = int(round((sub_msg.data[0] - seconds) * 1_000_000_000))
         if nanoseconds >= 1_000_000_000:
@@ -115,26 +111,41 @@ class IMUFiltering(Node):
             nanoseconds = 0
 
         new_nanosec_data: float = nanoseconds * 1E-9
-        if new_nanosec_data < self.livetime_nano[-1]:
+        if new_nanosec_data < self.imu_time.latest:
             new_nanosec_data += 1.0
+        dt = new_nanosec_data - self.imu_time.latest
+        if dt > (1.0 / 150.0):
+            self.imu_time.add(new_nanosec_data)
+            if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
+                self.imu_time.apply_to_all(lambda x: x - 1.0)
 
-        dt = new_nanosec_data - self.livetime_nano[-1]
-        if dt > (1 / 150):
-            self.livetime_nano.append(new_nanosec_data)
-            if len(self.livetime_nano) > 0 and all(x >= 1.0 for x in self.livetime_nano):
-                self.livetime_nano = deque([x - 1.0 for x in self.livetime_nano], maxlen=self.livetime_nano.maxlen)
-
-            self.pit_velo = self.lpf_pit_velo.update(sub_msg.data[5], dt)
-            self.rol_velo = self.lpf_rol_velo.update(sub_msg.data[6], dt)
-            self.yaw_velo = self.lpf_yaw_velo.update(sub_msg.data[7], dt)
-            
             pub_msg: Imu = Imu()
             pub_msg.header.stamp.sec = seconds
             pub_msg.header.stamp.nanosec = nanoseconds
-            pub_msg.angular_velocity.x = np.float64(self.rol_velo)
-            pub_msg.angular_velocity.y = np.float64(self.pit_velo)
-            pub_msg.angular_velocity.z = np.float64(self.yaw_velo)
+            pub_msg.angular_velocity.x = self.rol_velo_lpf.update(sub_msg.data[5], dt)
+            pub_msg.angular_velocity.y = self.pit_velo_lpf.update(sub_msg.data[6], dt)
+            pub_msg.angular_velocity.z = self.yaw_velo_lpf.update(sub_msg.data[7], dt)
             self.imu_filt.publish(pub_msg)
+
+            end = time.perf_counter()
+
+            elapsed = end - start
+            self.max_elapsed = np.max([self.max_elapsed, elapsed])
+            self.min_elapsed = np.min([self.min_elapsed, elapsed])
+            num_pts = 99
+            alpha = 2 / (num_pts + 1)
+            self.ema_elapsed = (alpha * elapsed) + ((1-alpha) * self.ema_elapsed)            
+            pub_msg_2: Float64MultiArray = Float64MultiArray()
+            pub_msg_2.data = [
+                elapsed,
+                self.ema_elapsed,
+                self.max_elapsed,
+                self.min_elapsed,
+            ]
+            self.imu_filt_duration.publish(pub_msg_2)
+
+        else:
+            print("Skipped discontinuity.")
 
 
     def setup_pubs(self):
