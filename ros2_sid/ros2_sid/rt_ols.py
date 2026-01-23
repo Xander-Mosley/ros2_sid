@@ -483,6 +483,7 @@ class CircularBuffer:
 
     def apply_to_all(self, func) -> None:
         self._data[:self._size] = func(self.get_all())
+        self._index = 0
         
     def fill_all(self, value: float) -> None:
         self._data.fill(value)
