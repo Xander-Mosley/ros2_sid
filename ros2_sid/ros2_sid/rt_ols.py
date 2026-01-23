@@ -30,7 +30,7 @@ from typing import Optional, Sequence, Union
 import numpy as np
 
 
-__all__ = ['StoredData', 'ModelStructure', 'RecursiveFourierTransform', 'ordinary_least_squares']
+__all__ = ['StoredData', 'ModelStructure', 'CircularBuffer', 'RecursiveFourierTransform', 'RegressorData', 'ordinary_least_squares']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
@@ -442,8 +442,57 @@ class ModelStructure(metaclass=_ModelStructureMeta):
                 inst.complex_products *= delta_cp
 
 
+class CircularBuffer:
+    def __init__(self, capacity: int):
+        self._capacity = capacity
+        self._data = np.zeros(capacity, dtype=float)
+        self._index = 0
+        self._size = 0
+
+    def add(self, value: float) -> None:
+        self._data[self._index] = value
+        self._index = (self._index + 1) % self._capacity
+        self._size = min(self._size, self._capacity)
+        self._size += 1
+
+    @property
+    def latest(self) -> float:
+        if self._size == 0:
+            raise IndexError("Buffer is empty")
+        return self._data[self._index - 1]
+
+    @property
+    def oldest(self) -> float:
+        if self._size == 0:
+            raise IndexError("Buffer is empty")
+        if self._size < self._capacity:
+            # Not yet full: oldest is at index 0
+            return self._data[0]
+        # Buffer full: oldest is at the current index
+        return self._data[self._index]
+
+    @property
+    def size(self) -> int:
+        return self._size
+
+    def get_all(self) -> np.ndarray:
+        if self._size < self._capacity:
+            return self._data[:self._size].copy()
+        # Return in chronological order
+        return np.concatenate((self._data[self._index:], self._data[:self._index]))
+
+    def apply_to_all(self, func) -> None:
+        self._data[:self._size] = func(self.get_all())
+        
+    def fill_all(self, value: float) -> None:
+        self._data.fill(value)
+        self._index = 0
+        self._size = self._capacity
+
+    
+
 class RecursiveFourierTransform:
-    default_eff: float = 1.0
+    default_eff: float = 0.999
     default_frequencies: np.ndarray = np.arange(0.1, 1.54, 0.04)
 
     def __init__(
@@ -526,6 +575,24 @@ class RecursiveFourierTransform:
             if np.any(frequencies < 0):
                 raise ValueError("frequencies must be non-negative")
             cls.default_frequencies = frequencies.copy()
+
+
+class RegressorData:
+    def __init__(
+            self,
+            delay: int = 0,
+            eff: Optional[float] = None,
+            frequencies: Optional[np.ndarray] = None
+            ) -> None:
+        
+        self.timedata = CircularBuffer(capacity=delay+1)
+        self.timedata.fill_all(0)
+        self.spectrum = RecursiveFourierTransform(eff=eff, frequencies=frequencies)
+
+    def update(self, new_value) -> None:
+        self.timedata.add(new_value)
+        self.spectrum.update_spectrum(self.timedata.oldest)
+
 
 def ordinary_least_squares(
         measured_output: np.ndarray,

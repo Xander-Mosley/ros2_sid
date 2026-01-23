@@ -49,19 +49,19 @@ class IMUFiltering(Node):
 
 
     def setup_subs(self):
-        # self.imu_sub: Subscription = self.create_subscription(
-        #     Imu,
-        #     '/mavros/imu/data',
-        #     self.imu_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
-        
-        self.replay_imu_sub: Subscription = self.create_subscription(
-            Float64MultiArray,
-            '/replay/IMU/data',
-            self.replay_imu_callback,
+        self.imu_sub: Subscription = self.create_subscription(
+            Imu,
+            '/mavros/imu/data',
+            self.imu_callback,
             qos_profile=SENSOR_QOS
         )
+        
+        # self.replay_imu_sub: Subscription = self.create_subscription(
+        #     Float64MultiArray,
+        #     '/replay/IMU/data',
+        #     self.replay_imu_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
 
     def imu_callback(self, sub_msg: Imu) -> None:
         start = time.perf_counter()
