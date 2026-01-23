@@ -32,8 +32,9 @@ class IMUDifferentiating(Node):
         self.setup_pubs()
         
     def setup_vars(self):
-        self.acc_time = CircularBuffer(5)
-        self.acc_time.add(0)
+        self.acc_times = CircularBuffer(5)
+        self.acc_times.add(0)
+        self.minimum_dt = 1.0 / 100.0
 
         self.rol_velo = CircularBuffer(5)
         self.pit_velo = CircularBuffer(5)
@@ -43,32 +44,40 @@ class IMUDifferentiating(Node):
         self.pit_accel_lpf = ButterworthLowPass_VDT_2O(1.54)
         self.yaw_accel_lpf = ButterworthLowPass_VDT_2O(1.54)
         
-        self.elapsed = 0
-        self.max_elapsed = 0
-        self.min_elapsed = 1
-        self.ema_elapsed = 0
+        num_pts = 99
+        self.alpha = 2 / (num_pts + 1)
+        self.acc_max_elapsed = 0
+        self.acc_min_elapsed = 1_000_000_000
+        self.acc_ema_elapsed = 0
 
 
     def setup_subs(self):
+        # self.imu_sub: Subscription = self.create_subscription(
+        #     Imu,
+        #     '/mavros/imu/data',
+        #     self.imu_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
         self.imu_filt_sub: Subscription = self.create_subscription(
             Imu,
             '/imu_filt',
-            self.imu_filt_callback,
+            self.imu_callback,
             qos_profile=SENSOR_QOS
         )
 
-    def imu_filt_callback(self, sub_msg: Imu) -> None:
+    def imu_callback(self, sub_msg: Imu) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
         start = time.perf_counter()
 
-        new_nanosec_data: float = sub_msg.header.stamp.nanosec * 1E-9
-        if self.acc_time.size > 0 and new_nanosec_data < self.acc_time.latest:
-            new_nanosec_data += 1.0
-        dt = new_nanosec_data - self.acc_time.latest
-        if dt > (1.0 / 150.0):
-            self.acc_time.add(new_nanosec_data)
-            if self.acc_time.size > 0 and np.all(self.acc_time.get_all() >= 1.0):
-                self.acc_time.apply_to_all(lambda x: x - 1.0)
+        new_sec: float = sub_msg.header.stamp.sec
+        new_nanosec: float = sub_msg.header.stamp.nanosec * 1E-9
+        if new_nanosec < self.acc_times.latest:
+            new_nanosec += 1.0
+        dt = new_nanosec - self.acc_times.latest
+        if dt > self.minimum_dt:
+            self.acc_times.add(new_nanosec)
+            if np.all(self.acc_times.get_all() >= 1.0):
+                self.acc_times.apply_to_all(lambda x: x - 1.0)
 
             self.rol_velo.add(sub_msg.angular_velocity.x)
             self.pit_velo.add(sub_msg.angular_velocity.y)
@@ -78,30 +87,28 @@ class IMUDifferentiating(Node):
             
             pub_msg: Imu = Imu()
             pub_msg.header = sub_msg.header
-            pub_msg.angular_velocity.x = self.rol_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.rol_velo.get_all()), dt)
-            pub_msg.angular_velocity.y = self.pit_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.pit_velo.get_all()), dt)
-            pub_msg.angular_velocity.z = self.yaw_accel_lpf.update(poly_diff(self.acc_time.get_all(), self.yaw_velo.get_all()), dt)
+            pub_msg.angular_velocity.x = self.rol_accel_lpf.update(poly_diff(self.acc_times.get_all(), self.rol_velo.get_all()), dt)
+            pub_msg.angular_velocity.y = self.pit_accel_lpf.update(poly_diff(self.acc_times.get_all(), self.pit_velo.get_all()), dt)
+            pub_msg.angular_velocity.z = self.yaw_accel_lpf.update(poly_diff(self.acc_times.get_all(), self.yaw_velo.get_all()), dt)
             self.imu_diff.publish(pub_msg)
 
             end = time.perf_counter()
 
             elapsed = end - start
-            self.max_elapsed = np.max([self.max_elapsed, elapsed])
-            self.min_elapsed = np.min([self.min_elapsed, elapsed])
-            num_pts = 99
-            alpha = 2 / (num_pts + 1)
-            self.ema_elapsed = (alpha * elapsed) + ((1-alpha) * self.ema_elapsed)            
+            self.acc_max_elapsed = np.max([self.acc_max_elapsed, elapsed])
+            self.acc_min_elapsed = np.min([self.acc_min_elapsed, elapsed])
+            self.acc_ema_elapsed = (self.alpha * elapsed) + ((1-self.alpha) * self.acc_ema_elapsed)
             pub_msg_2: Float64MultiArray = Float64MultiArray()
             pub_msg_2.data = [
                 elapsed,
-                self.ema_elapsed,
-                self.max_elapsed,
-                self.min_elapsed,
+                self.acc_ema_elapsed,
+                self.acc_max_elapsed,
+                self.acc_min_elapsed,
             ]
             self.imu_diff_duration.publish(pub_msg_2)
 
         else:
-            print("Skipped discontinuity.")
+            print(f"IMU differentiation skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
 
     def setup_pubs(self):

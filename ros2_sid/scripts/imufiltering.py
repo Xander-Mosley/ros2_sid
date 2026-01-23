@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from re import S
-from collections import deque
 
 import numpy as np
 import mavros
@@ -17,7 +16,6 @@ from sensor_msgs.msg import Imu
 from std_msgs.msg import Float64, Float64MultiArray, String
 
 
-from ros2_sid.rt_ols import CircularBuffer
 from ros2_sid.signal_processing import (
     linear_diff, poly_diff,
     LowPassFilter, LowPassFilter_VDT,
@@ -33,16 +31,17 @@ class IMUFiltering(Node):
         self.setup_pubs()
         
     def setup_vars(self):
-        self.imu_time = CircularBuffer(2)
-        self.imu_time.add(0)
+        self.imu_prev_nanosec = 0.0
+        self.minimum_dt = 1.0 / 100.0
 
         self.rol_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
         self.pit_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
         self.yaw_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
         
-        self.elapsed = 0
+        num_pts = 99
+        self.alpha = 2 / (num_pts + 1)
         self.max_elapsed = 0
-        self.min_elapsed = 1
+        self.min_elapsed = 1_000_000_000
         self.ema_elapsed = 0
 
 
@@ -53,7 +52,6 @@ class IMUFiltering(Node):
             self.imu_callback,
             qos_profile=SENSOR_QOS
         )
-        
         # self.replay_imu_sub: Subscription = self.create_subscription(
         #     Float64MultiArray,
         #     '/replay/IMU/data',
@@ -65,14 +63,11 @@ class IMUFiltering(Node):
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
         start = time.perf_counter()
 
-        new_nanosec_data: float = sub_msg.header.stamp.nanosec * 1E-9
-        if new_nanosec_data < self.imu_time.latest:
-            new_nanosec_data += 1.0
-        dt = new_nanosec_data - self.imu_time.latest
-        if dt >= (1.0 / 150.0):
-            self.imu_time.add(new_nanosec_data)
-            if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
-                self.imu_time.apply_to_all(lambda x: x - 1.0)
+        new_sec: float = sub_msg.header.stamp.sec
+        new_nanosec: float = sub_msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.imu_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.imu_prev_nanosec = new_nanosec
             
             pub_msg: Imu = Imu()
             pub_msg.header = sub_msg.header
@@ -86,9 +81,7 @@ class IMUFiltering(Node):
             elapsed = end - start
             self.max_elapsed = np.max([self.max_elapsed, elapsed])
             self.min_elapsed = np.min([self.min_elapsed, elapsed])
-            num_pts = 99
-            alpha = 2 / (num_pts + 1)
-            self.ema_elapsed = (alpha * elapsed) + ((1-alpha) * self.ema_elapsed)            
+            self.ema_elapsed = (self.alpha * elapsed) + ((1-self.alpha) * self.ema_elapsed)            
             pub_msg_2: Float64MultiArray = Float64MultiArray()
             pub_msg_2.data = [
                 elapsed,
@@ -99,29 +92,19 @@ class IMUFiltering(Node):
             self.imu_filt_duration.publish(pub_msg_2)
 
         else:
-            print("Skipped discontinuity.")
+            print(f"IMU update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
     def replay_imu_callback(self, sub_msg: Float64MultiArray) -> None:
         start = time.perf_counter()
-
-        seconds = int(sub_msg.data[0])
-        nanoseconds = int(round((sub_msg.data[0] - seconds) * 1_000_000_000))
-        if nanoseconds >= 1_000_000_000:
-            seconds += 1
-            nanoseconds = 0
-
-        new_nanosec_data: float = nanoseconds * 1E-9
-        if new_nanosec_data < self.imu_time.latest:
-            new_nanosec_data += 1.0
-        dt = new_nanosec_data - self.imu_time.latest
-        if dt > (1.0 / 150.0):
-            self.imu_time.add(new_nanosec_data)
-            if self.imu_time.size > 0 and np.all(self.imu_time.get_all() >= 1.0):
-                self.imu_time.apply_to_all(lambda x: x - 1.0)
+        
+        new_sec, new_nanosec = divmod(sub_msg.data[0], 1.0)
+        dt = (new_nanosec - self.imu_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.imu_prev_nanosec = new_nanosec
 
             pub_msg: Imu = Imu()
-            pub_msg.header.stamp.sec = seconds
-            pub_msg.header.stamp.nanosec = nanoseconds
+            pub_msg.header.stamp.sec = int(new_sec)
+            pub_msg.header.stamp.nanosec = int(new_nanosec * 1e9)
             pub_msg.angular_velocity.x = self.rol_velo_lpf.update(sub_msg.data[5], dt)
             pub_msg.angular_velocity.y = self.pit_velo_lpf.update(sub_msg.data[6], dt)
             pub_msg.angular_velocity.z = self.yaw_velo_lpf.update(sub_msg.data[7], dt)
@@ -132,9 +115,7 @@ class IMUFiltering(Node):
             elapsed = end - start
             self.max_elapsed = np.max([self.max_elapsed, elapsed])
             self.min_elapsed = np.min([self.min_elapsed, elapsed])
-            num_pts = 99
-            alpha = 2 / (num_pts + 1)
-            self.ema_elapsed = (alpha * elapsed) + ((1-alpha) * self.ema_elapsed)            
+            self.ema_elapsed = (self.alpha * elapsed) + ((1-self.alpha) * self.ema_elapsed)            
             pub_msg_2: Float64MultiArray = Float64MultiArray()
             pub_msg_2.data = [
                 elapsed,
@@ -145,7 +126,7 @@ class IMUFiltering(Node):
             self.imu_filt_duration.publish(pub_msg_2)
 
         else:
-            print("Skipped discontinuity.")
+            print(f"IMU update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
 
     def setup_pubs(self):
