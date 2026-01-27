@@ -440,14 +440,25 @@ def plot_error(
         measured_output = df[f"{prefix}measured_output"]
         residuals = df[f"{prefix}residuals"]
         mse = df[f"{prefix}mse"]
+
+        total_mse: float = float(np.nanmean(residuals ** 2))
+        # print(total_mse)
+        # var_y: float = float(np.var(df[f"{prefix}modeled_output"]))
+        # print(total_mse/var_y)
         
         # --- Subplot 1 (upper left) ---
         fig.add_scatter(0, time, residuals, label=name, color=model_colors[name], s=10, alpha=0.7)
         fig.add_data(0, time, residuals, color=model_colors[name], alpha=0.3, linewidth=1)
         
         # --- Subplot 2 (lower left) ---
-        fig.add_scatter(1, time, mse, label=name, color=model_colors[name], s=10, alpha=0.7)
+        fig.add_scatter(1, time, mse, label=f"{name} (MSE Over Time)", color=model_colors[name], s=10, alpha=0.7)
         fig.add_data(1, time, mse, color=model_colors[name], alpha=0.3, linewidth=1)
+        fig.add_line(1, total_mse, 'h', label=f"{name} (MSE of Window)", color=model_colors[name], linestyle=':', alpha=0.7)
+        fig.annotate(1, f"{total_mse:.2e}", xy=(start_time, total_mse),
+                     xycoords="data", textcoords="offset points",
+                     xytext=(-10, 5), ha="left", va="top",
+                     fontsize="small", fontweight="bold", color=model_colors[name],
+                     bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, boxstyle="round,pad=0.3"))
         
         # --- Subplot 3 (right) ---
         fig.add_scatter(2, measured_output, residuals, label=name, color=model_colors[name], s=10, alpha=0.7)
@@ -778,24 +789,34 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
 
 def main():
     csv_files = {
-        "Small Roll": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
+        # "Small Roll": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
         # "Large Roll": {"prefix": "ols_rol_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_data.csv"},
         # "Pitch": {"prefix": "ols_pit_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_data.csv"},
-        # "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
+        "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
         # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
     }
 
-    start_time = 60
-    end_time = 108
+    start_time = 225
+    end_time = 280
 
     plot_labels = {
         # "subtitle": "",
         # "time": "Time [s]",
 
+        # "terms":{
+        #     0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
+        #     1: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+        #     2: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+        # },
+        # "terms":{
+        #     0: {"term": "Pitch Acceleration", "units": "[rad/s²]"},
+        #     1: {"term": "Pitch Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+        #     2: {"term": "Elevator Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+        # },
         "terms":{
-            0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
-            1: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-            2: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+            0: {"term": "Yaw Acceleration", "units": "[rad/s²]"},
+            1: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+            2: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
         },
     }
 

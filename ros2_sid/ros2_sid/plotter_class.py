@@ -519,6 +519,18 @@ class PlotFigure:
         if ylabel:
             ax2.yaxis.label.set_color(color)
 
+    def annotate(
+        self,
+        subplot: int,
+        text: str,
+        *,
+        xy,
+        xycoords="data",
+        **kwargs,
+        ) -> None:
+        ax = self._get_ax(subplot)
+        ax.annotate(text, xy=xy, xycoords=xycoords, **kwargs)
+
 
     def add_data(
         self,

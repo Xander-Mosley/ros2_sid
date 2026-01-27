@@ -36,12 +36,14 @@ class OLSNode(Node):
         self.minimum_dt = 1.0 / 100.0
 
         self.imu_prev_nanosec = 0.0
-        self.acc_prev_nanosec = 0.0
-        self.rco_prev_nanosec = 0.0
+        self.accel_prev_nanosec = 0.0
+        self.rcout_prev_nanosec = 0.0
+        self.telem_prev_nanosec = 0.0
 
         self._imu_first_pass = True
-        self._acc_first_pass = True
-        self._rco_first_pass = True
+        self._accel_first_pass = True
+        self._rcout_first_pass = True
+        self._telem_first_pass = True
 
         self.rol_velo = RegressorData(eff=0.999)
         self.pit_velo = RegressorData(eff=0.999)
@@ -55,8 +57,8 @@ class OLSNode(Node):
         self.elv_pwm = RegressorData(eff=0.999)
         self.rud_pwm = RegressorData(eff=0.999)
 
-        # self.aoa = StoredData(1, 1)
-        # self.ssa = StoredData(1, 1)
+        self.aoa = RegressorData(eff=0.999)
+        self.ssa = RegressorData(eff=0.999)
         
         # self.dyn_pres = StoredData(1, 1)
         # self.dyn_pres.update_data(1)
@@ -67,10 +69,10 @@ class OLSNode(Node):
         # self.airspeed = StoredData(1, 1)
         # self.airspeed.update_data(1)
 
-        # self.mass = 25              # [kg]
-        # self.wing_span = 3.868      # [m]
-        # self.wing_area = 1.065634   # [m²]
-        # self.wing_chord = 0.2755    # [m]
+        self.mass = 25              # [kg]
+        self.wing_span = 3.868      # [m]
+        self.wing_area = 1.065634   # [m²]
+        self.wing_chord = 0.2755    # [m]
 
 
     def setup_subs(self) -> None:
@@ -101,12 +103,12 @@ class OLSNode(Node):
         #     qos_profile=SENSOR_QOS
         # )
 
-        # self.telem_sub: Subscription = self.create_subscription(
-        #     Telem,
-        #     '/telem',
-        #     self.telem_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.telem_sub: Subscription = self.create_subscription(
+            Telem,
+            '/telem',
+            self.telem_callback,
+            qos_profile=SENSOR_QOS
+        )
 
         # self.odom_sub: Subscription = self.create_subscription(
         #     Odometry,
@@ -163,14 +165,14 @@ class OLSNode(Node):
     def imu_diff_callback(self, msg: Imu) -> None:
         new_sec: float = msg.header.stamp.sec
         new_nanosec: float = msg.header.stamp.nanosec * 1E-9
-        dt = (new_nanosec - self.acc_prev_nanosec) % 1.0
+        dt = (new_nanosec - self.accel_prev_nanosec) % 1.0
         if dt >= self.minimum_dt:
-            self.acc_prev_nanosec = new_nanosec
+            self.accel_prev_nanosec = new_nanosec
 
-            if self._acc_first_pass:
-                self._acc_first_pass = False
+            if self._accel_first_pass:
+                self._accel_first_pass = False
                 for accel in [self.rol_accel, self.pit_accel, self.yaw_accel]:
-                    accel.spectrum.update_cp_time(self.acc_prev_nanosec)
+                    accel.spectrum.update_cp_time(self.accel_prev_nanosec)
             else:
                 for accel in [self.rol_accel, self.pit_accel, self.yaw_accel]:
                     accel.spectrum.update_cp_timestep(dt)
@@ -185,35 +187,35 @@ class OLSNode(Node):
     def rcout_callback(self, msg: RCOut) -> None:
         new_sec: float = msg.header.stamp.sec
         new_nanosec: float = msg.header.stamp.nanosec * 1E-9
-        dt = (new_nanosec - self.rco_prev_nanosec) % 1.0
+        dt = (new_nanosec - self.rcout_prev_nanosec) % 1.0
         if dt >= self.minimum_dt:
-            self.rco_prev_nanosec = new_nanosec
+            self.rcout_prev_nanosec = new_nanosec
 
-            if self._rco_first_pass:
-                self._rco_first_pass = False
+            if self._rcout_first_pass:
+                self._rcout_first_pass = False
                 for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
-                    pwm.spectrum.update_cp_time(self.rco_prev_nanosec)
+                    pwm.spectrum.update_cp_time(self.rcout_prev_nanosec)
             else:
                 for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
                     pwm.spectrum.update_cp_timestep(dt)
 
             self.ail_pwm.update(msg.channels[0] - 1500)
             self.elv_pwm.update(msg.channels[1] - 1500)
-            self.rud_pwm.update(msg.channels[2] - 1500)
+            self.rud_pwm.update(msg.channels[3] - 1500)
 
         else:
             print(f"RCOut update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
     def replay_rcout_callback(self, msg: Float64MultiArray) -> None:
         new_sec, new_nanosec = divmod(msg.data[0], 1.0)
-        dt = (new_nanosec - self.rco_prev_nanosec) % 1.0
+        dt = (new_nanosec - self.rcout_prev_nanosec) % 1.0
         if dt >= self.minimum_dt:
-            self.rco_prev_nanosec = new_nanosec
+            self.rcout_prev_nanosec = new_nanosec
 
-            if self._rco_first_pass:
-                self._rco_first_pass = False
+            if self._rcout_first_pass:
+                self._rcout_first_pass = False
                 for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
-                    pwm.spectrum.update_cp_time(self.rco_prev_nanosec)
+                    pwm.spectrum.update_cp_time(self.rcout_prev_nanosec)
             else:
                 for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
                     pwm.spectrum.update_cp_timestep(dt)
@@ -225,9 +227,26 @@ class OLSNode(Node):
         else:
             print(f"RCOut update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-    # def telem_callback(self, msg: Telem) -> None:
-    #     self.aoa.update_data(msg.alpha)
-    #     self.ssa.update_data(msg.beta)
+    def telem_callback(self, msg: Telem) -> None:
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.telem_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.telem_prev_nanosec = new_nanosec
+
+            if self._telem_first_pass:
+                self._telem_first_pass = False
+                for xxx in [self.aoa, self.ssa]:
+                    xxx.spectrum.update_cp_time(self.telem_prev_nanosec)
+            else:
+                for xxx in [self.aoa, self.ssa]:
+                    xxx.spectrum.update_cp_timestep(dt)
+
+            self.aoa.update(msg.alpha)
+            self.ssa.update(msg.beta)
+
+        else:
+            print(f"Telem update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
     # def odom_callback(self, msg: Odometry) -> None:
     #     """
@@ -279,41 +298,42 @@ class OLSNode(Node):
 
 
     def setup_pubs(self) -> None:
+        default_pub_rate = 1 / 25
         publisher_periods = {
-            "ols_rol": 1 / 25,
-            # "ols_rol_nondim": 0.02,
-            # "ols_rol_nondim_inertias": 0.02,
-            # "ols_rol_ssa": 0.02,
-            # "ols_rol_ssa_nondim": 0.02,
-            # "ols_rol_ssa_nondim_inertias": 0.02,
+            "ols_rol": default_pub_rate,
+            # "ols_rol_nondim": default_pub_rate,
+            # "ols_rol_nondim_inertias": default_pub_rate,
+            "ols_rol_ssa": default_pub_rate,
+            # "ols_rol_ssa_nondim": default_pub_rate,
+            # "ols_rol_ssa_nondim_inertias": default_pub_rate,
 
-            "ols_rol_large": 1 / 25,
-            # "ols_rol_large_nondim": 0.02,
-            # "ols_rol_large_nondim_inertias": 0.02,
-            # "ols_rol_large_ssa": 0.02,
-            # "ols_rol_large_ssa_nondim": 0.02,
-            # "ols_rol_large_ssa_nondim_inertias": 0.02,
+            "ols_rol_large": default_pub_rate,
+            # "ols_rol_large_nondim": default_pub_rate,
+            # "ols_rol_large_nondim_inertias": default_pub_rate,
+            "ols_rol_large_ssa": default_pub_rate,
+            # "ols_rol_large_ssa_nondim": default_pub_rate,
+            # "ols_rol_large_ssa_nondim_inertias": default_pub_rate,
 
-            "ols_pit": 1 / 25,
-            # "ols_pit_nondim": 0.02,
-            # "ols_pit_nondim_inertias": 0.02,
-            # "ols_pit_aoa": 0.02,
-            # "ols_pit_aoa_nondim": 0.02,
-            # "ols_pit_aoa_nondim_inertias": 0.02,
+            "ols_pit": default_pub_rate,
+            # "ols_pit_nondim": default_pub_rate,
+            # "ols_pit_nondim_inertias": default_pub_rate,
+            "ols_pit_aoa": default_pub_rate,
+            # "ols_pit_aoa_nondim": default_pub_rate,
+            # "ols_pit_aoa_nondim_inertias": default_pub_rate,
 
-            "ols_yaw": 1 / 25,
-            # "ols_yaw_nondim": 0.02,
-            # "ols_yaw_nondim_inertias": 0.02,
-            # "ols_yaw_ssa": 0.02,
-            # "ols_yaw_ssa_nondim": 0.02,
-            # "ols_yaw_ssa_nondim_inertias": 0.02,
+            "ols_yaw": default_pub_rate,
+            # "ols_yaw_nondim": default_pub_rate,
+            # "ols_yaw_nondim_inertias": default_pub_rate,
+            "ols_yaw_ssa": default_pub_rate,
+            # "ols_yaw_ssa_nondim": default_pub_rate,
+            # "ols_yaw_ssa_nondim_inertias": default_pub_rate,
 
-            "ols_yaw_large": 1 / 25,
-            # "ols_yaw_large_nondim": 0.02,
-            # "ols_yaw_large_nondim_inertias": 0.02,
-            # "ols_yaw_large_ssa": 0.02,
-            # "ols_yaw_large_ssa_nondim": 0.02,
-            # "ols_yaw_large_ssa_nondim_inertias": 0.02,
+            "ols_yaw_large": default_pub_rate,
+            # "ols_yaw_large_nondim": default_pub_rate,
+            # "ols_yaw_large_nondim_inertias": default_pub_rate,
+            "ols_yaw_large_ssa": default_pub_rate,
+            # "ols_yaw_large_ssa_nondim": default_pub_rate,
+            # "ols_yaw_large_ssa_nondim_inertias": default_pub_rate,
         }
 
         self.model_publishers: dict[str, Publisher] = {}
@@ -355,25 +375,50 @@ class OLSNode(Node):
                           self.rol_accel,
                           [self.rol_velo, self.ail_pwm])
 
+    def publish_ols_rol_ssa_data(self) -> None:
+        self._publish_ols("ols_rol_ssa",
+                          self.rol_accel,
+                          [self.rol_velo, self.ail_pwm, self.ssa])
+
     def publish_ols_rol_large_data(self) -> None:
         self._publish_ols("ols_rol_large",
                           self.rol_accel,
                           [self.rol_velo, self.ail_pwm, self.yaw_velo, self.rud_pwm])
+
+    def publish_ols_rol_large_ssa_data(self) -> None:
+        self._publish_ols("ols_rol_large_ssa",
+                          self.rol_accel,
+                          [self.rol_velo, self.ail_pwm, self.ssa, self.yaw_velo, self.rud_pwm])
 
     def publish_ols_pit_data(self) -> None:
         self._publish_ols("ols_pit",
                           self.pit_accel,
                           [self.pit_velo, self.elv_pwm])
 
+    def publish_ols_pit_aoa_data(self) -> None:
+        self._publish_ols("ols_pit_aoa",
+                          self.pit_accel,
+                          [self.pit_velo, self.elv_pwm, self.aoa])
+
     def publish_ols_yaw_data(self) -> None:
         self._publish_ols("ols_yaw",
                           self.yaw_accel,
                           [self.yaw_velo, self.rud_pwm])
 
+    def publish_ols_yaw_ssa_data(self) -> None:
+        self._publish_ols("ols_yaw_ssa",
+                          self.yaw_accel,
+                          [self.yaw_velo, self.rud_pwm, self.ssa])
+
     def publish_ols_yaw_large_data(self) -> None:
         self._publish_ols("ols_yaw_large",
                           self.yaw_accel,
                           [self.yaw_velo, self.rud_pwm, self.rol_velo, self.ail_pwm])
+
+    def publish_ols_yaw_large_ssa_data(self) -> None:
+        self._publish_ols("ols_yaw_large_ssa",
+                          self.yaw_accel,
+                          [self.yaw_velo, self.rud_pwm, self.ssa, self.rol_velo, self.ail_pwm])
 
 
 def main(args=None):
