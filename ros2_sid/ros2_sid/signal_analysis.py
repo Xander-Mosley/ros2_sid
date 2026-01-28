@@ -683,9 +683,9 @@ def _analyze_regressor_spectrums():
 def _analyze_time_steps():
     file_directory = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/"
 
-    plot_timestep_distribution(file_directory=file_directory, file_name="imu_diff_data.csv")
+    # plot_timestep_distribution(file_directory=file_directory, file_name="imu_diff_data.csv")
     plot_timestep_distribution(file_directory=file_directory, file_name="imu_data.csv")
-    # plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
+    plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
     # plot_timestep_overtime(file_directory=file_directory, file_name="imu_diff_data.csv")
     # plot_timestep_overtime(file_directory=file_directory, file_name="imu_data.csv")
     # plot_timestep_overtime(file_directory=file_directory, file_name="rcout_data.csv")
@@ -696,9 +696,9 @@ def _analyze_time_steps():
 
 
 def main():
-    _analyze_input_signals()
-    _analyze_regressor_spectrums()
-    # _analyze_time_steps()
+    # _analyze_input_signals()
+    # _analyze_regressor_spectrums()
+    _analyze_time_steps()
 
 if __name__ == "__main__":
     main()

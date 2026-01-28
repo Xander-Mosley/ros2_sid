@@ -375,7 +375,7 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2026-01-27_AllAxisTest/rosbag2_2026_01_27-19_02_30_0.db3'
+    bag_file = '/develop_ws/bag_files/2026-01-28_ComparingNew-Old_3/rosbag2_2026_01_28-17_27_34_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
@@ -433,6 +433,12 @@ if __name__ == "__main__":
         # '/ols_yaw_large_ssa': 'ols_yaw_large_ssa',
         # '/ols_yaw_large_ssa_nondim': 'ols_yaw_large_ssa_nondim',
         # '/ols_yaw_large_ssa_nondim_inertias': 'ols_yaw_large_ssa_nondim_inertias'
+
+        '/ols_rol_old': 'ols_rol_old',
+        '/ols_rol_large_old': 'ols_rol_large_old',
+        '/ols_pit_old': 'ols_pit_old',
+        '/ols_yaw_old': 'ols_yaw_old',
+        '/ols_yaw_large_old': 'ols_yaw_large_old',
         }
     
     output_directory = '/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files'

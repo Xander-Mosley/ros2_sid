@@ -766,13 +766,13 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
 
     if not separate:
         # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-        plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
         plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
         # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
         plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
-        plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
+        # plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
         # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions
     else:
         for i in enumerate(processed_models.items()):
@@ -790,34 +790,52 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
 def main():
     csv_files = {
         # "Small Roll": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
+        # "Small SSA Roll": {"prefix": "ols_rol_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_ssa_data.csv"},
         # "Large Roll": {"prefix": "ols_rol_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_data.csv"},
+        # "Large SSA Roll": {"prefix": "ols_rol_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_ssa_data.csv"},
         # "Pitch": {"prefix": "ols_pit_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_data.csv"},
-        "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
-        # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
+        # "AOA Pitch": {"prefix": "ols_pit_aoa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_aoa_data.csv"},
+        # "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
+        # "Small SSA Yaw": {"prefix": "ols_yaw_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_ssa_data.csv"},
+        "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
+        # "Large SSA Yaw": {"prefix": "ols_yaw_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_ssa_data.csv"},
+
+        # "Old Small Roll": {"prefix": "ols_rol_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_old_data.csv"},
+        # "Old Large Roll": {"prefix": "ols_rol_large_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_old_data.csv"},
+        # "Old Pitch": {"prefix": "ols_pit_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_old_data.csv"},
+        # "Old Small Yaw": {"prefix": "ols_yaw_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_old_data.csv"},
+        "Old Large Yaw": {"prefix": "ols_yaw_large_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_old_data.csv"},
     }
 
-    start_time = 225
-    end_time = 280
+    start_time = 0
+    end_time = 9999
 
     plot_labels = {
         # "subtitle": "",
         # "time": "Time [s]",
 
-        # "terms":{
-        #     0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
-        #     1: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     2: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        # },
+        "terms":{
+            0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
+            1: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+            2: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+            # 3: {"term": "Side Slip Angle", "units": "[deg]", "param_units": "[rad/s²-deg]"},
+            # 4: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+            # 5: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+        },
         # "terms":{
         #     0: {"term": "Pitch Acceleration", "units": "[rad/s²]"},
         #     1: {"term": "Pitch Rate", "units": "[rad/s]", "param_units": "[1/s]"},
         #     2: {"term": "Elevator Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+        #     3: {"term": "Angle of Attack", "units": "[deg]", "param_units": "[rad/s²-deg]"},
         # },
-        "terms":{
-            0: {"term": "Yaw Acceleration", "units": "[rad/s²]"},
-            1: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-            2: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        },
+        # "terms":{
+        #     0: {"term": "Yaw Acceleration", "units": "[rad/s²]"},
+        #     1: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+        #     2: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+        #     # 3: {"term": "Side Slip Angle", "units": "[deg]", "param_units": "[rad/s²-deg]"},
+        #     # 4: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+        #     # 5: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+        # },
     }
 
     plot_models(csv_files, start_time, end_time, plot_labels)
