@@ -1002,6 +1002,8 @@ class PlotFigure:
         value: float,
         orientation: str = 'h',
         label: Optional[str] = None,
+        min_val: float | None = None,
+        max_val: float | None = None,
         **kwargs
         ) -> object:
         """
@@ -1030,15 +1032,23 @@ class PlotFigure:
         ValueError
             If 'orientation' is not 'h' or 'v'.
         """
+        
         if orientation not in ('h', 'v'):
             raise ValueError(
                 "orientation must be either 'h' (horizontal) or 'v' (vertical)"
                 )
-        plot_func = (
-            (lambda ax: ax.axhline(y=value, label=label, **kwargs))
-            if orientation == 'h'
-            else (lambda ax: ax.axvline(x=value, label=label, **kwargs))
-            )
+        if min_val is not None and max_val is not None:
+            plot_func = (
+                (lambda ax: ax.hlines(y=value, label=label, xmin=min_val, xmax=max_val, **kwargs))
+                if orientation == 'h'
+                else (lambda ax: ax.vlines(x=value, label=label, ymin=min_val, ymax=max_val, **kwargs))
+                )
+        else:
+            plot_func = (
+                (lambda ax: ax.axhline(y=value, label=label, **kwargs))
+                if orientation == 'h'
+                else (lambda ax: ax.axvline(x=value, label=label, **kwargs))
+                )
         return self._add_plot_data(ax_pos, plot_func, label)
 
     def add_shade(

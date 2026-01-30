@@ -39,11 +39,22 @@ class OLSNode(Node):
         self.accel_prev_nanosec = 0.0
         self.rcout_prev_nanosec = 0.0
         self.telem_prev_nanosec = 0.0
+        self.odom_prev_nanosec = 0.0
+        self.diff_pres_prev_nanosec = 0.0
+        self.stat_pres_prev_nanosec = 0.0
+        self.temp_baro_prev_nanosec = 0.0
 
         self._imu_first_pass = True
         self._accel_first_pass = True
         self._rcout_first_pass = True
         self._telem_first_pass = True
+        self._odom_first_pass = True
+        self._diff_pres_first_pass = True
+        self._stat_pres_first_pass = True
+        self._temp_baro_first_pass = True
+
+        self.odom_avg = 0.0
+        self.diff_pres_avg = 0.0
 
         self.rol_velo = RegressorData(eff=0.999)
         self.pit_velo = RegressorData(eff=0.999)
@@ -59,23 +70,23 @@ class OLSNode(Node):
 
         self.aoa = RegressorData(eff=0.999)
         self.ssa = RegressorData(eff=0.999)
-        
-        # self.dyn_pres = StoredData(1, 1)
-        # self.dyn_pres.update_data(1)
-        # self.stat_pres = StoredData(1, 1)
-        # self.stat_pres.update_data(1)
-        # self.temp = StoredData(1, 1)
-        # self.temp.update_data(1)
-        # self.airspeed = StoredData(1, 1)
-        # self.airspeed.update_data(1)
 
-        # self.mass = 25              # [kg]
-        # self.wing_span = 3.868      # [m]
-        # self.wing_area = 1.065634   # [m²]
-        # self.wing_chord = 0.2755    # [m]
+        self.airspeed = RegressorData(eff=0.999)
+
+        self.dyn_pres = RegressorData(eff=0.999)
+
+        self.stat_pres = RegressorData(eff=0.999)
+
+        self.temp_baro = RegressorData(eff=0.999)
+
+        self.mass = 25              # [kg]
+        self.wing_span = 3.868      # [m]
+        self.wing_area = 1.065634   # [m²]
+        self.wing_chord = 0.2755    # [m]
         
         groups = {
             "rol": ["rol_accel", "rol_velo", "ail_pwm"],
+            "rol_nondim": ["rol_accel", "rol_velo", "ail_pwm"],
             # "rol_ssa": ["rol_accel", "rol_velo", "ail_pwm", "ssa"],
             "rol_large": ["rol_accel", "rol_velo", "ail_pwm", "yaw_velo", "rud_pwm"],
             # "rol_large_ssa": ["rol_accel", "rol_velo", "ail_pwm", "ssa", "yaw_velo", "rud_pwm"],
@@ -125,40 +136,40 @@ class OLSNode(Node):
         #     qos_profile=SENSOR_QOS
         # )
 
-        # self.telem_sub: Subscription = self.create_subscription(
-        #     Telem,
-        #     '/telem',
-        #     self.telem_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.telem_sub: Subscription = self.create_subscription(
+            Telem,
+            '/telem',
+            self.telem_callback,
+            qos_profile=SENSOR_QOS
+        )
 
-        # self.odom_sub: Subscription = self.create_subscription(
-        #     Odometry,
-        #     '/mavros/local_position/odom',
-        #     self.odom_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.odom_sub: Subscription = self.create_subscription(
+            Odometry,
+            '/mavros/local_position/odom',
+            self.odom_callback,
+            qos_profile=SENSOR_QOS
+        )
 
-        # self.diff_pressure_sub: Subscription = self.create_subscription(
-        #     FluidPressure,
-        #     '/mavros/imu/diff_pressure',
-        #     self.diff_pressure_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.diff_pressure_sub: Subscription = self.create_subscription(
+            FluidPressure,
+            '/mavros/imu/diff_pressure',
+            self.diff_pressure_callback,
+            qos_profile=SENSOR_QOS
+        )
 
-        # self.static_pressure_sub: Subscription = self.create_subscription(
-        #     FluidPressure,
-        #     '/mavros/imu/static_pressure',
-        #     self.static_pressure_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.static_pressure_sub: Subscription = self.create_subscription(
+            FluidPressure,
+            '/mavros/imu/static_pressure',
+            self.static_pressure_callback,
+            qos_profile=SENSOR_QOS
+        )
 
-        # self.temperature_baro_sub: Subscription = self.create_subscription(
-        #     Temperature,
-        #     '/mavros/imu/temperature_baro',
-        #     self.temperature_baro_callback,
-        #     qos_profile=SENSOR_QOS
-        # )
+        self.temperature_baro_sub: Subscription = self.create_subscription(
+            Temperature,
+            '/mavros/imu/temperature_baro',
+            self.temperature_baro_callback,
+            qos_profile=SENSOR_QOS
+        )
 
     def imu_callback(self, msg: Imu) -> None:
         # https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/Imu.html, body frame
@@ -276,60 +287,105 @@ class OLSNode(Node):
         else:
             print(f"Telem update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-    # def odom_callback(self, msg: Odometry) -> None:
-    #     """
-    #     Converts NED to ENU and publishes the trajectory
-    #     https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html
-    #     Twist Will show velocity in linear and rotational 
-    #     """
-    #     # state_x = msg.pose.pose.position.x
-    #     # state_y = msg.pose.pose.position.y
-    #     # state_z = msg.pose.pose.position.z
+    def odom_callback(self, msg: Odometry) -> None:
+        """
+        Converts NED to ENU and publishes the trajectory
+        https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html
+        Twist Will show velocity in linear and rotational 
+        """
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.odom_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.odom_prev_nanosec = new_nanosec
 
-    #     # # quaternion attitudes
-    #     # qx = msg.pose.pose.orientation.x
-    #     # qy = msg.pose.pose.orientation.y
-    #     # qz = msg.pose.pose.orientation.z
-    #     # qw = msg.pose.pose.orientation.w
-    #     # state_phi, state_theta, state_psi = euler_from_quaternion(
-    #     #     qx, qy, qz, qw)
-        
-    #     # state_phi = state_phi
-    #     # state_theta = state_theta
-    #     # state_psi = state_psi   # (yaw+ (2*np.pi) ) % (2*np.pi);
+            if self._odom_first_pass:
+                self._odom_first_pass = False
+                self.airspeed.spectrum.update_cp_time(self.odom_prev_nanosec)
+            else:
+                self.airspeed.spectrum.update_cp_timestep(dt)
 
-    #     # get magnitude of velocity
-    #     vx = msg.twist.twist.linear.x
-    #     vy = msg.twist.twist.linear.y
-    #     vz = msg.twist.twist.linear.z
-    #     self.airspeed.update_data(np.sqrt(vx**2 + vy**2 + vz**2))
+            vx = msg.twist.twist.linear.x
+            vy = msg.twist.twist.linear.y
+            vz = msg.twist.twist.linear.z
+            airspeed = np.sqrt(vx**2 + vy**2 + vz**2)
+            self.airspeed.update(airspeed - self.odom_avg)
 
-    #     # self.odom_data: list[float] = [
-    #     #     state_x,
-    #     #     state_y,
-    #     #     state_z,
-    #     #     state_phi,
-    #     #     state_theta,
-    #     #     state_psi,
-    #     #     self.airspeed
-    #     # ]
+            sampling_period = 1 / 2
+            time_constant = 8
+            alpha = 1 - np.exp(sampling_period/time_constant)
+            self.odom_avg = self.odom_avg + alpha * (airspeed - self.odom_avg)
 
-    # def diff_pressure_callback(self, msg: FluidPressure) -> None:
-    #     self.dyn_pres.update_data(msg.fluid_pressure)   # [Pa]
+        else:
+            print(f"Odom update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-    # def static_pressure_callback(self, msg: FluidPressure) -> None:
-    #     self.stat_pres.update_data(msg.fluid_pressure)  # [Pa]
+    def diff_pressure_callback(self, msg: FluidPressure) -> None:
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.diff_pres_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.diff_pres_prev_nanosec = new_nanosec
 
-    # def temperature_baro_callback(self, msg: Temperature) -> None:
-    #     # self.temp.update_data(msg.temperature)              # [°C]
-    #     self.temp.update_data(msg.temperature + 273.15)     # [°K]
+            if self._diff_pres_first_pass:
+                self._diff_pres_first_pass = False
+                self.dyn_pres.spectrum.update_cp_time(self.diff_pres_prev_nanosec)
+            else:
+                self.dyn_pres.spectrum.update_cp_timestep(dt)
+
+            self.dyn_pres.update(msg.fluid_pressure - self.diff_pres_avg)   # [Pa]
+
+            sampling_period = 1 / 2
+            time_constant = 8
+            alpha = 1 - np.exp(sampling_period/time_constant)
+            self.diff_pres_avg = self.diff_pres_avg + alpha * (msg.fluid_pressure - self.diff_pres_avg)
+
+        else:
+            print(f"Diff Pressure update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+
+    def static_pressure_callback(self, msg: FluidPressure) -> None:
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.stat_pres_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.stat_pres_prev_nanosec = new_nanosec
+
+            if self._stat_pres_first_pass:
+                self._stat_pres_first_pass = False
+                self.stat_pres.spectrum.update_cp_time(self.stat_pres_prev_nanosec)
+            else:
+                self.stat_pres.spectrum.update_cp_timestep(dt)
+
+            self.stat_pres.update(msg.fluid_pressure)  # [Pa]
+
+        else:
+            print(f"Static Pressure update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+
+    def temperature_baro_callback(self, msg: Temperature) -> None:
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.temp_baro_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.temp_baro_prev_nanosec = new_nanosec
+
+            if self._temp_baro_first_pass:
+                self._temp_baro_first_pass = False
+                self.temp_baro.spectrum.update_cp_time(self.temp_baro_prev_nanosec)
+            else:
+                self.temp_baro.spectrum.update_cp_timestep(dt)
+
+            # self.temp_baro.update(msg.temperature)              # [°C]
+            # self.temp_baro.update(msg.temperature + 273.15)     # [°K]
+            self.temp_baro.update(msg.temperature - 25.0)       # [°C - ambient tempterature]
+
+        else:
+            print(f"Temperature Baro update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
 
     def setup_pubs(self) -> None:
         default_pub_rate = 1 / 25
         publisher_periods = {
             "ols_rol": default_pub_rate,
-            # "ols_rol_nondim": default_pub_rate,
+            "ols_rol_nondim": default_pub_rate,
             # "ols_rol_nondim_inertias": default_pub_rate,
             # "ols_rol_ssa": default_pub_rate,
             # "ols_rol_ssa_nondim": default_pub_rate,
@@ -365,6 +421,7 @@ class OLSNode(Node):
 
 
             "ols_rol_old": default_pub_rate,
+            "ols_rol_nondim_old": default_pub_rate,
             "ols_rol_large_old": default_pub_rate,
             "ols_pit_old": default_pub_rate,
             "ols_yaw_old": default_pub_rate,
@@ -409,6 +466,26 @@ class OLSNode(Node):
         self._publish_ols("ols_rol",
                           self.rol_accel,
                           [self.rol_velo, self.ail_pwm])
+
+    def publish_ols_rol_nondim_data(self) -> None:
+        airspeed_inv = np.conj(self.airspeed.spectrum.current_spectrum) / (np.abs(self.airspeed.spectrum.current_spectrum)**2 + 1e-6)
+        Z = self.rol_accel.spectrum.current_spectrum
+        X1 = np.convolve(self.rol_velo.spectrum.current_spectrum, self.dyn_pres.spectrum.current_spectrum, mode='same') * airspeed_inv
+        X2 = np.convolve(self.ail_pwm.spectrum.current_spectrum, self.dyn_pres.spectrum.current_spectrum, mode='same')
+
+        # print(self.dyn_pres.spectrum.current_spectrum)
+
+        parameters = ordinary_least_squares(Z,
+                           np.column_stack([X1, X2]))
+        msg = Float64MultiArray()
+        msg.data = [
+            self.rol_accel.timedata.oldest,
+            self.dyn_pres.timedata.oldest * self.rol_velo.timedata.oldest / self.airspeed.timedata.oldest,
+            self.dyn_pres.timedata.oldest * self.ail_pwm.timedata.oldest,
+            parameters[0],
+            parameters[1],
+            ]
+        self.model_publishers["ols_rol_nondim"].publish(msg)
 
     def publish_ols_rol_ssa_data(self) -> None:
         self._publish_ols("ols_rol_ssa",
@@ -474,6 +551,26 @@ class OLSNode(Node):
         )
         self.model_publishers["ols_rol_old"].publish(msg)
         
+    def publish_ols_rol_nondim_old_data(self) -> None:
+        if self.dyn_pres.timedata.oldest == 0.0 or self.airspeed.timedata.oldest == 0.0:
+            return
+        self.ols["rol_nondim"]["rol_accel"].update_spectrum(self.rol_accel.timedata.oldest)
+        self.ols["rol_nondim"]["rol_velo"].update_spectrum(self.dyn_pres.timedata.oldest * self.rol_velo.timedata.oldest / self.airspeed.timedata.oldest)
+        self.ols["rol_nondim"]["ail_pwm"].update_spectrum(self.dyn_pres.timedata.oldest * self.ail_pwm.timedata.oldest)
+
+        parameters = ordinary_least_squares(self.ols["rol_nondim"]["rol_accel"].current_spectrum,
+                           np.column_stack([self.ols["rol_nondim"]["rol_velo"].current_spectrum,
+                                            self.ols["rol_nondim"]["ail_pwm"].current_spectrum]))
+        msg = Float64MultiArray()
+        msg.data = (
+            self.rol_accel.timedata.oldest,
+            self.dyn_pres.timedata.oldest * self.rol_velo.timedata.oldest / self.airspeed.timedata.oldest,
+            self.dyn_pres.timedata.oldest * self.ail_pwm.timedata.oldest,
+            parameters[0],
+            parameters[1],
+        )
+        self.model_publishers["ols_rol_nondim_old"].publish(msg)
+
     def publish_ols_rol_large_old_data(self) -> None:
         self.ols["rol_large"]["rol_accel"].update_spectrum(self.rol_accel.timedata.oldest)
         self.ols["rol_large"]["rol_velo"].update_spectrum(self.rol_velo.timedata.oldest)

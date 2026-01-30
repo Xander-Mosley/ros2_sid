@@ -11,6 +11,9 @@ matplotlib.use("TkAgg")  # or "Qt5Agg", "GTK3Agg", depending on your system
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import ScalarFormatter
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+from scipy.stats import gaussian_kde
 
 from model_processing import (extract_model, process_models,
                               sliding_adjusted_cod, sliding_vif_cod, sliding_svd_cond, sliding_correlation_matrix)
@@ -476,6 +479,82 @@ def plot_error(
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
+def plot_error_kde(
+        dataframes: dict[str, pd.DataFrame],
+        *,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        plot_labels: dict | None = None
+        ) -> PlotFigure:
+    
+    if not dataframes:
+        raise ValueError("No models provided.")
+    if plot_labels is None:
+        plot_labels = {}
+
+    fig = PlotFigure(figsize=(12, 6))
+    base_title = "Model Performance - Error KDE"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+    fig.set_figure_title(f"{base_title}\n{subtitle}")
+
+    terms = plot_labels.get("terms", {})
+    term_info = terms.get(0, {})
+    units = term_info.get("units", "")
+    
+    fig.define_subplot(
+        0,
+        title="Kernel Density Plot (KDE) of Residuals",
+        ylabel=f"Density",
+        xlabel=f"Residuals {units}",
+        grid=True,
+    )
+
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    model_colors = {
+        name: color_cycle[i % len(color_cycle)]
+        for i, name in enumerate(dataframes.keys())
+    }
+    
+    for i, (name, df) in enumerate(dataframes.items()):
+        if df.empty:
+            print(f"Skipping empty DataFrame named {name}.")
+            continue
+        if 'timestamp' not in df.columns:
+            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
+            continue
+        
+        if start_time is not None:
+            df = df[df["timestamp"] >= start_time]
+        if end_time is not None:
+            df = df[df["timestamp"] <= end_time]
+
+        prefix = _extract_model_prefix(df)
+
+        residuals = df[f"{prefix}residuals"]
+
+        x = np.asarray(residuals)
+        kde = gaussian_kde(x, bw_method='scott')
+        x_grid = np.linspace(x.min(), x.max(), int(np.ceil(0.4 * x.size)))
+        kde_vals = kde(x_grid)
+
+        mean = x.mean()
+        sigma = x.std(ddof=1)
+        mask = (x_grid >= mean - 2*sigma) & (x_grid <= mean + 2*sigma)
+        kde_at_max = kde(mean)[0]
+
+        fig.add_data(0, x_grid, kde_vals, label=name, color=model_colors[name])
+        fig.add_fill_between(0, x_grid[mask], kde_vals[mask], alpha=0.25, color=model_colors[name])
+        fig.add_line(0, mean, 'v', min_val=0, max_val=kde_at_max, color=model_colors[name], linestyle="--")
+        
+    subplot = fig._get_ax(0)
+    legend1 = subplot.legend(loc="upper right", fontsize='medium')
+    subplot.add_artist(legend1)
+    mean_proxy = Line2D([0], [0], color="grey", linestyle="--", linewidth=2)
+    sigma_proxy = Patch(facecolor="grey", alpha=0.25)
+    subplot.legend(handles=[mean_proxy, sigma_proxy], labels=["Mean", "±2σ Region"], loc="upper left", frameon=True)
+    fig.set_all_grids(True, alpha=0.5)
+    return fig
+
 def plot_fit(
         dataframes: Dict[str, pd.DataFrame],
         *,
@@ -766,30 +845,33 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
 
     if not separate:
         # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-        # plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
         plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
         # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
         plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        # plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
-        # plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        # plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_error_kde(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
+        plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
         # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions
     else:
-        for i in enumerate(processed_models.items()):
-            # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        for i, (name, df) in enumerate(processed_models.items()):
+            # plot_parameter_data({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_regressor_data({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_percent_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_error({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            plot_error_kde({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_fit({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_conditioning({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_correlation({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
     
     plt.show()
 
 def main():
     csv_files = {
         # "Small Roll": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
+        "Small Roll Nondim": {"prefix": "ols_rol_nondim_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_data.csv"},
         # "Small SSA Roll": {"prefix": "ols_rol_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_ssa_data.csv"},
         # "Large Roll": {"prefix": "ols_rol_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_data.csv"},
         # "Large SSA Roll": {"prefix": "ols_rol_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_ssa_data.csv"},
@@ -797,18 +879,19 @@ def main():
         # "AOA Pitch": {"prefix": "ols_pit_aoa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_aoa_data.csv"},
         # "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
         # "Small SSA Yaw": {"prefix": "ols_yaw_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_ssa_data.csv"},
-        "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
+        # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
         # "Large SSA Yaw": {"prefix": "ols_yaw_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_ssa_data.csv"},
 
         # "Old Small Roll": {"prefix": "ols_rol_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_old_data.csv"},
+        "Old Small Roll Nondim": {"prefix": "ols_rol_nondim_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_old_data.csv"},
         # "Old Large Roll": {"prefix": "ols_rol_large_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_old_data.csv"},
         # "Old Pitch": {"prefix": "ols_pit_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_old_data.csv"},
         # "Old Small Yaw": {"prefix": "ols_yaw_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_old_data.csv"},
-        "Old Large Yaw": {"prefix": "ols_yaw_large_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_old_data.csv"},
+        # "Old Large Yaw": {"prefix": "ols_yaw_large_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_old_data.csv"},
     }
 
     start_time = 0
-    end_time = 9999
+    end_time = 50
 
     plot_labels = {
         # "subtitle": "",
@@ -838,7 +921,8 @@ def main():
         # },
     }
 
-    plot_models(csv_files, start_time, end_time, plot_labels)
+    plot_models(csv_files, start_time, end_time, plot_labels, separate=False)
+
     # TODO: Move filter duration to signal_analysis
     # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))
     # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_duration_data.csv"))

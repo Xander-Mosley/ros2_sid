@@ -48,7 +48,10 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from matplotlib import cm
+from scipy.stats import gaussian_kde
 
 from plotter_class import PlotFigure
 from signal_processing import (
@@ -382,6 +385,10 @@ def plot_model_spectrums(filepaths, rft_args=None, plot_labels=None):
         # Optional per-regressor preprocessing
         if key == "2":
             x_data = x_data - 1500
+        if key == "3":
+            x_data = x_data - 252
+        if key == "4":
+            x_data = x_data - 23.82
 
         data["x"][key] = {
             "time": df["timestamp"].to_numpy(),
@@ -507,7 +514,7 @@ def plot_model_spectrums(filepaths, rft_args=None, plot_labels=None):
     
     z_rft = get_rft_params(rft_args, "z")
 
-    plot_normalized_rft_over_time(
+    Z_spectra = plot_normalized_rft_over_time(
         data["z"]["time"],
         data["z"]["data"],
         frequencies=z_rft.get("frequencies"),
@@ -515,16 +522,43 @@ def plot_model_spectrums(filepaths, rft_args=None, plot_labels=None):
         subtitle=plot_labels["z"]["name"] # type: ignore
     )
 
+    X_spectra = {}
     for key in data["x"]:
         x_rft = get_rft_params(rft_args, "x", key)
 
-        plot_normalized_rft_over_time(
+        X_spectra[key] = plot_normalized_rft_over_time(
             data["x"][key]["time"],
             data["x"][key]["data"],
             frequencies=x_rft.get("frequencies"),
             eff=x_rft.get("eff"), # type: ignore
             subtitle=plot_labels["x"][key]["name"] # type: ignore
         )
+
+    plt.figure(figsize=(12, 6))
+    Y = np.zeros_like(X_spectra["1"])
+    # print(Y.size)
+    # print(X_spectra["1"].size)
+    # print(X_spectra["2"].size)
+    for t in range(data["x"]["2"]["time"].size):
+        Y[t] = np.abs(np.convolve(X_spectra["1"][t], X_spectra["2"][t], mode='same'))
+    Y = Y / np.max(Y)
+    plt.pcolormesh(data["x"]["1"]["time"], np.arange(0.1, 1.54, 0.04), Y.T, shading='auto', cmap='viridis') # type: ignore
+    plt.xlabel('Time [s]')
+    plt.ylabel('Frequency [Hz]')
+    plt.colorbar(label='Normalized Magnitude')
+    plt.title(f'Time-Resolved Normalized RFT Spectrum')
+
+    combined = np.zeros_like(X_spectra["1"])
+    for t in range(data["x"]["2"]["time"].size):
+        combined[t] = data["x"]["1"]["data"][t] * data["x"]["2"]["data"][t]
+
+    plot_normalized_rft_over_time(
+        data["x"]["2"]["time"],
+        combined,
+        frequencies=x_rft.get("frequencies"), # type: ignore
+        eff=x_rft.get("eff"), # type: ignore
+        subtitle=plot_labels["z"]["name"] # type: ignore
+    )
 
 def plot_normalized_rft_over_time(time, signal, frequencies=None, eff=0.999, subtitle=""):
     """
@@ -549,6 +583,7 @@ def plot_normalized_rft_over_time(time, signal, frequencies=None, eff=0.999, sub
 
     # Initialize array to store magnitude spectra over time
     mag_spectra = np.zeros((n_time, n_freq))
+    spectra = np.zeros((n_time, n_freq))
 
     # Initialize RFT
     rft = RecursiveFourierTransform(eff=eff, frequencies=frequencies)
@@ -564,6 +599,7 @@ def plot_normalized_rft_over_time(time, signal, frequencies=None, eff=0.999, sub
             rft.update_cp_timestep(dt)
         rft.update_spectrum(signal[i])
         mag_spectra[i, :] = np.abs(rft.current_spectrum)
+        spectra[i, :] = rft.current_spectrum
 
     # --- Normalize magnitude spectra across each time step ---
     mag_spectra_norm = mag_spectra / np.max(mag_spectra)
@@ -573,12 +609,13 @@ def plot_normalized_rft_over_time(time, signal, frequencies=None, eff=0.999, sub
 
     plt.figure(figsize=(12, 6))
     plt.pcolormesh(time, frequencies, mag_spectra_norm.T, shading='auto', cmap='viridis')
-    # plt.plot(time, max_frequencies, color='white', lw=2, label='Max Frequency')
     plt.xlabel('Time [s]')
     plt.ylabel('Frequency [Hz]')
     plt.colorbar(label='Normalized Magnitude')
     plt.title(f'Time-Resolved Normalized RFT Spectrum\n{subtitle}')
-    # plt.legend()
+
+    return spectra
+
 
 def plot_timestep_distribution(file_directory, file_name):
     df = pd.read_csv(file_directory + file_name)
@@ -614,6 +651,31 @@ def plot_timestep_overtime(file_directory, file_name):
     dt_vt.define_subplot(0, ylabel="Time Step, dt [s]", xlabel="Time [s]")
     dt_vt.add_data(0, df["timestamp"], df["dt"])
     dt_vt.set_all_legends()
+
+def plot_timestep_kde(file_directory, file_name):
+    df = pd.read_csv(file_directory + file_name)
+
+    df = df.sort_values("timestamp")
+    df["dt"] = df["timestamp"].diff()
+    df["dt"][0] = 0
+
+    x = np.asarray(df["dt"])
+    kde = gaussian_kde(x, bw_method='scott')
+    x_grid = np.linspace(x.min(), x.max(), int(np.ceil(0.4 * x.size)))
+    kde_vals = kde(x_grid)
+
+    mean = x.mean()
+    sigma = x.std(ddof=1)
+    mask = (x_grid >= mean - 2*sigma) & (x_grid <= mean + 2*sigma)
+    kde_at_max = kde(mean)[0]
+
+    figtitle = f"Time Step Sizes Over Time\nLog: {file_name}"
+    dt_kde = PlotFigure(fig_title=figtitle)
+    dt_kde.define_subplot(0, title="Kernel Density Plot (KDE) of Time Steps", ylabel="Density", xlabel="Time Step [s]", grid=True)
+    dt_kde.add_data(0, x_grid, kde_vals)
+    dt_kde.add_fill_between(0, x_grid[mask], kde_vals[mask], label="±2σ Region", alpha=0.25)
+    dt_kde.add_line(0, mean, 'v', min_val=0, max_val=kde_at_max, label="Mean", linestyle="--")
+    dt_kde.set_all_legends()
 
 
 def _analyze_input_signals():
@@ -654,7 +716,9 @@ def _analyze_regressor_spectrums():
               "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_diff_data.csv"},
         "x": {
             "1": {"tag": "gx", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"},
-            # "2": {"tag": "rcout_ch1", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/rcout_data.csv"},
+            "2": {"tag": "rcout_ch1", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/rcout_data.csv"},
+            "3": {"tag": "diff_pressure", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_pressure_data.csv"},
+            "4": {"tag": "airspeed", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/odometry_data.csv"},
         }
     }
 
@@ -665,6 +729,8 @@ def _analyze_regressor_spectrums():
         "x": {
             "1": {"frequencies": None, "eff": 0.999},
             "2": {"frequencies": None, "eff": 0.969},
+            "3": {"frequencies": None, "eff": 0.999},
+            "4": {"frequencies": None, "eff": 0.999},
         }
     }
     
@@ -673,6 +739,8 @@ def _analyze_regressor_spectrums():
         "x": {
             "1": {"name": "Roll Angular Rate", "unit": "rad/s"},
             "2": {"name": "Aileron Command", "unit": "µs"},
+            "3": {"name": "Diff Pressure", "unit": ""},
+            "4": {"name": "Airspeed", "unit": ""},
         }
     }
 
@@ -683,12 +751,13 @@ def _analyze_regressor_spectrums():
 def _analyze_time_steps():
     file_directory = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/"
 
-    # plot_timestep_distribution(file_directory=file_directory, file_name="imu_diff_data.csv")
-    plot_timestep_distribution(file_directory=file_directory, file_name="imu_data.csv")
-    plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
-    # plot_timestep_overtime(file_directory=file_directory, file_name="imu_diff_data.csv")
+    # plot_timestep_distribution(file_directory=file_directory, file_name="imu_data.csv")
+    # plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
+    
     # plot_timestep_overtime(file_directory=file_directory, file_name="imu_data.csv")
-    # plot_timestep_overtime(file_directory=file_directory, file_name="rcout_data.csv")
+    
+    plot_timestep_kde(file_directory=file_directory, file_name="imu_data.csv")
+    # plot_timestep_kde(file_directory=file_directory, file_name="rcout_data.csv")
 
     plt.show()
 
@@ -697,8 +766,8 @@ def _analyze_time_steps():
 
 def main():
     # _analyze_input_signals()
-    # _analyze_regressor_spectrums()
-    _analyze_time_steps()
+    _analyze_regressor_spectrums()
+    # _analyze_time_steps()
 
 if __name__ == "__main__":
     main()

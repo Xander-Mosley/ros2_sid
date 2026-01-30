@@ -256,6 +256,12 @@ def parse_altitude(msg, relative_time):
         'altitude': msg.data
     }
 
+def parse_diff_pressure(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'diff_pressure': msg.fluid_pressure
+    }
+
 
 def parse_trajectory(msg, relative_time):
     idx = msg.idx
@@ -295,6 +301,8 @@ def parse_ros_message(label, msg, relative_time):
             return parse_gps_vel(msg, relative_time)
         case 'altitude':
             return parse_altitude(msg, relative_time)
+        case 'diff_pressure':
+            return parse_diff_pressure(msg, relative_time)
         case 'trajectory':
             return parse_trajectory(msg, relative_time)
         case _:
@@ -375,7 +383,7 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2026-01-28_ComparingNew-Old_3/rosbag2_2026_01_28-17_27_34_0.db3'
+    bag_file = '/develop_ws/bag_files/2026-01-30_MovingAverages/rosbag2_2026_01_30-19_39_23_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
@@ -399,8 +407,7 @@ if __name__ == "__main__":
         '/trajectory': 'trajectory',
 
         '/ols_rol': 'ols_rol',
-        # '/ols_rol_slowed': 'ols_rol_slowed',
-        # '/ols_rol_nondim': 'ols_rol_nondim',
+        '/ols_rol_nondim': 'ols_rol_nondim',
         # '/ols_rol_nondim_inertias': 'ols_rol_nondim_inertias',
         # '/ols_rol_ssa': 'ols_rol_ssa',
         # '/ols_rol_ssa_nondim': 'ols_rol_ssa_nondim',
@@ -435,6 +442,7 @@ if __name__ == "__main__":
         # '/ols_yaw_large_ssa_nondim_inertias': 'ols_yaw_large_ssa_nondim_inertias'
 
         '/ols_rol_old': 'ols_rol_old',
+        '/ols_rol_nondim_old': 'ols_rol_nondim_old',
         '/ols_rol_large_old': 'ols_rol_large_old',
         '/ols_pit_old': 'ols_pit_old',
         '/ols_yaw_old': 'ols_yaw_old',
