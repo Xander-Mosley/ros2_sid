@@ -229,9 +229,9 @@ def plot_confidence(
     terms = plot_labels.get("terms", {})
 
     fig = PlotFigure(nrows=1+max_num_terms, ncols=1, figsize=(12, (2 + 2*max_num_terms)), sharex=True)
-    base_title = "Model Performance - Confidence Intervals (CIs)"
+    title = plot_labels["title"] if plot_labels.get("title") else "Model Performance - Confidence Intervals (CIs)"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
-    fig.set_figure_title(f"{base_title}\n{subtitle}")
+    fig.set_figure_title(f"{title}\n{subtitle}")
 
     term_info = terms.get(0, {})
     term_name = term_info.get("term", "Output")
@@ -243,7 +243,7 @@ def plot_confidence(
         param_units = term_info.get("param_units", "")
         if term_name:
             title = f"{term_name}'s Parameter Over Time"
-            ylabel = f"{term_name}'s\nParameter Amplitude\n{param_units}"
+            ylabel = f"{term_name}'s\nParameter\nAmplitude\n{param_units}"
         else:
             term_name = f"Parameter {chr(65+i)}"
             title = f"{term_name} Over Time"
@@ -284,16 +284,32 @@ def plot_confidence(
             measured_output = df[f"{prefix}measured_output"]
             fig.add_data(0, time, measured_output, label='Measured', color='black', linestyle='--')
         fig.add_data(0, time, modeled_output, color=model_colors[name])
-        fig.add_fill_between(0, time, modeled_output - modeled_output_cis, modeled_output + modeled_output_cis, label=f"{name}'s CIs", color=model_colors[name], alpha=0.3)
+        fig.add_fill_between(0, time, modeled_output - modeled_output_cis, modeled_output + modeled_output_cis, label=f"{name} ± 2σ", color=model_colors[name], alpha=0.3)
         fig.autoscale_from_lines(0)
 
         for j in range(num_params):
             fig.add_data(1+j, time, parameters[:, j], color=model_colors[name], linestyle='-', marker='.')
-            fig.add_fill_between(1+j, time, parameters[:, j] - parameters_cis[:, j], parameters[:, j] + parameters_cis[:, j], label=f"{name}'s CIs", color=model_colors[name], alpha=0.3)
+            fig.add_fill_between(1+j, time, parameters[:, j] - parameters_cis[:, j], parameters[:, j] + parameters_cis[:, j], label=f"{name} ± 2σ", color=model_colors[name], alpha=0.3)
             fig.autoscale_from_lines(1+j)
+        
+    ax1 = fig._get_ax(0)
+    ax1.title.set_fontsize('xx-large')
+    ax1.yaxis.label.set_fontsize('xx-large')
+    ax1.tick_params(axis='y', labelsize='x-large')
 
+    ax2 = fig._get_ax(1)
+    ax2.title.set_fontsize('xx-large')
+    ax2.yaxis.label.set_fontsize('xx-large')
+    ax2.tick_params(axis='y', labelsize='x-large')
 
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+    ax3 = fig._get_ax(2)
+    ax3.title.set_fontsize('xx-large')
+    ax3.yaxis.label.set_fontsize('xx-large')
+    ax3.xaxis.label.set_fontsize('xx-large')
+    ax3.tick_params(axis='y', labelsize='x-large')
+    ax3.tick_params(axis='x', labelsize='x-large')
+
+    fig.set_all_legends(loc='upper right', fontsize='large')
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
@@ -388,9 +404,9 @@ def plot_error(
         2: (slice(0, 2), slice(1, 2)),   # right (spans rows)
     }
     fig = PlotFigure(nrows=2, ncols=2, figsize=(12, 6), gridspec=True, layout=layout)
-    base_title = "Model Performance - Error"
+    title = plot_labels["title"] if plot_labels.get("title") else "Model Performance - Error"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
-    fig.set_figure_title(f"{base_title}\n{subtitle}")
+    error_plot = fig.set_figure_title(f"{title}\n{subtitle}")
 
     terms = plot_labels.get("terms", {})
     term_info = terms.get(0, {})
@@ -400,7 +416,7 @@ def plot_error(
         0,
         title="Residuals Over Time",
         ylabel=f"Residuals {units}",
-        xlabel=plot_labels.get("time", "Time [s]"),
+        # xlabel=plot_labels.get("time", "Time [s]"),
         grid=True,
     )
     fig.define_subplot(
@@ -412,9 +428,9 @@ def plot_error(
     )
     fig.define_subplot(
         2,
-        title="Residuals vs Measured Output",
+        title="Residuals vs Modeled Output",
         ylabel=f"Residuals {units}",
-        xlabel=f"Measured Output {units}",
+        xlabel=f"Modeled Output {units}",
         grid=True,
     )
 
@@ -440,7 +456,7 @@ def plot_error(
         prefix = _extract_model_prefix(df)
 
         time = df["timestamp"]
-        measured_output = df[f"{prefix}measured_output"]
+        modeled_output = df[f"{prefix}modeled_output"]
         residuals = df[f"{prefix}residuals"]
         mse = df[f"{prefix}mse"]
 
@@ -460,22 +476,43 @@ def plot_error(
         fig.annotate(1, f"{total_mse:.2e}", xy=(start_time, total_mse),
                      xycoords="data", textcoords="offset points",
                      xytext=(-10, 5), ha="left", va="top",
-                     fontsize="small", fontweight="bold", color=model_colors[name],
+                     fontsize="large", fontweight="bold", color=model_colors[name],
                      bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, boxstyle="round,pad=0.3"))
         
         # --- Subplot 3 (right) ---
-        fig.add_scatter(2, measured_output, residuals, label=name, color=model_colors[name], s=10, alpha=0.7)
+        fig.add_scatter(2, modeled_output, residuals, label=name, color=model_colors[name], s=10, alpha=0.7)
         
-    ax = fig._get_ax(2)
-    lims = (
-        min(ax.get_xlim()[0], ax.get_ylim()[0]),
-        max(ax.get_xlim()[1], ax.get_ylim()[1]),
-    )
-    ax.set_xlim(lims)
-    ax.set_ylim(lims)
-    ax.set_aspect("equal")
+    ax1 = fig._get_ax(0)
+    ax1.title.set_fontsize('xx-large')
+    ax1.yaxis.label.set_fontsize('xx-large')
+    # ax1.xaxis.label.set_fontsize('xx-large')
+    ax1.tick_params(axis='y', labelsize='x-large')
+    ax1.tick_params(axis='x', labelbottom=False)
+    # ax1.set_xticklabels([])   # Does not work with sharex()
 
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+    ax2 = fig._get_ax(1)
+    ax2.title.set_fontsize('xx-large')
+    ax2.yaxis.label.set_fontsize('xx-large')
+    ax2.xaxis.label.set_fontsize('xx-large')
+    ax2.tick_params(axis='y', labelsize='x-large')
+    ax2.tick_params(axis='x', labelsize='x-large')
+    ax2.sharex(ax1)
+
+    ax3 = fig._get_ax(2)
+    ax3.title.set_fontsize('xx-large')
+    ax3.yaxis.label.set_fontsize('xx-large')
+    ax3.xaxis.label.set_fontsize('xx-large')
+    ax3.tick_params(axis='y', labelsize='x-large')
+    ax3.tick_params(axis='x', labelsize='x-large')
+    lims = (
+        min(ax3.get_xlim()[0], ax3.get_ylim()[0]),
+        max(ax3.get_xlim()[1], ax3.get_ylim()[1]),
+    )
+    ax3.set_xlim(lims)
+    ax3.set_ylim(lims)
+    ax3.set_aspect("equal")
+
+    fig.set_all_legends(loc='upper right', fontsize='large')
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
@@ -832,6 +869,65 @@ def plot_filter_duration(
     return fig
 
 
+def polor_plot(
+        dataframes: dict[str, pd.DataFrame],
+        *,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        plot_labels: dict | None = None
+        ) -> PlotFigure:
+    
+    if not dataframes:
+        raise ValueError("No models provided.")
+    if plot_labels is None:
+        plot_labels = {}
+
+    fig = PlotFigure(figsize=(12, 6))
+    base_title = "Polar Plot"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+    fig.set_figure_title(f"{base_title}\n{subtitle}")
+
+    terms = plot_labels.get("terms", {})
+    term_info = terms.get(0, {})
+    units = term_info.get("units", "")
+    
+    fig.define_subplot(
+        0,
+        title="Cl-Alpha Polar",
+        ylabel=f"Cl",
+        xlabel=f"Alpha",
+        grid=True,
+    )
+
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    model_colors = {
+        name: color_cycle[i % len(color_cycle)]
+        for i, name in enumerate(dataframes.keys())
+    }
+    
+    for i, (name, df) in enumerate(dataframes.items()):
+        if df.empty:
+            print(f"Skipping empty DataFrame named {name}.")
+            continue
+        if 'timestamp' not in df.columns:
+            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
+            continue
+        
+        if start_time is not None:
+            df = df[df["timestamp"] >= start_time]
+        if end_time is not None:
+            df = df[df["timestamp"] <= end_time]
+
+        prefix = _extract_model_prefix(df)
+
+        cl_param = df[f"{prefix}parameter_3"]
+        alpha = df[f"{prefix}regressor_3"]
+
+        fig.add_scatter(0, alpha, cl_param, label=name, color=model_colors[name])
+        
+    fig.set_all_grids(True, alpha=0.5)
+    return fig
+
 
 def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
     model_dataframes: Dict[str, pd.DataFrame] = {}
@@ -858,20 +954,21 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
         for i, (name, df) in enumerate(processed_models.items()):
             # plot_parameter_data({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
             # plot_regressor_data({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            plot_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
             # plot_percent_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_error({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            plot_error_kde({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            plot_error({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # plot_error_kde({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
             # plot_fit({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
             # plot_conditioning({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
             # plot_correlation({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+            # polor_plot({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
     
     plt.show()
 
 def main():
     csv_files = {
-        # "Small Roll": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
-        "Small Roll Nondim": {"prefix": "ols_rol_nondim_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_data.csv"},
+        "Model": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
+        # "Small Roll Nondim": {"prefix": "ols_rol_nondim_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_data.csv"},
         # "Small SSA Roll": {"prefix": "ols_rol_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_ssa_data.csv"},
         # "Large Roll": {"prefix": "ols_rol_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_data.csv"},
         # "Large SSA Roll": {"prefix": "ols_rol_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_ssa_data.csv"},
@@ -882,19 +979,15 @@ def main():
         # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
         # "Large SSA Yaw": {"prefix": "ols_yaw_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_ssa_data.csv"},
 
-        # "Old Small Roll": {"prefix": "ols_rol_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_old_data.csv"},
-        "Old Small Roll Nondim": {"prefix": "ols_rol_nondim_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_old_data.csv"},
-        # "Old Large Roll": {"prefix": "ols_rol_large_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_old_data.csv"},
-        # "Old Pitch": {"prefix": "ols_pit_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_old_data.csv"},
-        # "Old Small Yaw": {"prefix": "ols_yaw_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_old_data.csv"},
-        # "Old Large Yaw": {"prefix": "ols_yaw_large_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_old_data.csv"},
+        # "Old Small Roll Nondim": {"prefix": "ols_rol_nondim_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_old_data.csv"},
     }
 
     start_time = 0
     end_time = 50
 
     plot_labels = {
-        # "subtitle": "",
+        "title": " ",
+        "subtitle": " ",
         # "time": "Time [s]",
 
         "terms":{
@@ -921,7 +1014,7 @@ def main():
         # },
     }
 
-    plot_models(csv_files, start_time, end_time, plot_labels, separate=False)
+    plot_models(csv_files, start_time, end_time, plot_labels, separate=True)
 
     # TODO: Move filter duration to signal_analysis
     # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))

@@ -534,31 +534,31 @@ def plot_model_spectrums(filepaths, rft_args=None, plot_labels=None):
             subtitle=plot_labels["x"][key]["name"] # type: ignore
         )
 
-    plt.figure(figsize=(12, 6))
-    Y = np.zeros_like(X_spectra["1"])
-    # print(Y.size)
-    # print(X_spectra["1"].size)
-    # print(X_spectra["2"].size)
-    for t in range(data["x"]["2"]["time"].size):
-        Y[t] = np.abs(np.convolve(X_spectra["1"][t], X_spectra["2"][t], mode='same'))
-    Y = Y / np.max(Y)
-    plt.pcolormesh(data["x"]["1"]["time"], np.arange(0.1, 1.54, 0.04), Y.T, shading='auto', cmap='viridis') # type: ignore
-    plt.xlabel('Time [s]')
-    plt.ylabel('Frequency [Hz]')
-    plt.colorbar(label='Normalized Magnitude')
-    plt.title(f'Time-Resolved Normalized RFT Spectrum')
+    # plt.figure(figsize=(12, 6))
+    # Y = np.zeros_like(X_spectra["1"])
+    # # print(Y.size)
+    # # print(X_spectra["1"].size)
+    # # print(X_spectra["2"].size)
+    # for t in range(data["x"]["2"]["time"].size):
+    #     Y[t] = np.abs(np.convolve(X_spectra["1"][t], X_spectra["2"][t], mode='same'))
+    # Y = Y / np.max(Y)
+    # plt.pcolormesh(data["x"]["1"]["time"], np.arange(0.1, 1.54, 0.04), Y.T, shading='auto', cmap='viridis') # type: ignore
+    # plt.xlabel('Time [s]')
+    # plt.ylabel('Frequency [Hz]')
+    # plt.colorbar(label='Normalized Magnitude')
+    # plt.title(f'Time-Resolved Normalized RFT Spectrum')
 
-    combined = np.zeros_like(X_spectra["1"])
-    for t in range(data["x"]["2"]["time"].size):
-        combined[t] = data["x"]["1"]["data"][t] * data["x"]["2"]["data"][t]
+    # combined = np.zeros_like(X_spectra["1"])
+    # for t in range(data["x"]["2"]["time"].size):
+    #     combined[t] = data["x"]["1"]["data"][t] * data["x"]["2"]["data"][t]
 
-    plot_normalized_rft_over_time(
-        data["x"]["2"]["time"],
-        combined,
-        frequencies=x_rft.get("frequencies"), # type: ignore
-        eff=x_rft.get("eff"), # type: ignore
-        subtitle=plot_labels["z"]["name"] # type: ignore
-    )
+    # plot_normalized_rft_over_time(
+    #     data["x"]["2"]["time"],
+    #     combined,
+    #     frequencies=x_rft.get("frequencies"), # type: ignore
+    #     eff=x_rft.get("eff"), # type: ignore
+    #     subtitle=plot_labels["z"]["name"] # type: ignore
+    # )
 
 def plot_normalized_rft_over_time(time, signal, frequencies=None, eff=0.999, subtitle=""):
     """
@@ -691,7 +691,7 @@ def _analyze_input_signals():
     # x = df['gx'].to_numpy()
     x = df['ols_rol_regressor_1'].to_numpy()
 
-    start, end = 0, 999999999
+    start, end = 2560*25, 2785*25
     t = t[start:end]
     x = x[start:end]
     # t = t[::2]
@@ -703,10 +703,10 @@ def _analyze_input_signals():
 
     time_statistics(t)
     plt.plot(t, xp)
-    # plot_analysis(t, x, fx)
-    # plot_analysis(t, fx, xp)
-    # plot_analysis(t, xp, fxp)
-    # plot_analysis(t, x, fxp)
+    plot_analysis(t, x, fx)
+    plot_analysis(t, fx, xp)
+    plot_analysis(t, xp, fxp)
+    plot_analysis(t, x, fxp)
 
     plt.show()
 
@@ -716,9 +716,9 @@ def _analyze_regressor_spectrums():
               "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_diff_data.csv"},
         "x": {
             "1": {"tag": "gx", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"},
-            "2": {"tag": "rcout_ch1", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/rcout_data.csv"},
-            "3": {"tag": "diff_pressure", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_pressure_data.csv"},
-            "4": {"tag": "airspeed", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/odometry_data.csv"},
+            # "2": {"tag": "rcout_ch1", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/rcout_data.csv"},
+            # "3": {"tag": "diff_pressure", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_pressure_data.csv"},
+            # "4": {"tag": "airspeed", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/odometry_data.csv"},
         }
     }
 
@@ -728,9 +728,9 @@ def _analyze_regressor_spectrums():
         },
         "x": {
             "1": {"frequencies": None, "eff": 0.999},
-            "2": {"frequencies": None, "eff": 0.969},
-            "3": {"frequencies": None, "eff": 0.999},
-            "4": {"frequencies": None, "eff": 0.999},
+            # "2": {"frequencies": None, "eff": 0.969},
+            # "3": {"frequencies": None, "eff": 0.999},
+            # "4": {"frequencies": None, "eff": 0.999},
         }
     }
     
@@ -738,9 +738,9 @@ def _analyze_regressor_spectrums():
         "z": {"name": "Roll Angular Acceleration", "unit": "m/s²"},
         "x": {
             "1": {"name": "Roll Angular Rate", "unit": "rad/s"},
-            "2": {"name": "Aileron Command", "unit": "µs"},
-            "3": {"name": "Diff Pressure", "unit": ""},
-            "4": {"name": "Airspeed", "unit": ""},
+            # "2": {"name": "Aileron Command", "unit": "µs"},
+            # "3": {"name": "Diff Pressure", "unit": ""},
+            # "4": {"name": "Airspeed", "unit": ""},
         }
     }
 
