@@ -50,11 +50,6 @@ install(TARGETS
 ament_python_install_package(${PROJECT_NAME})
 # Install Python executables
 install(PROGRAMS
-  scripts/pub_example.py
-  scripts/sub_example.py
-  scripts/goal_vis.py
-  scripts/target_estimator.py
-  scripts/guidance_publisher.py
   scripts/testingsignals_HINL.py
   scripts/testingsignals_SINL.py
   scripts/systemidentification_synced.py
