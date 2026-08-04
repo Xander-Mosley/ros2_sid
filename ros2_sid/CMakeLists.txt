@@ -29,7 +29,7 @@ find_package(rosidl_default_generators REQUIRED)
 #   "srv/SetGoal.srv"
 #   "srv/SetUASType.srv"
 #   "srv/SetTakeOff.srv"
-#   # "srv/getGSInfo.srv"
+#   "srv/getGSInfo.srv"
 #  )
 
 # Include Cpp "include" directory

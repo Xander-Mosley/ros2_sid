@@ -21,6 +21,7 @@ from std_msgs.msg import Float64, Float64MultiArray, String
 
 
 from drone_interfaces.msg import CtlTraj, Telem
+from ardupilot_msgs.msg import Pitot, Propulsion, RcIn, RcOut
 from ros2_sid.rt_ols import CircularBuffer, RecursiveFourierTransform, RegressorData, ordinary_least_squares
 from ros2_sid.rotation_utils import euler_from_quaternion
 
@@ -33,7 +34,7 @@ class OLSNode(Node):
         self.setup_pubs()
 
     def setup_vars(self) -> None:
-        self.minimum_dt = 1.0 / 100.0
+        self.minimum_dt = 1.0 / 200.0
 
         self.imu_prev_nanosec = 0.0
         self.accel_prev_nanosec = 0.0
@@ -114,10 +115,16 @@ class OLSNode(Node):
         #     self.rcout_callback,
         #     qos_profile=SENSOR_QOS
         # )
-        self.replay_rcout_sub: Subscription = self.create_subscription(
-            Float64MultiArray,
-            '/replay/RCOU/data',
-            self.replay_rcout_callback,
+        # self.replay_rcout_sub: Subscription = self.create_subscription(
+        #     Float64MultiArray,
+        #     '/replay/RCOU/data',
+        #     self.replay_rcout_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
+        self.dds_rcout_sub: Subscription = self.create_subscription(
+            RcOut,
+            '/ap/rcout',
+            self.dds_rcout_callback,
             qos_profile=SENSOR_QOS
         )
 
@@ -127,12 +134,12 @@ class OLSNode(Node):
         #     self.telem_callback,
         #     qos_profile=SENSOR_QOS
         # )
-        self.replay_telem_sub: Subscription = self.create_subscription(
-            Float64MultiArray,
-            '/replay/AOA/data',
-            self.replay_telem_callback,
-            qos_profile=SENSOR_QOS
-        )
+        # self.replay_telem_sub: Subscription = self.create_subscription(
+        #     Float64MultiArray,
+        #     '/replay/AOA/data',
+        #     self.replay_telem_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
 
         # self.odom_sub: Subscription = self.create_subscription(
         #     Odometry,
@@ -256,6 +263,28 @@ class OLSNode(Node):
 
         else:
             print(f"RCOut update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+
+    def dds_rcout_callback(self, msg: RcOut) -> None:
+        new_sec: float = msg.header.stamp.sec
+        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+        dt = (new_nanosec - self.rcout_prev_nanosec) % 1.0
+        if dt >= self.minimum_dt:
+            self.rcout_prev_nanosec = new_nanosec
+
+            if self._rcout_first_pass:
+                self._rcout_first_pass = False
+                for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+                    pwm.spectrum.update_cp_time(self.rcout_prev_nanosec)
+            else:
+                for pwm in [self.ail_pwm, self.elv_pwm, self.rud_pwm]:
+                    pwm.spectrum.update_cp_timestep(dt)
+
+            self.ail_pwm.update(msg.values[0] - 1500)
+            self.elv_pwm.update(msg.values[1] - 1500)
+            self.rud_pwm.update(msg.values[3] - 1500)
+
+        else:
+            print(f"RcOut update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
     def telem_callback(self, msg: Telem) -> None:
         new_sec: float = msg.header.stamp.sec

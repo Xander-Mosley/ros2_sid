@@ -32,7 +32,7 @@ class IMUDifferentiating(Node):
         self.setup_pubs()
         
     def setup_vars(self):
-        self.minimum_dt = 1.0 / 100.0
+        self.minimum_dt = 1.0 / 200.0
         self.acc_times = CircularBuffer(5)
         self.acc_times.add(0)
 

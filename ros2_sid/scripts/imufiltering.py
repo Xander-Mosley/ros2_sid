@@ -31,7 +31,7 @@ class IMUFiltering(Node):
         self.setup_pubs()
         
     def setup_vars(self):
-        self.minimum_dt = 1.0 / 100.0
+        self.minimum_dt = 1.0 / 200.0
         self.imu_prev_nanosec = 0.0
 
         self.rol_velo_lpf = ButterworthLowPass_VDT_2O(1.54)
@@ -52,10 +52,16 @@ class IMUFiltering(Node):
         #     self.imu_callback,
         #     qos_profile=SENSOR_QOS
         # )
-        self.replay_imu_sub: Subscription = self.create_subscription(
-            Float64MultiArray,
-            '/replay/IMU/data',
-            self.replay_imu_callback,
+        # self.replay_imu_sub: Subscription = self.create_subscription(
+        #     Float64MultiArray,
+        #     '/replay/IMU/data',
+        #     self.replay_imu_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
+        self.dds_imu_sub: Subscription = self.create_subscription(
+            Imu,
+            '/ap/imu/experimental/data',
+            self.imu_callback,
             qos_profile=SENSOR_QOS
         )
 
