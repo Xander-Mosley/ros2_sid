@@ -967,13 +967,13 @@ def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
 
 def main():
     csv_files = {
-        "Model": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_data.csv"},
+        "Model": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_rol_data.csv"},
         # "Small Roll Nondim": {"prefix": "ols_rol_nondim_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_data.csv"},
         # "Small SSA Roll": {"prefix": "ols_rol_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_ssa_data.csv"},
         # "Large Roll": {"prefix": "ols_rol_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_data.csv"},
         # "Large SSA Roll": {"prefix": "ols_rol_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_ssa_data.csv"},
-        # "Pitch": {"prefix": "ols_pit_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_data.csv"},
-        # "AOA Pitch": {"prefix": "ols_pit_aoa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_pit_aoa_data.csv"},
+        "Pitch": {"prefix": "ols_pit_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_data.csv"},
+        "AOA Pitch": {"prefix": "ols_pit_aoa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_aoa_data.csv"},
         # "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
         # "Small SSA Yaw": {"prefix": "ols_yaw_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_ssa_data.csv"},
         # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
@@ -983,7 +983,7 @@ def main():
     }
 
     start_time = 0
-    end_time = 50
+    end_time = 9999
 
     plot_labels = {
         "title": " ",

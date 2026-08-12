@@ -412,7 +412,7 @@ class OLSNode(Node):
 
 
     def setup_pubs(self) -> None:
-        default_pub_rate = 1 / 25
+        default_pub_rate = 1 / 50
         publisher_periods = {
             "ols_rol": default_pub_rate,
             # "ols_rol_nondim": default_pub_rate,

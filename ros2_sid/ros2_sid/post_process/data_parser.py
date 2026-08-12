@@ -383,7 +383,7 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2026-01-28_ComparingNew-Old_3/rosbag2_2026_01_28-17_27_34_0.db3'
+    bag_file = '/develop_ws/bag_files/2026-08-11_Third-DDS-Test/rosbag2_2026_08_11-19_51_00_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
@@ -393,7 +393,7 @@ if __name__ == "__main__":
         '/imu_diff': 'imu_diff',
         '/imu_diff_duration': 'diff_duration',
 
-        '/telem': 'telem',
+        # '/telem': 'telem',
 
         '/mavros/rc/out': 'rcout',
         '/mavros/rc/in': 'rcin',
@@ -444,6 +444,6 @@ if __name__ == "__main__":
         # '/ols_rol_nondim_old': 'ols_rol_nondim_old',
         }
     
-    output_directory = '/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files'
+    output_directory = '/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files'
 
     main(bag_file, topics_to_extract, output_directory)

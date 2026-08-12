@@ -22,23 +22,20 @@ Date: 22 Jul 2026
 
 from __future__ import annotations
 
-import os
-import re
 from dataclasses import dataclass, asdict, field, fields
-from pathlib import Path
 from datetime import datetime
 import json
+import os
+from pathlib import Path
+import re
 import shutil
 
 # __all__ = []
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
-SCREEN_WIDTH = 60
-LABEL_WIDTH = 22
-
 # =============================================================================
-# Paths
+# Constants / Paths
 # =============================================================================
 
 SETUP_DIR = Path(__file__).resolve().parent
@@ -47,6 +44,9 @@ CURRENT_AIRCRAFT = AIRCRAFT_LIBRARY / "current_aircraft.json"
 
 LIBRARY_DIR = SETUP_DIR.parent
 USER_SETTINGS = LIBRARY_DIR / "user_settings.json"
+
+SCREEN_WIDTH = 60
+LABEL_WIDTH = 22
 
 WINDOWS_RESERVED_NAMES = {
     "CON",
@@ -153,27 +153,6 @@ class Aircraft:
 # =============================================================================
 # Utility Functions
 # =============================================================================
-
-def load_user_settings() -> dict:
-    """Load the global user settings."""
-    defaults = {
-        "preferred_units": "metric",
-    }
-
-    if not USER_SETTINGS.exists():
-        return defaults
-
-    try:
-        with open(USER_SETTINGS, "r", encoding="utf-8") as f:
-            settings = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        print("Warning: Unable to read user_settings.json.")
-        print("Using default settings.")
-        return defaults.copy()
-
-    defaults.update(settings)
-    return defaults
-
 
 def pause():
     """Wait for the user before continuing."""
@@ -282,6 +261,27 @@ def timestamp():
 # =============================================================================
 # File Functions
 # =============================================================================
+
+def load_user_settings() -> dict:
+    """Load the global user settings."""
+    defaults = {
+        "preferred_units": "metric",
+    }
+
+    if not USER_SETTINGS.exists():
+        return defaults
+
+    try:
+        with open(USER_SETTINGS, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        print("Warning: Unable to read user_settings.json.")
+        print("Using default settings.")
+        return defaults.copy()
+
+    defaults.update(settings)
+    return defaults
+
 
 def load_aircraft(name: str) -> Aircraft:
     """
@@ -658,8 +658,6 @@ def edit_metadata(metadata: Metadata | None = None) -> Metadata:
     if ask_yes_no("Would you like to enter a new description?"):
         metadata.description = input_multiline("Enter aircraft description: ")
 
-    print()
-
     return metadata
 
 
@@ -669,12 +667,12 @@ def input_value(prompt, current=None, allow_negative=True) -> float | None:
     If the user presses Enter without typing anything, the current value is returned.
     If the user enters an invalid value, they are prompted again.
     """
-    label = f"{prompt}:"
+    label = f"{prompt}"
     while True:
         if current is None:
-            text = input(f"{label:<{LABEL_WIDTH}} ")
+            text = input(f"{label:<{LABEL_WIDTH}} : ")
         else:
-            text = input(f"{label:<{LABEL_WIDTH}} [{current}]: ")
+            text = input(f"{f'{label} - ({current})':<{LABEL_WIDTH}} : ")
         text = text.strip()
 
         if text == "":
@@ -699,15 +697,15 @@ def edit_geometry(units: str, geometry: Geometry = None) -> Geometry:
         geometry = Geometry()
 
     if units == "metric":
-        mass = input_value("Mass (kg)", geometry.mass_kg, allow_negative=False)
-        span = input_value("Wing span (m)", geometry.wing_span_m, allow_negative=False)
-        area = input_value("Wing area (m²)", geometry.wing_area_m2, allow_negative=False)
-        mac = input_value("MAC (m)", geometry.mac_m, allow_negative=False)
+        mass = input_value("Mass [kg]", geometry.mass_kg, allow_negative=False)
+        span = input_value("Wing span [m]", geometry.wing_span_m, allow_negative=False)
+        area = input_value("Wing area [m²]", geometry.wing_area_m2, allow_negative=False)
+        mac = input_value("MAC [m]", geometry.mac_m, allow_negative=False)
     else:
-        mass = input_value("Mass (lb)", geometry.mass_kg / LB_TO_KG if geometry.mass_kg is not None else None, allow_negative=False)
-        span = input_value("Wing span (ft)", geometry.wing_span_m / FT_TO_M if geometry.wing_span_m is not None else None, allow_negative=False)
-        area = input_value("Wing area (ft²)", geometry.wing_area_m2 / FT2_TO_M2 if geometry.wing_area_m2 is not None else None, allow_negative=False)
-        mac = input_value("MAC (in)", geometry.mac_m / IN_TO_M if geometry.mac_m is not None else None, allow_negative=False)
+        mass = input_value("Mass [lb]", geometry.mass_kg / LB_TO_KG if geometry.mass_kg is not None else None, allow_negative=False)
+        span = input_value("Wing span [ft]", geometry.wing_span_m / FT_TO_M if geometry.wing_span_m is not None else None, allow_negative=False)
+        area = input_value("Wing area [ft²]", geometry.wing_area_m2 / FT2_TO_M2 if geometry.wing_area_m2 is not None else None, allow_negative=False)
+        mac = input_value("MAC [in]", geometry.mac_m / IN_TO_M if geometry.mac_m is not None else None, allow_negative=False)
 
         if mass is not None:
             mass *= LB_TO_KG
@@ -718,8 +716,6 @@ def edit_geometry(units: str, geometry: Geometry = None) -> Geometry:
         if mac is not None:
             mac *= IN_TO_M
 
-    print()
-
     return Geometry(
         mass_kg=mass,
         wing_span_m=span,
@@ -728,30 +724,25 @@ def edit_geometry(units: str, geometry: Geometry = None) -> Geometry:
     )
 
 def edit_inertia(units: str, inertia: Inertia = None) -> Inertia:
-    """
-    Collect aircraft moments of inertia.
-    All values are converted to SI (kg·m²) before being stored.
-    Leave any field blank if unknown.
-    """
     print_section("Moments of Inertia")
 
     if inertia is None:
         inertia = Inertia()
 
     if units == "metric":
-        Ixx = input_value("Ixx (kg·m²)", inertia.Ixx_kgm2, allow_negative=False)
-        Iyy = input_value("Iyy (kg·m²)", inertia.Iyy_kgm2, allow_negative=False)
-        Izz = input_value("Izz (kg·m²)", inertia.Izz_kgm2, allow_negative=False)
-        Ixy = input_value("Ixy (kg·m²)", inertia.Ixy_kgm2)  # Likely has symmetry, but allow user to enter if known
-        Ixz = input_value("Ixz (kg·m²)", inertia.Ixz_kgm2)
-        Iyz = input_value("Iyz (kg·m²)", inertia.Iyz_kgm2)  # Likely has symmetry, but allow user to enter if known
+        Ixx = input_value("Ixx [kg·m²]", inertia.Ixx_kgm2, allow_negative=False)
+        Iyy = input_value("Iyy [kg·m²]", inertia.Iyy_kgm2, allow_negative=False)
+        Izz = input_value("Izz [kg·m²]", inertia.Izz_kgm2, allow_negative=False)
+        Ixy = input_value("Ixy [kg·m²]", inertia.Ixy_kgm2)  # Likely has symmetry, but allow user to enter if known
+        Ixz = input_value("Ixz [kg·m²]", inertia.Ixz_kgm2)
+        Iyz = input_value("Iyz [kg·m²]", inertia.Iyz_kgm2)  # Likely has symmetry, but allow user to enter if known
     else:
-        Ixx = input_value("Ixx (slug·ft²)", inertia.Ixx_kgm2 / SLUGFT2_TO_KGM2 if inertia.Ixx_kgm2 is not None else None, allow_negative=False)
-        Iyy = input_value("Iyy (slug·ft²)", inertia.Iyy_kgm2 / SLUGFT2_TO_KGM2 if inertia.Iyy_kgm2 is not None else None, allow_negative=False)
-        Izz = input_value("Izz (slug·ft²)", inertia.Izz_kgm2 / SLUGFT2_TO_KGM2 if inertia.Izz_kgm2 is not None else None, allow_negative=False)
-        Ixy = input_value("Ixy (slug·ft²)", inertia.Ixy_kgm2 / SLUGFT2_TO_KGM2 if inertia.Ixy_kgm2 is not None else None)   # Likely has symmetry, but allow user to enter if known
-        Ixz = input_value("Ixz (slug·ft²)", inertia.Ixz_kgm2 / SLUGFT2_TO_KGM2 if inertia.Ixz_kgm2 is not None else None)
-        Iyz = input_value("Iyz (slug·ft²)", inertia.Iyz_kgm2 / SLUGFT2_TO_KGM2 if inertia.Iyz_kgm2 is not None else None)
+        Ixx = input_value("Ixx [slug·ft²]", inertia.Ixx_kgm2 / SLUGFT2_TO_KGM2 if inertia.Ixx_kgm2 is not None else None, allow_negative=False)
+        Iyy = input_value("Iyy [slug·ft²]", inertia.Iyy_kgm2 / SLUGFT2_TO_KGM2 if inertia.Iyy_kgm2 is not None else None, allow_negative=False)
+        Izz = input_value("Izz [slug·ft²]", inertia.Izz_kgm2 / SLUGFT2_TO_KGM2 if inertia.Izz_kgm2 is not None else None, allow_negative=False)
+        Ixy = input_value("Ixy [slug·ft²]", inertia.Ixy_kgm2 / SLUGFT2_TO_KGM2 if inertia.Ixy_kgm2 is not None else None)   # Likely has symmetry, but allow user to enter if known
+        Ixz = input_value("Ixz [slug·ft²]", inertia.Ixz_kgm2 / SLUGFT2_TO_KGM2 if inertia.Ixz_kgm2 is not None else None)
+        Iyz = input_value("Iyz [slug·ft²]", inertia.Iyz_kgm2 / SLUGFT2_TO_KGM2 if inertia.Iyz_kgm2 is not None else None)
 
         if Ixx is not None:
             Ixx *= SLUGFT2_TO_KGM2
@@ -766,8 +757,6 @@ def edit_inertia(units: str, inertia: Inertia = None) -> Inertia:
         if Iyz is not None:
             Iyz *= SLUGFT2_TO_KGM2
 
-    print()
-
     return Inertia(
         Ixx_kgm2=Ixx,
         Iyy_kgm2=Iyy,
@@ -781,7 +770,8 @@ def edit_inertia(units: str, inertia: Inertia = None) -> Inertia:
 def populate_dataclass(instance):
     """Populate any dataclass from user input."""
     for field in fields(instance):
-        value = input_value(f"{field.name}")
+        current_value = getattr(instance, field.name)
+        value = input_value(f"{field.name}", current_value)
         setattr(instance, field.name, value)
     return instance
 
@@ -803,8 +793,6 @@ def edit_longitudinal(
         print(f"\n{name} Derivatives")
         populate_dataclass(getattr(longitudinal, name))
 
-    print()
-
     return longitudinal
 
 def edit_lateral(
@@ -824,8 +812,6 @@ def edit_lateral(
     for name in ("CY", "Cl", "Cn"):
         print(f"\n{name} Derivatives")
         populate_dataclass(getattr(lateral, name))
-
-    print()
 
     return lateral
 
@@ -864,14 +850,19 @@ def create_aircraft(units: str):
     print()
 
     metadata = edit_metadata()
+    print()
     geometry = edit_geometry(units)
+    print()
     inertia = edit_inertia(units)
+    print()
 
     aerodynamics = AeroCoefficients()
     if ask_yes_no("Would you like to enter known aerodynamic coefficients?"):
         print()
         aerodynamics.longitudinal = edit_longitudinal(units)
+        print()
         aerodynamics.lateral = edit_lateral(units)
+    print()
 
     ts = timestamp()
 
@@ -906,19 +897,21 @@ def edit_aircraft_dialog(aircraft: Aircraft, units: str):
         print(" 5. Longitudinal Coefficients")
         print(" 6. Lateral Coefficients")
         print(" 0. Cancel")
+
         choice = input("\nSelection: ")
+        print()
 
         if choice == "1":
             if not modified:
-                print("\nNo changes to save.")
+                print("No changes to save.")
                 pause()
                 continue
 
             if save_aircraft(aircraft, overwrite=True, original_name=original_name):
                 original_name = aircraft.metadata.name
                 modified = False
+                print("Aircraft changes saved.")
                 return
-            pause()
 
         elif choice == "2":
             aircraft.metadata = edit_metadata(aircraft.metadata)
@@ -942,13 +935,15 @@ def edit_aircraft_dialog(aircraft: Aircraft, units: str):
 
         elif choice == "0":
             if not modified:
+                print("Nothing changed.")
                 return
             if ask_yes_no("Discard unsaved changes?"):
                 return
 
         else:
             print("Invalid selection.")
-            pause()
+            
+        pause()
 
 def edit_aircraft(units: str):
     """Edit an existing aircraft."""
@@ -1073,7 +1068,6 @@ def main():
             print("Invalid selection.")
 
         pause()
-
 
 # =============================================================================
 
