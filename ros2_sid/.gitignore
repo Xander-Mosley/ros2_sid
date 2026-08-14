@@ -1,2 +1,6 @@
 ros2_sid/post_process/topic_data_files/
-*.json
+
+ros2_sid/setup/aircraft_library/*.json
+ros2_sid/setup/frequency_config.json
+
+!ros2_sid/user_settings.json

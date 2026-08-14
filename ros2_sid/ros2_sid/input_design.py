@@ -289,6 +289,9 @@ def frequency_sweep(
     omega = min_omega + K * (max_omega - min_omega)
     angle = np.zeros_like(omega)
     angle[1:] = np.cumsum(omega[1:] * time_step)
+
+    phase_error = angle[-1] % np.pi
+    angle -= phase_error * (time / final_time)
     
     signal = np.sin(angle)
     if noise_amplitude is not None and (noise_amplitude != 0.0):

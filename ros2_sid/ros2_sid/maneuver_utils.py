@@ -265,10 +265,9 @@ def _test_maneuver() -> None:
     # time, signal, *_ = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
     empty = np.zeros_like(time)
     pit_trim = np.ones_like(time) * np.deg2rad(-3.5)
+    maneuver = np.column_stack((time, empty, pit_trim, signal))
 
-    maneuver = np.column_stack((time, signal, pit_trim, empty))
-
-    # save_maneuver(maneuver)
+    save_maneuver(maneuver)
     plot_maneuver(maneuver)
     plot_maneuver_spectrum(maneuver)
     plt.show()

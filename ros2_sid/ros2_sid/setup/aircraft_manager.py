@@ -365,8 +365,8 @@ def print_aircraft_list() -> None:
         return []
     current = get_current_aircraft_name()
     for i, file in enumerate(aircraft_files, start=1):
-        selected_marker = "\t\t<current>" if file.stem == current else ""
-        print(f"{i:2d}. {file.stem}{selected_marker}")
+        selected_marker = "<current>" if file.stem == current else ""
+        print(f"{f'{i:2d}. {file.stem}':<{LABEL_WIDTH}}{selected_marker}")
     return aircraft_files
 
 
