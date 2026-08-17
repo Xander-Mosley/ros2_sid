@@ -1,5 +1,5 @@
 {
-    "name": "Baseline Excitation",
+    "name": "mission_1",
     "description": "Baseline maneuver set for identifying longitudinal and lateral dynamics.",
     "created": "2026-08-14T11:30:00",
     "modified": "2026-08-14T11:30:00",
@@ -9,6 +9,7 @@
             "filename": "All Multisines.csv",
             "order": 1,
             "name": "All Multisines",
+
             "description": "Multisine applied to the roll, pitch, and yaw command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -27,6 +28,7 @@
             "filename": "Multisine Roll.csv",
             "order": 2,
             "name": "Multisine Roll",
+
             "description": "Multisine applied to the roll command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -45,6 +47,7 @@
             "filename": "Multisine Pitch.csv",
             "order": 3,
             "name": "Multisine Pitch",
+
             "description": "Multisine applied to the pitch command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -63,6 +66,7 @@
             "filename": "Multisine Yaw.csv",
             "order": 4,
             "name": "Multisine Yaw",
+
             "description": "Multisine applied to the yaw command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -81,6 +85,7 @@
             "filename": "Doublet Roll.csv",
             "order": 5,
             "name": "Doublet Roll",
+
             "description": "Doublet applied to the roll command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -99,6 +104,7 @@
             "filename": "Doublet Pitch.csv",
             "order": 6,
             "name": "Doublet Pitch",
+
             "description": "Doublet applied to the pitch command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -117,6 +123,7 @@
             "filename": "Doublet Yaw.csv",
             "order": 7,
             "name": "Doublet Yaw",
+
             "description": "Doublet applied to the yaw command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -135,6 +142,7 @@
             "filename": "Sweep Roll.csv",
             "order": 8,
             "name": "Sweep Roll",
+
             "description": "Sweep applied to the roll command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -153,6 +161,7 @@
             "filename": "Sweep Pitch.csv",
             "order": 9,
             "name": "Sweep Pitch",
+
             "description": "Sweep applied to the pitch command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
@@ -171,6 +180,7 @@
             "filename": "Sweep Yaw.csv",
             "order": 10,
             "name": "Sweep Yaw",
+            
             "description": "Sweep applied to the yaw command.",
             "generated_from_config": false,
             "aircraft_config": "SkyHunter",
