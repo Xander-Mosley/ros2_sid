@@ -55,6 +55,8 @@ __all__ = ['linear_diff', 'poly_diff',
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
+YELLOW = '\033[33m'
+RESET ='\033[0m'
 
 def linear_diff(
         time: np.ndarray,
@@ -615,12 +617,126 @@ class ButterworthLowPass_VDT_2O:
         """
         fc_safe = min(self.fc, 0.45 / dt)
         if self.fc > (0.45 / dt):
-            print("Warning: Cutoff frequency too high; clamped to 0.45 * fs.")
+            # TODO: Color warnings?
+            print(
+                f"\n{YELLOW}WARNING:{RESET} "
+                f"Cutoff frequency (fc={self.fc:.3f} hz) too high,\n"
+                f"\t or sampling frequency (fs={(1 / dt):.3f} hz) too low.\n"
+                f"\t Cutoff frequency clamped to {(0.45 / dt):.3f} hz (0.45 * fs)."
+            )
         gamma = np.tan(np.pi * fc_safe * dt)
 
         b0_prime = gamma ** 2
         b1_prime = 2 * b0_prime
         b2_prime = b0_prime
+        a1_prime = 2 * ((gamma ** 2) - 1)
+        a2_prime = (gamma ** 2) - (np.sqrt(2) * gamma) + 1
+        D = (gamma ** 2) + (np.sqrt(2) * gamma) + 1
+        b0 = b0_prime / D
+        b1 = b1_prime / D
+        b2 = b2_prime / D
+        a1 = a1_prime / D
+        a2 = a2_prime / D
+
+        y_new = (b0 * x_new) + (b1 * self.x_previous[0]) + (b2 * self.x_previous[1]) - (a1 * self.y_filtered[0]) - (a2 * self.y_filtered[1])
+        self.x_previous[1] = self.x_previous[0]
+        self.x_previous[0] = x_new
+        self.y_filtered[1] = self.y_filtered[0]
+        self.y_filtered[0] = y_new
+
+        return y_new
+    
+    @property
+    def current(self) -> float:
+        return self.y_filtered[0]
+
+class ButterworthHighPass_VDT_2O:
+    """
+    Second-order high-pass Butterworth filter with variable time steps.
+
+    This filter smooths noisy signals while handling variable sampling intervals (dt).
+    It uses a second-order Butterworth design to achieve a steeper cutoff slope
+    compared to first-order filters. Coefficients are dynamically adjusted
+    based on the current timestep.
+
+    Attributes
+    ----------
+    fc : float
+        Desired cutoff frequency of the filter in Hz.
+    y_filtered : list of float
+        Previous filtered output values, used in the recursive filter equation.
+        y_filtered[0] is the most recent output, y_filtered[1] is the one before that.
+    x_previous : list of float
+        Previous input values, used in the recursive filter equation.
+        x_previous[0] is the most recent input, x_previous[1] is the one before that.
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    6 Nov 2025 - Created, XDM.
+    """
+    def __init__(self, cutoff_frequency: float):
+        """
+        Initialize the second-order variable-time-step Butterworth low-pass filter.
+
+        Parameters
+        ----------
+        cutoff_frequency : float
+            Desired cutoff frequency of the filter in Hz.
+
+        Notes
+        -----
+        - The filter does not require a fixed sampling interval, but adjusts
+          coefficients dynamically based on dt provided in each update.
+        - Initializes previous inputs and outputs to zero.
+        """
+        self.fc = cutoff_frequency
+        self.y_filtered = [0.0, 0.0]
+        self.x_previous = [0.0, 0.0]
+
+    def update(self, x_new: float, dt: float):
+        """
+        Update the filter with a new input value and variable timestep, returning
+        the filtered output.
+
+        Parameters
+        ----------
+        x_new : float
+            The new raw input value to be filtered.
+        dt : float
+            The elapsed time since the last update in seconds.
+
+        Returns
+        -------
+        float
+            The updated filtered output value.
+
+        Notes
+        -----
+        - The cutoff frequency is dynamically clamped to be below the Nyquist limit:
+            fc_safe = min(fc, 0.45 / dt)
+        - The filter uses the difference equation:
+            y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
+        - Previous input and output values are updated after each call.
+        - A warning is printed if the requested cutoff frequency exceeds 0.45 / dt.
+        """
+        fc_safe = min(self.fc, 0.45 / dt)
+        if self.fc > (0.45 / dt):
+            # TODO: Color warnings?
+            print(
+                f"\n{YELLOW}WARNING:{RESET} "
+                f"Cutoff frequency (fc={self.fc:.3f} hz) too high,\n"
+                f"\t or sampling frequency (fs={(1 / dt):.3f} hz) too low.\n"
+                f"\t Cutoff frequency clamped to {(0.45 / dt):.3f} hz (0.45 * fs)."
+            )
+        gamma = np.tan(np.pi * fc_safe * dt)
+
+        b0_prime = 1
+        b1_prime = -2
+        b2_prime = 1
         a1_prime = 2 * ((gamma ** 2) - 1)
         a2_prime = (gamma ** 2) - (np.sqrt(2) * gamma) + 1
         D = (gamma ** 2) + (np.sqrt(2) * gamma) + 1

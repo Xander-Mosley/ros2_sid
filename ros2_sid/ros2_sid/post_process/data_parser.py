@@ -215,6 +215,18 @@ def parse_rcin(msg, relative_time):
         'timestamp': relative_time,
         **{f'rcin_ch{i+1}': ch for i, ch in enumerate(msg.channels)}
     }
+    
+def parse_dds_rcout(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        **{f'rcout_ch{i+1}': ch for i, ch in enumerate(msg.values)}
+    }
+
+def parse_dds_rcin(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        **{f'rcin_ch{i+1}': ch for i, ch in enumerate(msg.values)}
+    }
 
 def parse_odometry(msg, relative_time):
     pos = msg.pose.pose.position
@@ -293,6 +305,10 @@ def parse_ros_message(label, msg, relative_time):
             return parse_rcout(msg, relative_time)
         case 'rcin':
             return parse_rcin(msg, relative_time)
+        case 'dds-rcout':
+            return parse_dds_rcout(msg, relative_time)
+        case 'dds-rcin':
+            return parse_dds_rcin(msg, relative_time)
         case 'odometry':
             return parse_odometry(msg, relative_time)
         case 'gps':
@@ -383,28 +399,30 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2026-08-11_Third-DDS-Test/rosbag2_2026_08_11-19_51_00_0.db3'
+    bag_file = '/develop_ws/bag_files/2026-08-19_Preparing-for-Flying/rosbag2_2026_08_19-19_01_07_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
         # '/mavros/imu/data_raw': 'imu_raw',
-        '/imu_filt': 'imu',
-        '/imu_filt_duration': 'filt_duration',
+        # '/imu_filt': 'imu',
+        '/ap/imu/experimental/data': 'imu',
         '/imu_diff': 'imu_diff',
-        '/imu_diff_duration': 'diff_duration',
 
         # '/telem': 'telem',
 
-        '/mavros/rc/out': 'rcout',
-        '/mavros/rc/in': 'rcin',
+        # '/mavros/rc/out': 'rcout',
+        # '/mavros/rc/in': 'rcin',
         '/mavros/local_position/odom': 'odometry',
         # '/mavros/global_position/global': 'gps',
         # '/mavros/global_position/raw/gps_vel': 'gps_vel',
         '/mavros/global_position/rel_alt': 'altitude',
-        '/mavros/imu/diff_pressure': 'diff_pressure',
+        # '/mavros/imu/diff_pressure': 'diff_pressure',
         # '/mavros/imu/static_pressure': 'static_pressure',
         # '/mavros/imu/temperature_baro': 'temperature_baro',
         '/trajectory': 'trajectory',
+
+        '/ap/rcout': 'dds-rcout',
+        '/ap/rcin': 'dds-rcin',
 
         '/ols_rol': 'ols_rol',
         # '/ols_rol_nondim': 'ols_rol_nondim',

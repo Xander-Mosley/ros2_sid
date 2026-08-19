@@ -697,6 +697,7 @@ def edit_geometry(units: str, geometry: Geometry = None) -> Geometry:
         geometry = Geometry()
 
     if units == "metric":
+        # TODO: Make the metric inputs have be more convenient.
         mass = input_value("Mass [kg]", geometry.mass_kg, allow_negative=False)
         span = input_value("Wing span [m]", geometry.wing_span_m, allow_negative=False)
         area = input_value("Wing area [m²]", geometry.wing_area_m2, allow_negative=False)

@@ -298,7 +298,7 @@ class PubInputSignals(Node):
         time_steps = np.diff(time)
         if np.any(time_steps <= 0.0):
             raise ValueError(
-                f"Maneuver tiem values must be strictly increasing:\n"
+                f"Maneuver time values must be strictly increasing:\n"
                 f"{file_path}"
             )
         if not np.all(np.isfinite(data)):
@@ -328,6 +328,25 @@ class PubInputSignals(Node):
         mission_path = self.load_current_mission()
         mission_plan = self.load_mission_plan(mission_path)
         self.mission_plan = mission_plan
+
+        for maneuver in mission_plan["maneuvers"]:
+            if not isinstance(maneuver, dict):
+                raise ValueError(
+                    "Each maneuver entry must be a JSON object."
+                )
+            if not isinstance(maneuver.get("filename"), str):
+                raise ValueError(
+                    "Each maneuver must contain a valid 'filename'."
+                )
+            if not isinstance(maneuver.get("name"), str):
+                raise ValueError(
+                    "Each maneuver must contain a valid 'name'."
+                )
+            if not isinstance(maneuver.get("order"), int):
+                raise ValueError(
+                    f"Maneuver '{maneuver.get('name')}' "
+                    "must contain an integer 'order'."
+                )
 
         maneuver_definitions = sorted(
             mission_plan["maneuvers"],
@@ -417,7 +436,8 @@ class PubInputSignals(Node):
         self.print_section("Default Selection")
         default_maneuver = self.maneuver_list[self.maneuver_mode]
         print(
-            f" Maneuver: {self.maneuver_mode}. "
+            f"{'Maneuver':<{LABEL_WIDTH}} : "
+            f"{self.maneuver_mode}. "
             f"{default_maneuver['name']}"
         )
         print()
@@ -453,7 +473,7 @@ class PubInputSignals(Node):
             self.run_switch = userswitch
 
             if previous_run_switch == 1 and self.run_switch == 0:
-                self.maneuver_stopped(completed=False)
+                self.maneuver_stop(completed=False)
             
             if self.run_switch == 0:
                 self.clear_screen()
@@ -554,7 +574,7 @@ class PubInputSignals(Node):
                     self.publish_trajectory()
                     self.counter += 1
                 else:
-                    self.maneuver_stopped(completed=True)
+                    self.maneuver_stop(completed=True)
 
             else:
                 self.run_switch = 0
@@ -602,9 +622,27 @@ class PubInputSignals(Node):
             'self.get_clock().now().to_msg()'.
         """
         if (self.current_maneuver is not None):
+            """
+            Check that 'self.control_type' in drone_ros/drone_ros/scripts/Drone.py
+            is set to control type 1; and that control type 1 looks like the following:
+            '''python3
+                    elif self.control_method == self.control_type[1]:
+                        roll_cmd = np.rad2deg(roll_traj[idx_command])
+                        pitch_cmd = np.rad2deg(pitch_traj[idx_command])
+                        yaw_cmd = np.rad2deg(yaw_traj[idx_command])
+                        thrust_cmd = float(thrust_traj[idx_command])
+                        print("roll_cmd: ", roll_cmd)
+                        print("pitch_cmd: ", pitch_cmd)
+                        print("yaw_cmd: ", yaw_cmd)
+                        print("thrust cmd", thrust_cmd)
+                        self.sendAttitudeTarget(roll_angle=roll_cmd,
+                                                pitch_angle=pitch_cmd,
+                                                yaw_angle=yaw_cmd,
+                                                thrust=thrust_cmd)
+            '''
+            """
             trajectory: CtlTraj = CtlTraj()
             # trajectory.header.stamp = self.get_clock().now().to_msg()
-            # TODO: Check if two indexes are required.
             trajectory.roll  = [self.current_maneuver[self.counter, 1]]
             trajectory.pitch = [self.current_maneuver[self.counter, 2]]
             trajectory.yaw   = [self.current_maneuver[self.counter, 3]]
@@ -655,7 +693,7 @@ class PubInputSignals(Node):
             )
         print()
     
-    def maneuver_stopped(self, completed: bool = False) -> None:
+    def maneuver_stop(self, completed: bool = False) -> None:
         if self.current_maneuver is None:
             return
         

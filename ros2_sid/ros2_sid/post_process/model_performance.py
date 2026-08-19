@@ -972,8 +972,8 @@ def main():
         # "Small SSA Roll": {"prefix": "ols_rol_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_ssa_data.csv"},
         # "Large Roll": {"prefix": "ols_rol_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_data.csv"},
         # "Large SSA Roll": {"prefix": "ols_rol_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_ssa_data.csv"},
-        "Pitch": {"prefix": "ols_pit_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_data.csv"},
-        "AOA Pitch": {"prefix": "ols_pit_aoa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_aoa_data.csv"},
+        # "Pitch": {"prefix": "ols_pit_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_data.csv"},
+        # "AOA Pitch": {"prefix": "ols_pit_aoa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_aoa_data.csv"},
         # "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
         # "Small SSA Yaw": {"prefix": "ols_yaw_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_ssa_data.csv"},
         # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
@@ -990,14 +990,14 @@ def main():
         "subtitle": " ",
         # "time": "Time [s]",
 
-        "terms":{
-            0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
-            1: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-            2: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-            # 3: {"term": "Side Slip Angle", "units": "[deg]", "param_units": "[rad/s²-deg]"},
-            # 4: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-            # 5: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        },
+        # "terms":{
+        #     0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
+        #     1: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+        #     2: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+        #     # 3: {"term": "Side Slip Angle", "units": "[deg]", "param_units": "[rad/s²-deg]"},
+        #     # 4: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
+        #     # 5: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
+        # },
         # "terms":{
         #     0: {"term": "Pitch Acceleration", "units": "[rad/s²]"},
         #     1: {"term": "Pitch Rate", "units": "[rad/s]", "param_units": "[1/s]"},
@@ -1014,7 +1014,7 @@ def main():
         # },
     }
 
-    plot_models(csv_files, start_time, end_time, plot_labels, separate=True)
+    plot_models(csv_files, start_time, end_time, plot_labels, separate=False)
 
     # TODO: Move filter duration to signal_analysis
     # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))

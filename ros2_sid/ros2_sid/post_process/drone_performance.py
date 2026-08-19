@@ -422,7 +422,7 @@ def flight_data(folder_path, start_time, end_time):
          pd.read_csv(f"{folder_path}altitude_data.csv")
          ], start_time, end_time)
     # plot_controls(pd.read_csv(f"{folder_path}rcout_data.csv"), start_time, end_time)
-    # # plot_rates(pd.read_csv(f"{folder_path}telem_data.csv"), start_time, end_time)
+    # plot_rates(pd.read_csv(f"{folder_path}telem_data.csv"), start_time, end_time)
     # plot_rates(pd.read_csv(f"{folder_path}imu_data.csv"), start_time, end_time)
     # plot_raw_rates(pd.read_csv(f"{folder_path}imu_raw_data.csv"), start_time, end_time)
     # plot_attitude(pd.read_csv(f"{folder_path}odometry_data.csv"), start_time, end_time)
@@ -458,13 +458,13 @@ def main():
     start_time = 0
     end_time = 999999
 
-    folder_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/"
+    folder_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/"
     # TODO: quickly program the drone performance plots
     flight_data(folder_path, start_time, end_time)
-    flight_envelope(folder_path, start_time, end_time)
-    aerodynamic_performance(folder_path, start_time, end_time)
-    climb_performance(folder_path, start_time, end_time)
-    landing_performance(folder_path, start_time, end_time)
+    # flight_envelope(folder_path, start_time, end_time)
+    # aerodynamic_performance(folder_path, start_time, end_time)
+    # climb_performance(folder_path, start_time, end_time)
+    # landing_performance(folder_path, start_time, end_time)
     control_performance(folder_path, start_time, end_time)
     plt.show()
 
