@@ -11,7 +11,7 @@ import pandas as pd
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
-from rotation_utils import euler_from_quaternion
+from ros2_sid.rotation_utils import euler_from_quaternion
 
 
 # --- Connection Management ---

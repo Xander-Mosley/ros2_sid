@@ -19,7 +19,7 @@ from rcl_interfaces.srv import GetParameters, SetParameters
 from ros2_sid.param_client import make_param, pv_to_py
 import threading
 
-from ros2_sid.inputdesign import frequency_sweep, multi_step
+from ros2_sid.input_design import frequency_sweep, multi_step
 
 SID_TYPE_PARAM = 'sid_type'
 SID_DONE_PARAM = 'sid_done'

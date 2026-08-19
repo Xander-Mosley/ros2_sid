@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import ScalarFormatter
 
-from plotter_class import PlotFigure
+from ros2_sid.plotter_class import PlotFigure
 
 ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
 

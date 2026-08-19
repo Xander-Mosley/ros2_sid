@@ -53,13 +53,13 @@ from matplotlib.patches import Patch
 from matplotlib import cm
 from scipy.stats import gaussian_kde
 
-from plotter_class import PlotFigure
-from signal_processing import (
+from ros2_sid.plotter_class import PlotFigure
+from ros2_sid.signal_processing import (
     linear_diff, poly_diff,
     LowPassFilter, LowPassFilter_VDT,
     ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_VDT_2O, ButterworthHighPass_VDT_2O
     )
-from rt_ols import RecursiveFourierTransform
+from ros2_sid.rt_ols import RecursiveFourierTransform
 
 
 __all__ = ['rolling_diff', 'apply_filter', 'time_statistics', 'plot_analysis']

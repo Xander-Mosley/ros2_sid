@@ -36,8 +36,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from plotter_class import PlotFigure
-from input_design import frequency_sweep, multi_step, multi_sine
+from ros2_sid.plotter_class import PlotFigure
+from ros2_sid.input_design import frequency_sweep, multi_step, multi_sine
 
 
 __all__ = ['save_maneuver', 'plot_maneuver', 'plot_maneuver_spectrum']
