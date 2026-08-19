@@ -22,7 +22,7 @@ from std_msgs.msg import Float64, Float64MultiArray, String
 
 from drone_interfaces.msg import CtlTraj, Telem
 from ardupilot_msgs.msg import Pitot, Propulsion, RcIn, RcOut
-from ros2_sid.rt_ols import CircularBuffer, RecursiveFourierTransform, RegressorData, ordinary_least_squares
+from ros2_sid.realtime_ols_utils import CircularBuffer, RecursiveFourierTransform, RegressorData, ordinary_least_squares
 from ros2_sid.rotation_utils import euler_from_quaternion
 
 
@@ -210,129 +210,129 @@ class OLSNode(Node):
         self.rud_pwm.update(float(msg.values[3]) - 1500.0)
 
 
-    def telem_callback(self, msg: Telem) -> None:
-        new_sec: float = msg.header.stamp.sec
-        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
-        dt = (new_nanosec - self.telem_prev_nanosec) % 1.0
-        if dt >= self.minimum_dt:
-            self.telem_prev_nanosec = new_nanosec
+    # def telem_callback(self, msg: Telem) -> None:
+    #     new_sec: float = msg.header.stamp.sec
+    #     new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+    #     dt = (new_nanosec - self.telem_prev_nanosec) % 1.0
+    #     if dt >= self.minimum_dt:
+    #         self.telem_prev_nanosec = new_nanosec
 
-            if self._telem_first_pass:
-                self._telem_first_pass = False
-                for xxx in [self.aoa, self.ssa]:
-                    xxx.spectrum.update_cp_time(self.telem_prev_nanosec)
-            else:
-                for xxx in [self.aoa, self.ssa]:
-                    xxx.spectrum.update_cp_timestep(dt)
+    #         if self._telem_first_pass:
+    #             self._telem_first_pass = False
+    #             for xxx in [self.aoa, self.ssa]:
+    #                 xxx.spectrum.update_cp_time(self.telem_prev_nanosec)
+    #         else:
+    #             for xxx in [self.aoa, self.ssa]:
+    #                 xxx.spectrum.update_cp_timestep(dt)
 
-            self.aoa.update(msg.alpha)
-            self.ssa.update(msg.beta)
+    #         self.aoa.update(msg.alpha)
+    #         self.ssa.update(msg.beta)
 
-        else:
-            print(f"Telem update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+    #     else:
+    #         print(f"Telem update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
             
-    def replay_telem_callback(self, msg: Float64MultiArray) -> None:
-        new_sec, new_nanosec = divmod(msg.data[0], 1.0)
-        dt = (new_nanosec - self.telem_prev_nanosec) % 1.0
-        if dt >= self.minimum_dt:
-            self.telem_prev_nanosec = new_nanosec
+    # def replay_telem_callback(self, msg: Float64MultiArray) -> None:
+    #     new_sec, new_nanosec = divmod(msg.data[0], 1.0)
+    #     dt = (new_nanosec - self.telem_prev_nanosec) % 1.0
+    #     if dt >= self.minimum_dt:
+    #         self.telem_prev_nanosec = new_nanosec
 
-            if self._telem_first_pass:
-                self._telem_first_pass = False
-                for xxx in [self.aoa, self.ssa]:
-                    xxx.spectrum.update_cp_time(self.telem_prev_nanosec)
-            else:
-                for xxx in [self.aoa, self.ssa]:
-                    xxx.spectrum.update_cp_timestep(dt)
+    #         if self._telem_first_pass:
+    #             self._telem_first_pass = False
+    #             for xxx in [self.aoa, self.ssa]:
+    #                 xxx.spectrum.update_cp_time(self.telem_prev_nanosec)
+    #         else:
+    #             for xxx in [self.aoa, self.ssa]:
+    #                 xxx.spectrum.update_cp_timestep(dt)
 
-            self.aoa.update(msg.data[2])
-            self.ssa.update(msg.data[3])
+    #         self.aoa.update(msg.data[2])
+    #         self.ssa.update(msg.data[3])
 
-        else:
-            print(f"Telem update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+    #     else:
+    #         print(f"Telem update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-    def odom_callback(self, msg: Odometry) -> None:
-        """
-        Converts NED to ENU and publishes the trajectory
-        https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html
-        Twist Will show velocity in linear and rotational 
-        """
-        new_sec: float = msg.header.stamp.sec
-        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
-        dt = (new_nanosec - self.odom_prev_nanosec) % 1.0
-        if dt >= self.minimum_dt:
-            self.odom_prev_nanosec = new_nanosec
+    # def odom_callback(self, msg: Odometry) -> None:
+    #     """
+    #     Converts NED to ENU and publishes the trajectory
+    #     https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html
+    #     Twist Will show velocity in linear and rotational 
+    #     """
+    #     new_sec: float = msg.header.stamp.sec
+    #     new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+    #     dt = (new_nanosec - self.odom_prev_nanosec) % 1.0
+    #     if dt >= self.minimum_dt:
+    #         self.odom_prev_nanosec = new_nanosec
 
-            if self._odom_first_pass:
-                self._odom_first_pass = False
-                self.airspeed.spectrum.update_cp_time(self.odom_prev_nanosec)
-            else:
-                self.airspeed.spectrum.update_cp_timestep(dt)
+    #         if self._odom_first_pass:
+    #             self._odom_first_pass = False
+    #             self.airspeed.spectrum.update_cp_time(self.odom_prev_nanosec)
+    #         else:
+    #             self.airspeed.spectrum.update_cp_timestep(dt)
 
-            vx = msg.twist.twist.linear.x
-            vy = msg.twist.twist.linear.y
-            vz = msg.twist.twist.linear.z
-            airspeed = np.sqrt(vx**2 + vy**2 + vz**2)
-            self.airspeed.update(airspeed)
+    #         vx = msg.twist.twist.linear.x
+    #         vy = msg.twist.twist.linear.y
+    #         vz = msg.twist.twist.linear.z
+    #         airspeed = np.sqrt(vx**2 + vy**2 + vz**2)
+    #         self.airspeed.update(airspeed)
 
-        else:
-            print(f"Odom update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+    #     else:
+    #         print(f"Odom update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-    def diff_pressure_callback(self, msg: FluidPressure) -> None:
-        new_sec: float = msg.header.stamp.sec
-        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
-        dt = (new_nanosec - self.diff_pres_prev_nanosec) % 1.0
-        if dt >= self.minimum_dt:
-            self.diff_pres_prev_nanosec = new_nanosec
+    # def diff_pressure_callback(self, msg: FluidPressure) -> None:
+    #     new_sec: float = msg.header.stamp.sec
+    #     new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+    #     dt = (new_nanosec - self.diff_pres_prev_nanosec) % 1.0
+    #     if dt >= self.minimum_dt:
+    #         self.diff_pres_prev_nanosec = new_nanosec
 
-            if self._diff_pres_first_pass:
-                self._diff_pres_first_pass = False
-                self.dyn_pres.spectrum.update_cp_time(self.diff_pres_prev_nanosec)
-            else:
-                self.dyn_pres.spectrum.update_cp_timestep(dt)
+    #         if self._diff_pres_first_pass:
+    #             self._diff_pres_first_pass = False
+    #             self.dyn_pres.spectrum.update_cp_time(self.diff_pres_prev_nanosec)
+    #         else:
+    #             self.dyn_pres.spectrum.update_cp_timestep(dt)
 
-            self.dyn_pres.update(msg.fluid_pressure)   # [Pa]
+    #         self.dyn_pres.update(msg.fluid_pressure)   # [Pa]
 
-        else:
-            print(f"Diff Pressure update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+    #     else:
+    #         print(f"Diff Pressure update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-    def static_pressure_callback(self, msg: FluidPressure) -> None:
-        new_sec: float = msg.header.stamp.sec
-        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
-        dt = (new_nanosec - self.stat_pres_prev_nanosec) % 1.0
-        if dt >= self.minimum_dt:
-            self.stat_pres_prev_nanosec = new_nanosec
+    # def static_pressure_callback(self, msg: FluidPressure) -> None:
+    #     new_sec: float = msg.header.stamp.sec
+    #     new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+    #     dt = (new_nanosec - self.stat_pres_prev_nanosec) % 1.0
+    #     if dt >= self.minimum_dt:
+    #         self.stat_pres_prev_nanosec = new_nanosec
 
-            if self._stat_pres_first_pass:
-                self._stat_pres_first_pass = False
-                self.stat_pres.spectrum.update_cp_time(self.stat_pres_prev_nanosec)
-            else:
-                self.stat_pres.spectrum.update_cp_timestep(dt)
+    #         if self._stat_pres_first_pass:
+    #             self._stat_pres_first_pass = False
+    #             self.stat_pres.spectrum.update_cp_time(self.stat_pres_prev_nanosec)
+    #         else:
+    #             self.stat_pres.spectrum.update_cp_timestep(dt)
 
-            self.stat_pres.update(msg.fluid_pressure)  # [Pa]
+    #         self.stat_pres.update(msg.fluid_pressure)  # [Pa]
 
-        else:
-            print(f"Static Pressure update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+    #     else:
+    #         print(f"Static Pressure update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
-    def temperature_baro_callback(self, msg: Temperature) -> None:
-        new_sec: float = msg.header.stamp.sec
-        new_nanosec: float = msg.header.stamp.nanosec * 1E-9
-        dt = (new_nanosec - self.temp_baro_prev_nanosec) % 1.0
-        if dt >= self.minimum_dt:
-            self.temp_baro_prev_nanosec = new_nanosec
+    # def temperature_baro_callback(self, msg: Temperature) -> None:
+    #     new_sec: float = msg.header.stamp.sec
+    #     new_nanosec: float = msg.header.stamp.nanosec * 1E-9
+    #     dt = (new_nanosec - self.temp_baro_prev_nanosec) % 1.0
+    #     if dt >= self.minimum_dt:
+    #         self.temp_baro_prev_nanosec = new_nanosec
 
-            if self._temp_baro_first_pass:
-                self._temp_baro_first_pass = False
-                self.temp_baro.spectrum.update_cp_time(self.temp_baro_prev_nanosec)
-            else:
-                self.temp_baro.spectrum.update_cp_timestep(dt)
+    #         if self._temp_baro_first_pass:
+    #             self._temp_baro_first_pass = False
+    #             self.temp_baro.spectrum.update_cp_time(self.temp_baro_prev_nanosec)
+    #         else:
+    #             self.temp_baro.spectrum.update_cp_timestep(dt)
 
-            # self.temp_baro.update(msg.temperature)              # [°C]
-            # self.temp_baro.update(msg.temperature + 273.15)     # [°K]
-            self.temp_baro.update(msg.temperature - 25.0)       # [°C - ambient tempterature]
+    #         # self.temp_baro.update(msg.temperature)              # [°C]
+    #         # self.temp_baro.update(msg.temperature + 273.15)     # [°K]
+    #         self.temp_baro.update(msg.temperature - 25.0)       # [°C - ambient tempterature]
 
-        else:
-            print(f"Temperature Baro update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
+    #     else:
+    #         print(f"Temperature Baro update skipped (dt={dt:.6f} < {self.minimum_dt:.6f}s) at {new_sec + new_nanosec}s.")
 
 
     def setup_pubs(self) -> None:

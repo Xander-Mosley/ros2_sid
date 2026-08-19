@@ -122,7 +122,6 @@ class PubInputSignals(Node):
         # where the columns (in order) are:
         # time, roll signal, pitch signal, yaw signal;
         # and the first time value must be zero
-        # TODO: Add a set of comments that explain how to use the saved input file.
         amplitude: float = np.deg2rad(5) 
         minimum_frequency: float = 0.1
         maximum_frequency: float = 1.5
@@ -274,7 +273,6 @@ class PubInputSignals(Node):
             self.counter = self.initial_counter            
 
     def set_manuever(self) -> None:
-        # TODO: Make this code match the number and type of maneuvers.
         print(f"Setting maneuver to {self.maneuver_mode}")
         if (self.maneuver_mode == 1):
             self.current_maneuver = self.rolsweep

@@ -52,8 +52,7 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/run_mission_SITL.py
   scripts/run_mission_HITL.py
-  scripts/systemidentification_synced.py
-  scripts/systemidentification_unsynced.py
+  scripts/systemidentification.py
   scripts/gcs_test_input.py
   scripts/imufiltering.py
   scripts/imudifferentiating.py

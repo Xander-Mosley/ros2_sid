@@ -49,9 +49,7 @@ import numpy as np
 import warnings
 
 
-__all__ = ['linear_diff', 'poly_diff',
-           'LowPassFilter', 'LowPassFilter_VDT',
-           'ButterworthLowPass', 'ButterworthLowPass_VDT', 'ButterworthLowPass_VDT_2O']
+# __all__ = ['']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
@@ -195,7 +193,7 @@ def poly_diff(
     return np.float64(derivative)
 
 
-class LowPassFilter:
+class EMALowPass:
     """
     First-order low-pass exponential moving average filter.
 
@@ -269,7 +267,7 @@ class LowPassFilter:
         self.filtered_value = (self.alpha * new_value) + ((1 - self.alpha) * self.filtered_value)
         return self.filtered_value
 
-class LowPassFilter_VDT:
+class EMALowPass_VDT:
     """
     First-order low-pass exponential moving average filter with variable time steps.
 
@@ -353,7 +351,6 @@ class LowPassFilter_VDT:
         alpha = 1 - np.exp(-2 * np.pi * self.fc * self.average_dt)
         self.filtered_value = (alpha * new_value) + ((1 - alpha) * self.filtered_value)
         return self.filtered_value
-
 
 class ButterworthLowPass:
     """
@@ -542,7 +539,96 @@ class ButterworthLowPass_VDT:
     def current(self) -> float:
         return self.y_filtered
 
-class ButterworthLowPass_VDT_2O:
+class ButterworthLowPass_2O:
+    """
+    Second-order low-pass Butterworth filter.
+
+    This filter smooths noisy signals while handling variable sampling intervals (dt).
+    It uses a second-order Butterworth design to achieve a steeper cutoff slope
+    compared to first-order filters. Coefficients are dynamically adjusted
+    based on the current timestep.
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    19 Aug 2026 - Created, XDM.
+    """
+    def __init__(self, cutoff_frequency: float, dt: float):
+        """
+        Initialize the first-order Butterworth low-pass filter.
+
+        Parameters
+        ----------
+        cutoff_frequency : float
+            Desired cutoff frequency of the filter in Hz.
+        dt : float
+            Sampling interval of the input signal in seconds.
+
+        Notes
+        -----
+        - The cutoff frequency is automatically clamped to be below the Nyquist
+          frequency (0.5 / dt) to avoid instability.
+        - Filter coefficients are calculated using a bilinear transform approach.
+        - Warning is printed if the requested cutoff frequency exceeds 0.45 / dt.
+        """
+        fc = cutoff_frequency
+        self.y_filtered = [0.0, 0.0]
+        self.x_previous = [0.0, 0.0]
+
+        fc_safe = min(fc, 0.45 / dt)
+        if fc > (0.45 / dt):
+            print("Warning: Cutoff frequency too high; clamped to 0.45 * fs.")
+        gamma = np.tan(np.pi * fc_safe * dt)
+
+        b0_prime = gamma ** 2
+        b1_prime = 2 * b0_prime
+        b2_prime = b0_prime
+        a1_prime = 2 * ((gamma ** 2) - 1)
+        a2_prime = (gamma ** 2) - (np.sqrt(2) * gamma) + 1
+        D = (gamma ** 2) + (np.sqrt(2) * gamma) + 1
+        self.b0 = b0_prime / D
+        self.b1 = b1_prime / D
+        self.b2 = b2_prime / D
+        self.a1 = a1_prime / D
+        self.a2 = a2_prime / D
+
+    def update(self, x_new: float):
+        """
+        Update the filter with a new input value and return the filtered output.
+
+        Parameters
+        ----------
+        x_new : float
+            The new raw input value to be filtered.
+
+        Returns
+        -------
+        float
+            The updated filtered output value.
+
+        Notes
+        -----
+        The filter uses the difference equation:
+            y[n] = b0 * x[n] + b1 * x[n-1] - a1 * y[n-1]
+        where y[n] is the current output, x[n] is the current input, and x[n-1], y[n-1]
+        are the previous input and output values, respectively.
+        """
+        y_new = (self.b0 * x_new) + (self.b1 * self.x_previous[0]) + (self.b2 * self.x_previous[1]) - (self.a1 * self.y_filtered[0]) - (self.a2 * self.y_filtered[1])
+        self.x_previous[1] = self.x_previous[0]
+        self.x_previous[0] = x_new
+        self.y_filtered[1] = self.y_filtered[0]
+        self.y_filtered[0] = y_new
+
+        return y_new
+    
+    @property
+    def current(self) -> float:
+        return self.y_filtered[0]
+
+class ButterworthLowPass_2O_VDT:
     """
     Second-order low-pass Butterworth filter with variable time steps.
 
@@ -650,7 +736,75 @@ class ButterworthLowPass_VDT_2O:
     def current(self) -> float:
         return self.y_filtered[0]
 
-class ButterworthHighPass_VDT_2O:
+class ButterworthLowPass_4O_VDT:
+    """
+    Fourth-order low-pass Butterworth filter with variable time steps.
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    19 Aug 2025 - Created, XDM.
+    """
+    def __init__(self, cutoff_frequency: float):
+        self.fc = cutoff_frequency
+        self.y_filtered = [0.0, 0.0, 0.0, 0.0]
+        self.x_previous = [0.0, 0.0, 0.0, 0.0]
+
+    def update(self, x_new: float, dt: float):
+        fc_safe = min(self.fc, 0.45 / dt)
+        if self.fc > (0.45 / dt):
+            print(
+                f"\n{YELLOW}WARNING:{RESET} "
+                f"Cutoff frequency (fc={self.fc:.3f} hz) too high,\n"
+                f"\t or sampling frequency (fs={(1 / dt):.3f} hz) too low.\n"
+                f"\t Cutoff frequency clamped to {(0.45 / dt):.3f} hz (0.45 * fs)."
+            )
+        gamma = np.tan(np.pi * fc_safe * dt)
+        alpha = -2 * (np.cos(5 / 8 * np.pi) + np.cos(7 / 8 * np.pi))
+        beta = 2 * (1 + 2 * np.cos(5 / 8 * np.pi) * np.cos(7 / 8 * np.pi))
+
+        b0_prime = gamma ** 4
+        b1_prime = 4 * b0_prime
+        b2_prime = 6 * b0_prime
+        b3_prime = 4 * b0_prime
+        b4_prime = b0_prime
+        a1_prime = 2 * (2*(gamma ** 4) + alpha*(gamma ** 3) - alpha*gamma - 2)
+        a2_prime = 2 * (3*(gamma ** 4) - beta*(gamma ** 2) + 3)
+        a3_prime = 2 * (2*(gamma ** 4) - alpha*(gamma ** 3) + alpha*gamma - 2)
+        a4_prime = (gamma ** 4) - alpha*(gamma ** 3) + beta*(gamma ** 2) - alpha*gamma + 1
+        D = (gamma ** 4) + alpha*(gamma ** 3) + beta*(gamma ** 2) + alpha*gamma + 1
+        b0 = b0_prime / D
+        b1 = b1_prime / D
+        b2 = b2_prime / D
+        b3 = b3_prime / D
+        b4 = b4_prime / D
+        a1 = a1_prime / D
+        a2 = a2_prime / D
+        a3 = a3_prime / D
+        a4 = a4_prime / D
+
+        y_new = ((b0 * x_new)
+                 + (b1 * self.x_previous[0]) + (b2 * self.x_previous[1])
+                 + (b3 * self.x_previous[2]) + (b4 * self.x_previous[3])
+                 - (a1 * self.y_filtered[0]) - (a2 * self.y_filtered[1])
+                 - (a3 * self.y_filtered[2]) - (a4 * self.y_filtered[3])
+        )
+        self.x_previous[1:3] = self.x_previous[0:2]
+        self.x_previous[0] = x_new
+        self.y_filtered[1:3] = self.y_filtered[0:2]
+        self.y_filtered[0] = y_new
+
+        return y_new
+    
+    @property
+    def current(self) -> float:
+        return self.y_filtered[0]
+
+
+class ButterworthHighPass_2O_VDT:
     """
     Second-order high-pass Butterworth filter with variable time steps.
 
@@ -676,7 +830,7 @@ class ButterworthHighPass_VDT_2O:
 
     History
     -------
-    6 Nov 2025 - Created, XDM.
+    18 Aug 2025 - Created, XDM.
     """
     def __init__(self, cutoff_frequency: float):
         """
@@ -750,6 +904,73 @@ class ButterworthHighPass_VDT_2O:
         self.x_previous[1] = self.x_previous[0]
         self.x_previous[0] = x_new
         self.y_filtered[1] = self.y_filtered[0]
+        self.y_filtered[0] = y_new
+
+        return y_new
+    
+    @property
+    def current(self) -> float:
+        return self.y_filtered[0]
+
+class ButterworthHighPass_4O_VDT:
+    """
+    Fourth-order high-pass Butterworth filter with variable time steps.
+
+    Author
+    ------
+    Xander D. Mosley
+
+    History
+    -------
+    19 Aug 2025 - Created, XDM.
+    """
+    def __init__(self, cutoff_frequency: float):
+        self.fc = cutoff_frequency
+        self.y_filtered = [0.0, 0.0, 0.0, 0.0]
+        self.x_previous = [0.0, 0.0, 0.0, 0.0]
+
+    def update(self, x_new: float, dt: float):
+        fc_safe = min(self.fc, 0.45 / dt)
+        if self.fc > (0.45 / dt):
+            print(
+                f"\n{YELLOW}WARNING:{RESET} "
+                f"Cutoff frequency (fc={self.fc:.3f} hz) too high,\n"
+                f"\t or sampling frequency (fs={(1 / dt):.3f} hz) too low.\n"
+                f"\t Cutoff frequency clamped to {(0.45 / dt):.3f} hz (0.45 * fs)."
+            )
+        gamma = np.tan(np.pi * fc_safe * dt)
+        alpha = -2 * (np.cos(5 / 8 * np.pi) + np.cos(7 / 8 * np.pi))
+        beta = 2 * (1 + 2 * np.cos(5 / 8 * np.pi) * np.cos(7 / 8 * np.pi))
+
+        b0_prime = 1
+        b1_prime = -4
+        b2_prime = 6
+        b3_prime = -4
+        b4_prime = 1
+        a1_prime = 2 * (2*(gamma ** 4) + alpha*(gamma ** 3) - alpha*gamma - 2)
+        a2_prime = 2 * (3*(gamma ** 4) - beta*(gamma ** 2) + 3)
+        a3_prime = 2 * (2*(gamma ** 4) - alpha*(gamma ** 3) + alpha*gamma - 2)
+        a4_prime = (gamma ** 4) - alpha*(gamma ** 3) + beta*(gamma ** 2) - alpha*gamma + 1
+        D = (gamma ** 4) + alpha*(gamma ** 3) + beta*(gamma ** 2) + alpha*gamma + 1
+        b0 = b0_prime / D
+        b1 = b1_prime / D
+        b2 = b2_prime / D
+        b3 = b3_prime / D
+        b4 = b4_prime / D
+        a1 = a1_prime / D
+        a2 = a2_prime / D
+        a3 = a3_prime / D
+        a4 = a4_prime / D
+
+        y_new = ((b0 * x_new)
+                 + (b1 * self.x_previous[0]) + (b2 * self.x_previous[1])
+                 + (b3 * self.x_previous[2]) + (b4 * self.x_previous[3])
+                 - (a1 * self.y_filtered[0]) - (a2 * self.y_filtered[1])
+                 - (a3 * self.y_filtered[2]) - (a4 * self.y_filtered[3])
+        )
+        self.x_previous[1:3] = self.x_previous[0:2]
+        self.x_previous[0] = x_new
+        self.y_filtered[1:3] = self.y_filtered[0:2]
         self.y_filtered[0] = y_new
 
         return y_new

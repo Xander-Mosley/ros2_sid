@@ -54,12 +54,12 @@ from matplotlib import cm
 from scipy.stats import gaussian_kde
 
 from ros2_sid.plotter_class import PlotFigure
-from ros2_sid.signal_processing import (
+from ros2_sid.signal_processing_utils import (
     linear_diff, poly_diff,
-    LowPassFilter, LowPassFilter_VDT,
-    ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_VDT_2O, ButterworthHighPass_VDT_2O
+    EMALowPass, EMALowPass_VDT,
+    ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_2O_VDT, ButterworthHighPass_2O_VDT
     )
-from ros2_sid.rt_ols import RecursiveFourierTransform
+from ros2_sid.realtime_ols_utils import RecursiveFourierTransform
 
 
 __all__ = ['rolling_diff', 'apply_filter', 'time_statistics', 'plot_analysis']
@@ -193,12 +193,12 @@ def apply_filter(
 
     if filter_type == "LPF":
         dt = time[1] - time[0]
-        filt = LowPassFilter(cutoff_frequency=cutoff_frequency, dt=dt, initial_value=data[0])
+        filt = EMALowPass(cutoff_frequency=cutoff_frequency, dt=dt, initial_value=data[0])
         for i, val in enumerate(data):
             filtered[i] = filt.update(val)
 
     elif filter_type == "LPF_VDT":
-        filt = LowPassFilter_VDT(cutoff_frequency=cutoff_frequency, num_dts=num_dts, initial_value=data[0])
+        filt = EMALowPass_VDT(cutoff_frequency=cutoff_frequency, num_dts=num_dts, initial_value=data[0])
         for i, val in enumerate(data):
             if i > 0:
                 dt_i = time[i] - time[i-1]
@@ -218,14 +218,14 @@ def apply_filter(
                 filtered[i] = filt.update(val, dt_i)
 
     elif filter_type == "Butter2_VDT":
-        filt = ButterworthLowPass_VDT_2O(cutoff_frequency=cutoff_frequency)
+        filt = ButterworthLowPass_2O_VDT(cutoff_frequency=cutoff_frequency)
         for i, val in enumerate(data):
             if i > 0:
                 dt_i = time[i] - time[i-1]
                 filtered[i] = filt.update(val, dt_i)
 
     elif filter_type == "ButterHP2_VDT":
-        filt = ButterworthHighPass_VDT_2O(cutoff_frequency=cutoff_frequency)
+        filt = ButterworthHighPass_2O_VDT(cutoff_frequency=cutoff_frequency)
         for i, val in enumerate(data):
             if i > 0:
                 dt_i = time[i] - time[i-1]

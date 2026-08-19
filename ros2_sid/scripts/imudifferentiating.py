@@ -23,12 +23,12 @@ from std_msgs.msg import Float64, Float64MultiArray, String
 from ardupilot_msgs.msg import Pitot, Propulsion, RcIn, RcOut
 from drone_interfaces.msg import CtlTraj, Telem
 
-from ros2_sid.rt_ols import CircularBuffer
-from ros2_sid.signal_processing import (
+from ros2_sid.realtime_ols_utils import CircularBuffer
+from ros2_sid.signal_processing_utils import (
     linear_diff, poly_diff,
-    LowPassFilter, LowPassFilter_VDT,
+    EMALowPass, EMALowPass_VDT,
     ButterworthLowPass, ButterworthLowPass_VDT,
-    ButterworthLowPass_VDT_2O, ButterworthHighPass_VDT_2O
+    ButterworthLowPass_2O_VDT, ButterworthHighPass_2O_VDT
     )
 
 
@@ -57,9 +57,9 @@ class Differentiating(Node):
         self.yaw_velo = CircularBuffer(5)
         self.acc_times.add(0)
 
-        self.rol_accel_lpf = ButterworthLowPass_VDT_2O(upper_cutoff)
-        self.pit_accel_lpf = ButterworthLowPass_VDT_2O(upper_cutoff)
-        self.yaw_accel_lpf = ButterworthLowPass_VDT_2O(upper_cutoff)
+        self.rol_accel_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
+        self.pit_accel_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
+        self.yaw_accel_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
 
 
     def setup_subs(self):

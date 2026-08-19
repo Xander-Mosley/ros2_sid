@@ -16,7 +16,7 @@ from matplotlib.patches import Patch
 from scipy.stats import gaussian_kde
 
 from ros2_sid.plotter_class import PlotFigure
-from ros2_sid.model_processing import (extract_model, process_models,
+from ros2_sid.model_processing_utils import (extract_model, process_models,
     sliding_adjusted_cod, sliding_vif_cod, sliding_svd_cond, sliding_correlation_matrix)
 
 ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
