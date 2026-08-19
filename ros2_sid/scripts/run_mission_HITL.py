@@ -1,40 +1,43 @@
 #!/usr/bin/env python3
 
 """
-run_mission_SINL.py - ROS2 node for publishing simulated drone excitation signals.
+run_mission_HITL.py - ROS2 node for publishing drone excitation signals using a kill switch.
 
-Description
------------
 This script defines a ROS2 node, 'PubInputSignals', which generates and publishes
 predefined or live-generated input maneuvers to a drone's trajectory topic for testing
-and system identification purposes. The node supports multiple types of maneuvers
-including multisines, doublets, and frequency sweeps for roll, pitch, and yaw axes.
+and system identification. Unlike 'run_mission_SITL.py', this node maps the run/stop
+switch to a physical RC kill switch channel on the flight controller, enabling live
+hardware control over signal execution.
 
 Key Features
 ------------
 - Load maneuvers from CSV files to ensure reproducibility.
 - Generate and publish different excitation signals on the 'trajectory' topic.
-- User-selectable maneuver modes.
+- Run/stop execution is controlled by a physical kill switch input.
+- User-selectable maneuver modes when the kill switch is inactive.
 - Adjustable publishing timer to match maneuver time steps.
-- Runs in a ROS2 environment and leverages threading to handle user input concurrently.
+- ROS2 threading allows concurrent handling of user input and signal publication.
+- Subscribes to '/mavros/rc/in' to read RC input channels.
 
 Maneuver Format
 ---------------
 - All maneuvers are expected as arrays of shape (N, 4):
-  [time, roll_signal, pitch_signal, yaw_signal]
+  '[time, roll_signal, pitch_signal, yaw_signal]'
 - Time values must start at zero.
 
 Usage
 -----
 1. Launch the node:
     '''bash
-    ros2 run ros2_sid testingsignals_SINL.py
+    ros2 run ros2_sid testingsignals_HINL.py
     '''
-2. Toggle execution and select maneuvers via console input.
+2. Use the RC kill switch to start/stop maneuver execution.
+3. When the kill switch is inactive (low), select maneuvers via console input.
 
 Custom Dependencies
 -------------------
-- Custom message: drone_interfaces/CtlTraj, drone_interfaces/Telem
+- Custom messages: 'drone_interfaces/CtlTraj', 'drone_interfaces/Telem'
+- DDS messages: 'ardupilot_msgs/RcIn
 
 Author
 ------
@@ -57,10 +60,15 @@ import rclpy
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.publisher import Publisher
+from rclpy.subscription import Subscription
 
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float64, Float64MultiArray, String
 from drone_interfaces.msg import CtlTraj, Telem
+from mavros_msgs.msg import RCIn
+from mavros.base import SENSOR_QOS
+
+from ardupilot_msgs.msg import RcIn
 
 
 __all__ = ['PubInputSignals']
@@ -72,11 +80,15 @@ LABEL_WIDTH = 18
 
 class PubInputSignals(Node):
     """
-    ROS2 node that publishes predefined or generated input signals (maneuvers) 
-    as control trajectories for aircraft system identification or control testing.
+    ROS2 node for publishing predefined excitation signals to a drone's trajectory topic.
 
-    This node allows users to select and execute predefined excitation maneuvers 
-    interactively. Maneuvers can be loaded from CSV files.
+    This node interfaces with a physical RC kill switch on the flight controller to
+    control the start/stop of maneuver execution. It publishes maneuver data as 
+    'CtlTraj' messages for use in hardware-in-the-loop (HITL) or flight tests.
+
+    Maneuvers can be loaded from pre-saved CSV files (e.g., multisines, doublets, sweeps).
+    The user can select which maneuver to execute through a console interface
+    when the kill switch is inactive.
 
     Author
     ------
@@ -85,8 +97,8 @@ class PubInputSignals(Node):
     History
     -------
     11 Jul 2025 - Created, XDM.
-    18 Aug 2026 - Pull maneuvers from a dedicated mission plan within a mission library, XDM.
-    18 Aug 2026 - Improved the user display, XDM.
+    19 Aug 2026 - Pull maneuvers from a dedicated mission plan within a mission library, XDM.
+    19 Aug 2026 - Improved the user display, XDM.
     19 Aug 2026 - Removed the if-else loop complexity from the logic loop, XDM.
     """
     def __init__(self, ns=''):
@@ -100,6 +112,14 @@ class PubInputSignals(Node):
 
         Attributes
         ----------
+        kill_switch : float
+            Current RC channel value corresponding to the kill switch.
+        rc_bias : int
+            Index offset for RC channel numbering.
+        kill_switch_channel : int
+            Index of the kill switch RC channel.
+        kill_switch_threshold : float
+            PWM threshold distinguishing ON/OFF states.
         run_switch : int
             Internal execution flag (1 = running, 0 = stopped).
         maneuver_mode : int
@@ -133,6 +153,13 @@ class PubInputSignals(Node):
         package_subroot = Path(__file__).resolve().parents[1]
         self.mission_library = (package_subroot / "ros2_sid" / "setup" / "mission_library")
         self.current_mission_file = (self.mission_library / "current_mission.json")
+
+        # Controller
+        self.setup_subs()
+        self.kill_switch: float = 0.0
+        self.rc_bias: int = 1   # Channel 1 starts at index 0
+        self.kill_switch_channel: int = 9 - self.rc_bias
+        self.kill_switch_threshold: float = 1550
         
         # Execution States
         self.run_switch: int = 0
@@ -156,6 +183,58 @@ class PubInputSignals(Node):
         # User Input Thread
         self.userthread = threading.Thread(target=self.user_input_loop, daemon=True)
         self.userthread.start()
+    
+
+    def setup_subs(self) -> None:
+        """
+        Create subscriptions for receiving RC input data.
+
+        Subscribes to '/mavros/rc/in' or '/ap/rcin'
+        to read RC channel data and determine
+        the state of the physical kill switch.
+        """
+        self.rcin_sub: Subscription = self.create_subscription(
+            RCIn,
+            '/mavros/rc/in',
+            self.rcin_callback,
+            qos_profile=SENSOR_QOS
+        )
+        # self.rcin_sub: Subscription = self.create_subscription(
+        #     RcIn,
+        #     '/ap/rcin',
+        #     self.dds_rcin_callback,
+        #     qos_profile=SENSOR_QOS
+        # )
+    
+    def rcin_callback(self, sub_msg: RCIn) -> None:
+        """
+        Callback for RC input messages.
+
+        Parameters
+        ----------
+        sub_msg : RCIn
+            MAVROS RC input message containing PWM values for all channels.
+
+        Notes
+        -----
+        - Updates 'self.kill_switch' with the PWM value from the configured channel.
+        """
+        self.kill_switch = float(sub_msg.channels[self.kill_switch_channel])
+    
+    def dds_rcin_callback(self, sub_msg: RcIn) -> None:
+        """
+        Callback for RC input messages.
+
+        Parameters
+        ----------
+        sub_msg : RcIn
+            DDS RC input message containing PWM values for all channels.
+
+        Notes
+        -----
+        - Updates 'self.kill_switch' with the PWM value from the configured channel.
+        """
+        self.kill_switch = float(sub_msg.values[self.kill_switch_channel])
 
 
     def load_current_mission(self) -> Path:
@@ -445,37 +524,19 @@ class PubInputSignals(Node):
 
     def user_input_loop(self) -> None:
         """
-        Continuously listen for user input to control the excitation process.
+        Handle user input for selecting maneuvers when kill switch is inactive.
 
-        Provides a simple CLI interface for:
-            - Starting or stopping the signal publishing ('run_switch').
-            - Selecting the current mission's maneuver when publishing is stopped.
+        Runs in a separate thread and waits for console input to change
+        the 'maneuver_mode'. The menu is displayed only when the kill switch
+        is below the configured threshold (inactive).
 
         Notes
         -----
-        - This method runs in a separate daemon thread to avoid blocking
-           the ROS2 executor thread.
+        - User can select between the current mission's maneuvers.
+        - Input validation ensures only valid integers are accepted.
         """
         while rclpy.ok():
-            try:
-                userswitch = int(
-                    input(f"{f'Testing Switch (0 or 1)':<{LABEL_WIDTH}} : ")
-                )
-                print()
-            except ValueError:
-                print("Invalid input. Enter an integer.")
-                continue
-            if userswitch not in [0, 1]:
-                print("Invalid input. Enter the integer 0 or 1.")
-                continue
-            
-            previous_run_switch = self.run_switch
-            self.run_switch = userswitch
-
-            if previous_run_switch == 1 and self.run_switch == 0:
-                self.maneuver_stop(completed=False)
-            
-            if self.run_switch == 0:
+            if (self.kill_switch <= self.kill_switch_threshold):
                 self.clear_screen()
                 self.print_page(f"Mission: {self.current_mission_name}")
                 self.print_maneuver_menu()
@@ -514,17 +575,34 @@ class PubInputSignals(Node):
 
     def logic_loop(self) -> None:
         """
-        Main logic loop for executing and publishing maneuvers.
+        Main control loop triggered by the ROS2 timer.
 
-        This callback is triggered periodically by the ROS2 timer. It manages:
-            - Selecting the appropriate maneuver based on 'maneuver_mode'.
-            - Publishing trajectory points to the 'CtlTraj' topic.
-            - Resetting the state when a maneuver completes.
+        Publishes maneuver data based on the current kill switch state and 
+        selected maneuver mode. Handles maneuver initialization, timing updates,
+        and automatic stopping when the end of a trajectory is reached.
+
+        Behavior
+        --------
+        - When kill switch is **high** (>= threshold):
+            Executes the selected maneuver.
+        - When kill switch is **low** (< threshold):
+            Stops maneuver execution and allows new selection.
 
         Notes
         -----
-        - The timer period can change dynamically to match the maneuver's sampling time.
+        - The timer period is dynamically updated to match the maneuver timestep.
+        - Resets the counter when execution stops.
         """
+        if (self.kill_switch < self.kill_switch_threshold):
+            # print("kill switch low")
+            if self.current_maneuver is not None:
+                self.maneuver_stop(completed=False)
+            else:
+                self.counter = self.initial_counter
+                self.run_switch = 1
+            return
+        
+        # print("kill switch high")
         if (self.run_switch == 0):
             # If run_switch == 0, we are NOT allowed to start another
             # maneuver. This occurs after a maneuver has completed.
@@ -616,8 +694,7 @@ class PubInputSignals(Node):
         -----
         - The published message corresponds to the current index ('self.counter')
             within the maneuver array.
-        - The timestamp is currently not set but can be added using 
-            'self.get_clock().now().to_msg()'.
+        - A timestamp is attached to each message via 'self.get_clock().now().to_msg()'.
         """
         if (self.current_maneuver is not None):
             """
@@ -640,11 +717,11 @@ class PubInputSignals(Node):
             '''
             """
             trajectory: CtlTraj = CtlTraj()
-            # trajectory.header.stamp = self.get_clock().now().to_msg()
-            trajectory.roll  = [self.current_maneuver[self.counter, 1]]
-            trajectory.pitch = [self.current_maneuver[self.counter, 2]]
-            trajectory.yaw   = [self.current_maneuver[self.counter, 3]]
-            trajectory.thrust = [0.5]
+            trajectory.header.stamp = self.get_clock().now().to_msg()
+            trajectory.roll  = [self.current_maneuver[self.counter, 1], self.current_maneuver[self.counter, 1]]
+            trajectory.pitch = [self.current_maneuver[self.counter, 2], self.current_maneuver[self.counter, 2]]
+            trajectory.yaw   = [self.current_maneuver[self.counter, 3], self.current_maneuver[self.counter, 3]]
+            trajectory.thrust = [0.5, 0.5]
             trajectory.idx = 0
             self.input_signal.publish(trajectory)
             # print(f"Publishing trajectory: {trajectory.roll}, {trajectory.pitch}, {trajectory.yaw}")
@@ -705,7 +782,7 @@ class PubInputSignals(Node):
                 f"MANEUVER STOPPED: "
                 f"{self.current_maneuver_name}"
             )
-        
+
         self.run_switch = 0
         self.counter = self.initial_counter
         self.current_maneuver = None

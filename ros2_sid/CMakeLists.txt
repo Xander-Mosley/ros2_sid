@@ -50,9 +50,8 @@ install(TARGETS
 ament_python_install_package(${PROJECT_NAME})
 # Install Python executables
 install(PROGRAMS
-  scripts/testingsignals_HINL.py
-  scripts/testingsignals_SINL.py
   scripts/run_mission_SITL.py
+  scripts/run_mission_HITL.py
   scripts/systemidentification_synced.py
   scripts/systemidentification_unsynced.py
   scripts/gcs_test_input.py
