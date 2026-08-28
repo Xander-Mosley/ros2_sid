@@ -23,12 +23,7 @@ from std_msgs.msg import Float64, Float64MultiArray, String
 from ardupilot_msgs.msg import Pitot, Propulsion, RcIn, RcOut
 from drone_interfaces.msg import CtlTraj, Telem
 
-from ros2_sid.signal_processing_utils import (
-    linear_diff, poly_diff,
-    EMALowPass, EMALowPass_VDT,
-    ButterworthLowPass, ButterworthLowPass_VDT,
-    ButterworthLowPass_2O_VDT, ButterworthHighPass_2O_VDT
-    )
+from ros2_sid.signal_processing_utils import ButterworthLowPass_2Ovdt
 
 
 class Filtering(Node):
@@ -51,14 +46,14 @@ class Filtering(Node):
         upper_cutoff = self.frequency_config["alias_frequency_hz"]
         
         self.imu_prev_nanosec = 0.0
-        self.rol_velo_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
-        self.pit_velo_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
-        self.yaw_velo_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
+        self.rol_velo_lpf = ButterworthLowPass_2Ovdt(upper_cutoff)
+        self.pit_velo_lpf = ButterworthLowPass_2Ovdt(upper_cutoff)
+        self.yaw_velo_lpf = ButterworthLowPass_2Ovdt(upper_cutoff)
 
         self.rcout_prev_nanosec = 0.0
-        self.ail_pwm_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
-        self.elv_pwm_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
-        self.rud_pwm_lpf = ButterworthLowPass_2O_VDT(upper_cutoff)
+        self.ail_pwm_lpf = ButterworthLowPass_2Ovdt(upper_cutoff)
+        self.elv_pwm_lpf = ButterworthLowPass_2Ovdt(upper_cutoff)
+        self.rud_pwm_lpf = ButterworthLowPass_2Ovdt(upper_cutoff)
 
 
     def setup_subs(self):

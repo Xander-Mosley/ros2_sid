@@ -218,7 +218,7 @@ class PubInputSignals(Node):
         if not mission_plan_file.exists():
             raise FileNotFoundError(
                 f"Mission plan not found:\n"
-                f"{mission_path_file}"
+                f"{mission_plan_file}"
             )
 
         with mission_plan_file.open("r", encoding="utf-8") as file:

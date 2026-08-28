@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-rt_ols.py — structures for real-time ordinary-least-squares
+realtime_ols_utils.py — structures for real-time ordinary-least-squares
 
 Description
 -----------
@@ -23,9 +23,9 @@ Date: 3 Jul 2025
 """
 
 
+import json
+from pathlib import Path
 import warnings
-import weakref
-from typing import Optional, Sequence, Union
 
 import numpy as np
 
@@ -35,18 +35,37 @@ __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
 
+PACKAGE_SUBROOT = Path(__file__).resolve().parents[1]
+SETUP_DIR = PACKAGE_SUBROOT / "ros2_sid" / "setup"
+FREQUENCY_CONFIG_FILE = SETUP_DIR / "frequency_config.json"
+
+
+def _load_frequency_config() -> dict:
+    """Load frequency configuration from frequency_config.json."""
+    try:
+        with FREQUENCY_CONFIG_FILE.open("r", encoding="utf-8") as file:
+            config = json.load(file)
+    except json.JSONDecodeError:
+        print("Error: frequency_config.json contains invalid JSON.")
+        raise
+    except OSError as error:
+        print(f"Error loading frequency configuration: {error}")
+        raise
+    return config
+
+
 class CircularBuffer:
-    def __init__(self, capacity: int):
+    def __init__(self, capacity: int, start_value: float = 0.0):
         self._capacity = capacity
         self._data = np.zeros(capacity, dtype=float)
         self._index = 0
         self._size = 0
+        self.fill_all(start_value)
 
     def add(self, value: float) -> None:
         self._data[self._index] = value
         self._index = (self._index + 1) % self._capacity
-        self._size = min(self._size, self._capacity)
-        self._size += 1
+        self._size = min(self._size + 1, self._capacity)
 
     @property
     def latest(self) -> float:
@@ -85,13 +104,17 @@ class CircularBuffer:
 
 
 class RecursiveFourierTransform:
+    config = _load_frequency_config()
+    default_frequencies: np.ndarray = np.asarray(
+        config['frequencies_hz'],
+        dtype=float,
+    )
     default_eff: float = 0.999
-    default_frequencies: np.ndarray = np.arange(0.1, 1.54, 0.04)
 
     def __init__(
             self,
-            eff: Optional[float] = None,
-            frequencies: Optional[np.ndarray] = None
+            eff: float | None = None,
+            frequencies: np.ndarray | None = None
             ) -> None:
         
         self._eff = self.default_eff if eff is None else eff
@@ -122,15 +145,12 @@ class RecursiveFourierTransform:
             raise RuntimeError("Call update_cp_time() before update_cp_timestep()")
         self._complex_products *= np.exp(self._omega * time_step)
 
-    def update_spectrum(
-            self,
-            timedata: float,
-            ) -> None:
-        
+    def update_spectrum(self,timedata: float,) -> np.ndarray:
         self._frequencydata = (
             self._eff * self._frequencydata +
             timedata * self._complex_products
             )
+        return self._frequencydata.copy()
     
     @property
     def current_spectrum(self) -> np.ndarray:
@@ -148,8 +168,8 @@ class RecursiveFourierTransform:
     def set_defaults(
             cls,
             *,
-            eff: Optional[float] = None,
-            frequencies: Optional[np.ndarray] = None
+            eff: float | None = None,
+            frequencies: np.ndarray | None = None
             ) -> None:
         
         if eff is not None:
@@ -174,8 +194,8 @@ class RegressorData:
     def __init__(
             self,
             delay: int = 0,
-            eff: Optional[float] = None,
-            frequencies: Optional[np.ndarray] = None
+            eff: float | None = None,
+            frequencies: np.ndarray | None = None
             ) -> None:
         
         self.timedata = CircularBuffer(capacity=delay+1)
@@ -202,9 +222,9 @@ def ordinary_least_squares(
 
 if (__name__ == '__main__'):
     warnings.warn(
-        "This script defines the structures necessary for real-time "
-        "ordinary-least-squares; and is intended to be imported, not "
-        "executed directly."
-        "\n\tImport this script using:\t"
-        "from rt_ols import StoredData, ModelStructure",
+        "\nThis script defines the structures necessary for real-time\n"
+        "ordinary-least-squares; and is intended to be imported, not\n"
+        "executed directly.\n"
+        "Import this script using:\n"
+        "\tfrom realtime_ols_utils import StoredData, ModelStructure",
         UserWarning)

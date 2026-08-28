@@ -399,14 +399,14 @@ def main(bag_file, topics_to_extract, output_directory):
     close(db_connection)
 
 if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2026-08-19_Preparing-for-Flying/rosbag2_2026_08_19-19_01_07_0.db3'
+    bag_file = '/develop_ws/bag_files/2026-08-20_Full-Sim-Flight/rosbag2_2026_08_20-18_05_23_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
         # '/mavros/imu/data_raw': 'imu_raw',
         # '/imu_filt': 'imu',
         '/ap/imu/experimental/data': 'imu',
-        '/imu_diff': 'imu_diff',
+        '/sid/differentiated/imu': 'imu_diff',
 
         # '/telem': 'telem',
 

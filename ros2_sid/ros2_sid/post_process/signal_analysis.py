@@ -44,6 +44,7 @@ Date: 30 Oct 2025
 
 
 from typing import Literal
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -56,8 +57,12 @@ from scipy.stats import gaussian_kde
 from ros2_sid.plotter_class import PlotFigure
 from ros2_sid.signal_processing_utils import (
     linear_diff, poly_diff,
-    EMALowPass, EMALowPass_VDT,
-    ButterworthLowPass, ButterworthLowPass_VDT, ButterworthLowPass_2O_VDT, ButterworthHighPass_2O_VDT
+    EMALowPass, EMALowPass_vdt,
+    ButterworthLowPass, ButterworthLowPass_vdt,
+    ButterworthLowPass_2O, ButterworthLowPass_2Ovdt,
+    ButterworthLowPass_4O, ButterworthLowPass_4OCascaded, ButterworthLowPass_4Ovdt, ButterworthLowPass_4OvdtCascaded,
+    ButterworthHighPass_2O, ButterworthHighPass_2Ovdt,
+    ButterworthHighPass_4O, ButterworthHighPass_4OCascaded, ButterworthHighPass_4Ovdt, ButterworthHighPass_4OvdtCascaded
     )
 from ros2_sid.realtime_ols_utils import RecursiveFourierTransform
 
@@ -65,6 +70,10 @@ from ros2_sid.realtime_ols_utils import RecursiveFourierTransform
 __all__ = ['rolling_diff', 'apply_filter', 'time_statistics', 'plot_analysis']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
+
+
+POST_PROCESS_DIR = Path(__file__).resolve().parent
+TOPIC_DATA_FILES = POST_PROCESS_DIR / "topic_data_files"
 
 
 def rolling_diff(
@@ -138,8 +147,14 @@ def apply_filter(
     time: np.ndarray,
     data: np.ndarray,
     filter_type: Literal[
-        "LPF", "LPF_VDT",
-        "Butter1", "Butter1_VDT", "Butter2_VDT", "ButterHP2_VDT"
+        "LPF", "LPFvdt",
+        "ButterLP", "ButterLPvdt",
+        "ButterLP2", "ButterLP2vdt",
+        "ButterLP4", "ButterLP4vdt",
+        "ButterLP4_cascade", "ButterLP4vdt_cascade",
+        "ButterHP2", "ButterHP2vdt",
+        "ButterHP4", "ButterHP4vdt",
+        "ButterHP4_cascade", "ButterHP4vdt_cascade"
         ],
     cutoff_frequency: float,
     num_dts: int = 1
@@ -196,36 +211,90 @@ def apply_filter(
         filt = EMALowPass(cutoff_frequency=cutoff_frequency, dt=dt, initial_value=data[0])
         for i, val in enumerate(data):
             filtered[i] = filt.update(val)
-
-    elif filter_type == "LPF_VDT":
-        filt = EMALowPass_VDT(cutoff_frequency=cutoff_frequency, num_dts=num_dts, initial_value=data[0])
+    elif filter_type == "LPFvdt":
+        filt = EMALowPass_vdt(cutoff_frequency=cutoff_frequency, num_dts=num_dts, initial_value=data[0])
         for i, val in enumerate(data):
             if i > 0:
                 dt_i = time[i] - time[i-1]
                 filtered[i] = filt.update(val, dt_i)
 
-    elif filter_type == "Butter1":
+    elif filter_type == "ButterLP":
         dt = time[1] - time[0]
         filt = ButterworthLowPass(cutoff_frequency=cutoff_frequency, dt=dt)
         for i, val in enumerate(data):
             filtered[i] = filt.update(val)
-
-    elif filter_type == "Butter1_VDT":
-        filt = ButterworthLowPass_VDT(cutoff_frequency=cutoff_frequency)
+    elif filter_type == "ButterLPvdt":
+        filt = ButterworthLowPass_vdt(cutoff_frequency=cutoff_frequency)
         for i, val in enumerate(data):
             if i > 0:
                 dt_i = time[i] - time[i-1]
                 filtered[i] = filt.update(val, dt_i)
 
-    elif filter_type == "Butter2_VDT":
-        filt = ButterworthLowPass_2O_VDT(cutoff_frequency=cutoff_frequency)
+    elif filter_type == "ButterLP2":
+        dt = time[1] - time[0]
+        filt = ButterworthLowPass_2O(cutoff_frequency=cutoff_frequency, dt=dt)
+        for i, val in enumerate(data):
+            filtered[i] = filt.update(val)
+    elif filter_type == "ButterLP2vdt":
+        filt = ButterworthLowPass_2Ovdt(cutoff_frequency=cutoff_frequency)
         for i, val in enumerate(data):
             if i > 0:
                 dt_i = time[i] - time[i-1]
                 filtered[i] = filt.update(val, dt_i)
 
-    elif filter_type == "ButterHP2_VDT":
-        filt = ButterworthHighPass_2O_VDT(cutoff_frequency=cutoff_frequency)
+    elif filter_type == "ButterLP4":
+        dt = time[1] - time[0]
+        filt = ButterworthLowPass_4O(cutoff_frequency=cutoff_frequency, dt=dt)
+        for i, val in enumerate(data):
+            filtered[i] = filt.update(val)
+    elif filter_type == "ButterLP4vdt":
+        filt = ButterworthLowPass_4Ovdt(cutoff_frequency=cutoff_frequency)
+        for i, val in enumerate(data):
+            if i > 0:
+                dt_i = time[i] - time[i-1]
+                filtered[i] = filt.update(val, dt_i)
+    elif filter_type == "ButterLP4_cascade":
+        dt = time[1] - time[0]
+        filt = ButterworthLowPass_4OCascaded(cutoff_frequency=cutoff_frequency, dt=dt)
+        for i, val in enumerate(data):
+            filtered[i] = filt.update(val)
+    elif filter_type == "ButterLP4vdt_cascade":
+        filt = ButterworthLowPass_4OvdtCascaded(cutoff_frequency=cutoff_frequency)
+        for i, val in enumerate(data):
+            if i > 0:
+                dt_i = time[i] - time[i-1]
+                filtered[i] = filt.update(val, dt_i)
+
+    elif filter_type == "ButterHP2":
+        dt = time[1] - time[0]
+        filt = ButterworthHighPass_2O(cutoff_frequency=cutoff_frequency, dt=dt)
+        for i, val in enumerate(data):
+            filtered[i] = filt.update(val)
+    elif filter_type == "ButterHP2vdt":
+        filt = ButterworthHighPass_2Ovdt(cutoff_frequency=cutoff_frequency)
+        for i, val in enumerate(data):
+            if i > 0:
+                dt_i = time[i] - time[i-1]
+                filtered[i] = filt.update(val, dt_i)
+
+    elif filter_type == "ButterHP4":
+        dt = time[1] - time[0]
+        filt = ButterworthHighPass_4O(cutoff_frequency=cutoff_frequency, dt=dt)
+        for i, val in enumerate(data):
+            filtered[i] = filt.update(val)
+    elif filter_type == "ButterHP4vdt":
+        filt = ButterworthHighPass_4Ovdt(cutoff_frequency=cutoff_frequency)
+        for i, val in enumerate(data):
+            if i > 0:
+                dt_i = time[i] - time[i-1]
+                filtered[i] = filt.update(val, dt_i)
+    elif filter_type == "ButterHP4_cascade":
+        dt = time[1] - time[0]
+        filt = ButterworthHighPass_4OCascaded(cutoff_frequency=cutoff_frequency, dt=dt)
+        for i, val in enumerate(data):
+            filtered[i] = filt.update(val)
+    elif filter_type == "ButterHP4vdt_cascade":
+        filt = ButterworthHighPass_4OvdtCascaded(cutoff_frequency=cutoff_frequency)
         for i, val in enumerate(data):
             if i > 0:
                 dt_i = time[i] - time[i-1]
@@ -686,34 +755,39 @@ def plot_timestep_kde(file_directory, file_name):
 
 
 def _analyze_input_signals():
-    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/saved_maneuver.csv"
-    file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/imu_data.csv"
-    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/altitude_data.csv"
-    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/imu_raw_data.csv"
-    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/telem_data.csv"
-    # file_path = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_rol_data.csv"
+    file_path = f"{TOPIC_DATA_FILES}/imu_data.csv"
+    # file_path = f"{TOPIC_DATA_FILES}/imu_raw_data.csv"
+    # file_path = f"{TOPIC_DATA_FILES}/telem_data.csv"
+    # file_path = f"{TOPIC_DATA_FILES}/altitude_data.csv"
+    # file_path = f"{TOPIC_DATA_FILES}/odometry_data.csv"
+    # file_path = f"{TOPIC_DATA_FILES}/ols_rol_data.csv"
 
     df = pd.read_csv(file_path)
     print("Columns in CSV:", df.columns.tolist())
     t = df['timestamp'].to_numpy()
-    x = df['gy'].to_numpy()
-    # x = df['ols_rol_regressor_1'].to_numpy()
+
+    x = df['gx'].to_numpy()
     # x = df['altitude'].to_numpy()
+    # x = df['airspeed'].to_numpy()
+    # x = df['ols_rol_regressor_1'].to_numpy()
 
     start, end = 0, 99999
     t = t[start:end]
     x = x[start:end]
+    # time_statistics(t)
     
-    x = apply_filter(t, x, 'Butter2_VDT', 7.5)
-    fx = apply_filter(t, x, 'ButterHP2_VDT', 0.05)
-    trend = apply_filter(t, x, 'Butter2_VDT', 0.05)
-    # xp = rolling_diff(t, fx, "poly")
-    # fxp = apply_filter(t, xp, 'Butter2_VDT', 7.5)
+    x = apply_filter(t, x, 'ButterLP2vdt', 7.5)
+    fx = apply_filter(t, x, 'ButterHP4vdt_cascade', 0.05)
+    trend = apply_filter(t, x, 'ButterLP4vdt_cascade', 0.05)
+    xp = rolling_diff(t, fx, "poly")
+    fxp = apply_filter(t, xp, 'ButterLP2vdt', 7.5)
 
-    time_statistics(t)
-    plt.plot(t, x)
-    plt.plot(t, fx)
-    plt.plot(t, trend)
+    plt.figure(1)
+    plt.plot(t, x, label="x")
+    plt.plot(t, fx, label="fx")
+    plt.plot(t, trend, label="trend")
+    plt.legend()
+
     # plot_analysis(t, x, fx)
     # plot_analysis(t, fx, xp)
     # plot_analysis(t, xp, fxp)
@@ -724,12 +798,12 @@ def _analyze_input_signals():
 def _analyze_regressor_spectrums():
     filepaths = {
         "z": {"tag": "gax",
-              "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_diff_data.csv"},
+              "filepath": f"{TOPIC_DATA_FILES}/imu_diff_data.csv"},
         "x": {
-            "1": {"tag": "gx", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/imu_data.csv"},
-            # "2": {"tag": "rcout_ch1", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/rcout_data.csv"},
-            # "3": {"tag": "diff_pressure", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_pressure_data.csv"},
-            # "4": {"tag": "airspeed", "filepath": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/odometry_data.csv"},
+            "1": {"tag": "gx", "filepath": f"{TOPIC_DATA_FILES}/imu_data.csv"},
+            "2": {"tag": "rcout_ch1", "filepath": f"{TOPIC_DATA_FILES}/rcout_data.csv"},
+            # "3": {"tag": "diff_pressure", "filepath": f"{TOPIC_DATA_FILES}/diff_pressure_data.csv"},
+            # "4": {"tag": "airspeed", "filepath": f"{TOPIC_DATA_FILES}/odometry_data.csv"},
         }
     }
 
@@ -739,7 +813,7 @@ def _analyze_regressor_spectrums():
         },
         "x": {
             "1": {"frequencies": None, "eff": 0.999},
-            # "2": {"frequencies": None, "eff": 0.969},
+            "2": {"frequencies": None, "eff": 0.969},
             # "3": {"frequencies": None, "eff": 0.999},
             # "4": {"frequencies": None, "eff": 0.999},
         }
@@ -749,7 +823,7 @@ def _analyze_regressor_spectrums():
         "z": {"name": "Roll Angular Acceleration", "unit": "m/s²"},
         "x": {
             "1": {"name": "Roll Angular Rate", "unit": "rad/s"},
-            # "2": {"name": "Aileron Command", "unit": "µs"},
+            "2": {"name": "Aileron Command", "unit": "µs"},
             # "3": {"name": "Diff Pressure", "unit": ""},
             # "4": {"name": "Airspeed", "unit": ""},
         }
@@ -760,19 +834,17 @@ def _analyze_regressor_spectrums():
     plt.show()
 
 def _analyze_time_steps():
-    file_directory = "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/"
+    file_directory = f"{TOPIC_DATA_FILES}/"
 
-    # plot_timestep_distribution(file_directory=file_directory, file_name="imu_data.csv")
-    # plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
+    plot_timestep_distribution(file_directory=file_directory, file_name="imu_data.csv")
+    plot_timestep_distribution(file_directory=file_directory, file_name="rcout_data.csv")
     
-    # plot_timestep_overtime(file_directory=file_directory, file_name="imu_data.csv")
+    plot_timestep_overtime(file_directory=file_directory, file_name="imu_data.csv")
     
     plot_timestep_kde(file_directory=file_directory, file_name="imu_data.csv")
-    # plot_timestep_kde(file_directory=file_directory, file_name="rcout_data.csv")
+    plot_timestep_kde(file_directory=file_directory, file_name="rcout_data.csv")
 
     plt.show()
-
-
 
 
 def main():

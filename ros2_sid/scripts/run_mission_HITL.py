@@ -68,7 +68,7 @@ from drone_interfaces.msg import CtlTraj, Telem
 from mavros_msgs.msg import RCIn
 from mavros.base import SENSOR_QOS
 
-from ardupilot_msgs.msg import RcIn
+# from ardupilot_msgs.msg import RcIn
 
 
 __all__ = ['PubInputSignals']
@@ -221,20 +221,20 @@ class PubInputSignals(Node):
         """
         self.kill_switch = float(sub_msg.channels[self.kill_switch_channel])
     
-    def dds_rcin_callback(self, sub_msg: RcIn) -> None:
-        """
-        Callback for RC input messages.
+    # def dds_rcin_callback(self, sub_msg: RcIn) -> None:
+    #     """
+    #     Callback for RC input messages.
 
-        Parameters
-        ----------
-        sub_msg : RcIn
-            DDS RC input message containing PWM values for all channels.
+    #     Parameters
+    #     ----------
+    #     sub_msg : RcIn
+    #         DDS RC input message containing PWM values for all channels.
 
-        Notes
-        -----
-        - Updates 'self.kill_switch' with the PWM value from the configured channel.
-        """
-        self.kill_switch = float(sub_msg.values[self.kill_switch_channel])
+    #     Notes
+    #     -----
+    #     - Updates 'self.kill_switch' with the PWM value from the configured channel.
+    #     """
+    #     self.kill_switch = float(sub_msg.values[self.kill_switch_channel])
 
 
     def load_current_mission(self) -> Path:
@@ -297,7 +297,7 @@ class PubInputSignals(Node):
         if not mission_plan_file.exists():
             raise FileNotFoundError(
                 f"Mission plan not found:\n"
-                f"{mission_path_file}"
+                f"{mission_plan_file}"
             )
 
         with mission_plan_file.open("r", encoding="utf-8") as file:
