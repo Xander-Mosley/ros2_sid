@@ -35,6 +35,11 @@ class SIDTerms(Node):
         f"{FILTER_PREFIX}rcout/ail": None,
         f"{FILTER_PREFIX}rcout/elv": None,
         f"{FILTER_PREFIX}rcout/rud": None,
+
+        f"{FILTER_PREFIX}pitot/dyn_pres": None,
+        f"{FILTER_PREFIX}pitot/airspeed": None,
+
+        f"{FILTER_PREFIX}propulsion/prop_speed": None,
     }
     DIFFER_TOPICS = {
         f"{DIFFER_PREFIX}imu/gx": None,
@@ -355,24 +360,123 @@ class SIDTerms(Node):
         This function is where the aircraft-specific system identification
         equations should be implemented.
         """
-        m = self.aircraft["geometry"]["mass_kg"]
-        b = self.aircraft["geometry"]["wing_span_m"]
-        S = self.aircraft["geometry"]["wing_area_m2"]
-        c = self.aircraft["geometry"]["mac_m"]
+        # TODO: Could simplify this process by not using the aircraft constants yet.
+        m = self.aircraft["geometry"]["mass_kg"] if self.aircraft["geometry"]["mass_kg"] is not None else 1.0
+        b = self.aircraft["geometry"]["wing_span_m"] if self.aircraft["geometry"]["wing_span_m"] is not None else 1.0
+        S = self.aircraft["geometry"]["wing_area_m2"] if self.aircraft["geometry"]["wing_area_m2"] is not None else 1.0
+        c = self.aircraft["geometry"]["mac_m"] if self.aircraft["geometry"]["mac_m"] is not None else 1.0
+
+        Ixx = self.aircraft["inertia"]["Ixx_kgm2"] if self.aircraft["inertia"]["Ixx_kgm2"] is not None else 1.0
+        Iyy = self.aircraft["inertia"]["Iyy_kgm2"] if self.aircraft["inertia"]["Iyy_kgm2"] is not None else 1.0
+        Izz = self.aircraft["inertia"]["Izz_kgm2"] if self.aircraft["inertia"]["Izz_kgm2"] is not None else 1.0
+        Ixy = self.aircraft["inertia"]["Ixy_kgm2"] if self.aircraft["inertia"]["Ixy_kgm2"] is not None else 1.0
+        Ixz = self.aircraft["inertia"]["Ixz_kgm2"] if self.aircraft["inertia"]["Ixz_kgm2"] is not None else 1.0
+        Iyz = self.aircraft["inertia"]["Iyz_kgm2"] if self.aircraft["inertia"]["Iyz_kgm2"] is not None else 1.0
+
+        p_dot = self.get_differ_stream("imu/gx")
+        q_dot = self.get_differ_stream("imu/gy")
+        r_dot = self.get_differ_stream("imu/gz")
 
         p = self.get_filter_stream("imu/gx")
         q = self.get_filter_stream("imu/gy")
         r = self.get_filter_stream("imu/gz")
+        
+        ail = self.get_filter_stream("rcout/ail")
+        elv = self.get_filter_stream("rcout/elv")
+        rud = self.get_filter_stream("rcout/rud")
+
+        dyn_pres = self.get_filter_stream("pitot/dyn_pres")
+        airspeed = self.get_filter_stream("pitot/airspeed")
+        
+        prop_speed = self.get_filter_stream("propulsion/prop_speed")
+
+        if dyn_pres is None or airspeed is None:
+            return
 
         if p is None or q is None or r is None:
             return
 
-        pq_value = p.value * q.value
-        pq_trend = p.trend * q.trend
+        lp_value = (0.5 * (b ** 2) * S / Ixx) * p.value * dyn_pres.trend / airspeed.trend
+        lp_trend = (0.5 * (b ** 2) * S / Ixx) * p.trend * dyn_pres.trend / airspeed.trend
         self.publish_term(
-            term_name="pq",
-            value=pq_value,
-            trend=pq_trend,
+            term_name="lp",
+            value=lp_value,
+            trend=lp_trend,
+        )
+
+        lr_value = (0.5 * (b ** 2) * S / Ixx) * r.value * dyn_pres.trend / airspeed.trend
+        lr_trend = (0.5 * (b ** 2) * S / Ixx) * r.trend * dyn_pres.trend / airspeed.trend
+        self.publish_term(
+            term_name="lr",
+            value=lr_value,
+            trend=lr_trend,
+        )
+
+        mq_value = (0.5 * (c ** 2) * S / Iyy) * q.value * dyn_pres.trend / airspeed.trend
+        mq_trend = (0.5 * (c ** 2) * S / Iyy) * q.trend * dyn_pres.trend / airspeed.trend
+        self.publish_term(
+            term_name="mq",
+            value=mq_value,
+            trend=mq_trend,
+        )
+
+        np_value = (0.5 * (b ** 2) * S / Izz) * p.value * dyn_pres.trend / airspeed.trend
+        np_trend = (0.5 * (b ** 2) * S / Izz) * p.trend * dyn_pres.trend / airspeed.trend
+        self.publish_term(
+            term_name="np",
+            value=np_value,
+            trend=np_trend,
+        )
+
+        nr_value = (0.5 * (b ** 2) * S / Izz) * r.value * dyn_pres.trend / airspeed.trend
+        nr_trend = (0.5 * (b ** 2) * S / Izz) * r.trend * dyn_pres.trend / airspeed.trend
+        self.publish_term(
+            term_name="nr",
+            value=nr_value,
+            trend=nr_trend,
+        )
+
+        if ail is None or elv is None or rud is None:
+            return
+
+        lail_value = (0.5 * b * S / Ixx) * ail.value * dyn_pres.trend
+        lail_trend = (0.5 * b * S / Ixx) * ail.trend * dyn_pres.trend
+        self.publish_term(
+            term_name="lail",
+            value=lail_value,
+            trend=lail_trend,
+        )
+
+        lrud_value = (0.5 * b * S / Ixx) * rud.value * dyn_pres.trend
+        lrud_trend = (0.5 * b * S / Ixx) * rud.trend * dyn_pres.trend
+        self.publish_term(
+            term_name="lrud",
+            value=lrud_value,
+            trend=lrud_trend,
+        )
+
+        melv_value = (0.5 * c * S / Iyy) * elv.value * dyn_pres.trend
+        melv_trend = (0.5 * c * S / Iyy) * elv.trend * dyn_pres.trend
+        self.publish_term(
+            term_name="melv",
+            value=melv_value,
+            trend=melv_trend,
+        )
+
+        nail_value = (0.5 * b * S / Iyy) * ail.value * dyn_pres.trend
+        nail_trend = (0.5 * b * S / Iyy) * ail.trend * dyn_pres.trend
+        self.publish_term(
+            term_name="nail",
+            value=nail_value,
+            trend=nail_trend,
+        )
+
+        nrud_value = (0.5 * b * S / Iyy) * rud.value * dyn_pres.trend
+        nrud_trend = (0.5 * b * S / Iyy) * rud.trend * dyn_pres.trend
+        self.publish_term(
+            term_name="nrud",
+            value=nrud_value,
+            trend=nrud_trend,
         )
 
         qr_value = q.value * r.value
@@ -383,17 +487,29 @@ class SIDTerms(Node):
             trend=qr_trend,
         )
 
-        qbS_value = q.value * (b ** 2) * S / 2
-        qbS_trend = q.trend * (b ** 2) * S / 2
+        pr_value = p.value * r.value
+        pr_trend = p.trend * r.trend
         self.publish_term(
-            term_name="qbS",
-            value=qbS_value,
-            trend=qbS_trend,
+            term_name="pr",
+            value=pr_value,
+            trend=pr_trend,
         )
 
-        p_dot = self.get_differ_stream("imu/gx")
-        q_dot = self.get_differ_stream("imu/gy")
-        r_dot = self.get_differ_stream("imu/gz")
+        pq_value = p.value * q.value
+        pq_trend = p.trend * q.trend
+        self.publish_term(
+            term_name="pq",
+            value=pq_value,
+            trend=pq_trend,
+        )
+
+        r2p2_value = (r.value ** 2) - (p.value ** 2)
+        r2p2_trend = (r.trend ** 2) - (p.trend ** 2)
+        self.publish_term(
+            term_name="r2p2",
+            value=r2p2_value,
+            trend=r2p2_trend,
+        )
 
         if p_dot is None or q_dot is None or r_dot is None:
             return
@@ -406,6 +522,32 @@ class SIDTerms(Node):
             trend=rpq_trend,
         )
 
+        pqr_value = p_dot.value - q.value * r.value
+        pqr_trend = p_dot.trend - q.trend * r.trend
+        self.publish_term(
+            term_name="pqr",
+            value=pqr_value,
+            trend=pqr_trend,
+        )
+
+        if prop_speed is None:
+            return
+        
+        omega_r_value = prop_speed.value * r.value
+        omega_r_trend = prop_speed.trend * r.trend
+        self.publish_term(
+            term_name="omega_r",
+            value=omega_r_value,
+            trend=omega_r_trend,
+        )
+        
+        omega_p_value = -prop_speed.value * q.value
+        omega_p_trend = -prop_speed.trend * q.trend
+        self.publish_term(
+            term_name="omega_p",
+            value=omega_p_value,
+            trend=omega_p_trend,
+        )
 
     def _add_term_publisher(
             self,

@@ -104,11 +104,6 @@ class SIDDiffer(Node):
         f"{FOURIER_PREFIX}imu/gx": {},
         f"{FOURIER_PREFIX}imu/gy": {},
         f"{FOURIER_PREFIX}imu/gz": {},
-
-        f"{FOURIER_PREFIX}rcout/ail": {},
-        f"{FOURIER_PREFIX}rcout/elv": {},
-        f"{FOURIER_PREFIX}rcout/rud": {},
-
         # f"{FOURIER_PREFIX}imu/gx": {
         #     "cutoff_frequency_hz": 0.0,
         # },
@@ -125,7 +120,7 @@ class SIDDiffer(Node):
 
     TOPIC_DISCOVERY_PERIOD = 1.0
     
-    LOWPASS_FILTER = True
+    USE_POSTFILTER = True
 
 
     def __init__(self, ns=''):
@@ -148,10 +143,16 @@ class SIDDiffer(Node):
                 self.discover_topics,
             )
 
+        default_cutoff = (
+            f", so default_cutoff_frequency={self.default_cutoff_frequency:.3f} Hz"
+            if self.USE_POSTFILTER
+            else ""
+        )
         self.get_logger().info(
             "SID differ node initialized"
             f" | dynamic_subs={self.DYNAMIC_SUBS}"
-            f" | default_cutoff_frequency={self.default_cutoff_frequency:.3f} Hz"
+            f" | use_postfilter={self.USE_POSTFILTER}"
+            f"{default_cutoff}"
         )
 
     def load_frequency_config(self) -> None:
@@ -265,7 +266,7 @@ class SIDDiffer(Node):
 
         self.stream_states[fourier_topic] = DifferStreamState.create()
 
-        if self.LOWPASS_FILTER:
+        if self.USE_POSTFILTER:
             try:
                 self.filters[fourier_topic] = {
                     "value": ButterworthLowPass_2Ovdt(cutoff_frequency),
@@ -299,7 +300,7 @@ class SIDDiffer(Node):
         source = "static" if static else "dynamic"
         filter_status = (
             f"{cutoff_frequency:.3f} Hz"
-            if self.LOWPASS_FILTER
+            if self.USE_POSTFILTER
             else "disabled"
         )
         self.get_logger().info(
@@ -349,7 +350,7 @@ class SIDDiffer(Node):
             )
             return
 
-        if self.LOWPASS_FILTER:
+        if self.USE_POSTFILTER:
             try:
                 value_derivative = self.filters[fourier_topic]["value"].update(value_derivative, dt)
                 trend_derivative = self.filters[fourier_topic]["trend"].update(trend_derivative, dt)

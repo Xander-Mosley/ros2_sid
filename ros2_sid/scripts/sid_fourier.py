@@ -25,11 +25,6 @@ class SIDFourier(Node):
         f"{FILTER_PREFIX}imu/gx": {},
         f"{FILTER_PREFIX}imu/gy": {},
         f"{FILTER_PREFIX}imu/gz": {},
-
-        f"{FILTER_PREFIX}rcout/ail": {},
-        f"{FILTER_PREFIX}rcout/elv": {},
-        f"{FILTER_PREFIX}rcout/rud": {},
-
         # f"{FILTER_PREFIX}imu/gx": {
         #     "eff": 0.98,
         #     "frequencies": np.array([0.1, 0.2, 0.3]),
@@ -42,7 +37,12 @@ class SIDFourier(Node):
         # },
     }
     BLACK_TOPICS = [
-        # f"{FILTER_PREFIX}rcout/ail",
+        f"{FILTER_PREFIX}rcout/ail",
+        f"{FILTER_PREFIX}rcout/elv",
+        f"{FILTER_PREFIX}rcout/rud",
+        f"{FILTER_PREFIX}pitot/dyn_pres",
+        f"{FILTER_PREFIX}pitot/airspeed",
+        f"{FILTER_PREFIX}propulsion/prop_speed",
         # f"{TERMS_PREFIX}roll/term0",
     ]
 
@@ -50,7 +50,7 @@ class SIDFourier(Node):
         "drone_interfaces/msg/SysIdDataStream"
     )
 
-    DYNAMIC_SUBS = False
+    DYNAMIC_SUBS = True
 
     TOPIC_DISCOVERY_PERIOD = 1.0
 

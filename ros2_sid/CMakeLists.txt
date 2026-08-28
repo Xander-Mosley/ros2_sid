@@ -53,15 +53,14 @@ install(PROGRAMS
   scripts/gcs_test_input.py
   scripts/run_mission_SITL.py
   scripts/run_mission_HITL.py
-  scripts/run_topic_parser.py
-  scripts/run_sid_filter.py
-  scripts/run_sid_fourier.py
-  scripts/run_sid_differ.py
-  scripts/run_term_creation.py
-  scripts/run_system_identification.py
-  scripts/imufiltering.py
-  scripts/imudifferentiating.py
-  scripts/systemidentification.py
+  scripts/sid_filter.py
+  scripts/sid_fourier.py
+  scripts/sid_differ.py
+  scripts/sid_term_creation.py
+  scripts/system_identification.py
+  scripts/old_imufiltering.py
+  scripts/old_imudifferentiating.py
+  scripts/old_systemidentification.py
   # scripts/client_member_function.py
   # scripts/service_member_function.py
   DESTINATION lib/${PROJECT_NAME}

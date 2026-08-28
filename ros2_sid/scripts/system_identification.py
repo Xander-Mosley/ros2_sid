@@ -28,25 +28,17 @@ class OLSResult:
 class SIDols(Node):
     FOURIER_PREFIX = "/sid/fourier/"
     DIFFER_PREFIX = "/sid/differ/"
-    OLS_PREFIX = "/sid/ols/"
+    OLS_PREFIX = "/ols_"
 
     FOURIER_TOPICS = {
         f"{FOURIER_PREFIX}imu/gx": None,
         f"{FOURIER_PREFIX}imu/gy": None,
         f"{FOURIER_PREFIX}imu/gz": None,
-
-        f"{FOURIER_PREFIX}rcout/ail": None,
-        f"{FOURIER_PREFIX}rcout/elv": None,
-        f"{FOURIER_PREFIX}rcout/rud": None,
     }
     DIFFER_TOPICS = {
         f"{DIFFER_PREFIX}imu/gx": None,
         f"{DIFFER_PREFIX}imu/gy": None,
         f"{DIFFER_PREFIX}imu/gz": None,
-
-        f"{DIFFER_PREFIX}rcout/ail": None,
-        f"{DIFFER_PREFIX}rcout/elv": None,
-        f"{DIFFER_PREFIX}rcout/rud": None,
     }
     BLACK_TOPICS = [
         f"{FOURIER_PREFIX}rcout/ail",
@@ -57,7 +49,7 @@ class SIDols(Node):
         "drone_interfaces/msg/SysIdDataStream"
     )
 
-    DYNAMIC_SUBS = False
+    DYNAMIC_SUBS = True
 
     TOPIC_DISCOVERY_PERIOD = 1.0
     OLS_PUBLISH_PERIOD = 0.04
@@ -371,20 +363,23 @@ class SIDols(Node):
         should remain in the time domain.
         """
         p_dot = self.get_differ_stream("imu/gx")
-        p = self.get_fourier_stream("imu/gx")
-        ail = self.get_fourier_stream("rcout/ail")
+        lp = self.get_fourier_stream("lp")
+        lail = self.get_fourier_stream("lail")
+        qr = self.get_fourier_stream("qr")
+        rpq = self.get_fourier_stream("rpq")
 
-        if p_dot is not None and p is not None and ail is not None:
-            result = self.frequency_ols(
-                measured_output=p_dot,
-                regressors=[p, ail]
-            )
-            self.publish_ols(
-                ols_name="roll_small",
-                measured_output=result.measured_output,
-                regressor=result.regressors,
-                parameter=result.parameters,
-            )
+        if p_dot is None or lp is None or lail is None or qr is None or rpq is None:
+            return
+        result = self.frequency_ols(
+            measured_output=p_dot,
+            regressors=[lp, lail, qr, rpq]
+        )
+        self.publish_ols(
+            ols_name="rol",
+            measured_output=result.measured_output,
+            regressor=result.regressors,
+            parameter=result.parameters,
+        )
 
 
     def _add_ols_publisher(
