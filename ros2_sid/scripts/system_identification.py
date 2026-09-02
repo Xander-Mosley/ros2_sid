@@ -2,8 +2,10 @@
 
 from copy import copy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Dict
 
+import json
 import numpy as np
 
 import rclpy
@@ -26,14 +28,25 @@ class OLSResult:
 
 
 class SIDols(Node):
+    CURRENT_AIRCRAFT_FILE = (
+        Path(__file__).resolve().parents[1]
+        / "ros2_sid"
+        / "setup"
+        / "aircraft_library"
+        / "current_aircraft.json"
+    )
+
     FOURIER_PREFIX = "/sid/fourier/"
     DIFFER_PREFIX = "/sid/differ/"
-    OLS_PREFIX = "/ols_"
+    OLS_PREFIX = "/sid/ols/"
 
     FOURIER_TOPICS = {
         f"{FOURIER_PREFIX}imu/gx": None,
         f"{FOURIER_PREFIX}imu/gy": None,
         f"{FOURIER_PREFIX}imu/gz": None,
+        f"{FOURIER_PREFIX}rcout/ail": None,
+        f"{FOURIER_PREFIX}rcout/elv": None,
+        f"{FOURIER_PREFIX}rcout/rud": None,
     }
     DIFFER_TOPICS = {
         f"{DIFFER_PREFIX}imu/gx": None,
@@ -41,8 +54,8 @@ class SIDols(Node):
         f"{DIFFER_PREFIX}imu/gz": None,
     }
     BLACK_TOPICS = [
-        f"{FOURIER_PREFIX}rcout/ail",
-        f"{DIFFER_PREFIX}imu/gx",
+        # f"{FOURIER_PREFIX}rcout/ail",
+        # f"{DIFFER_PREFIX}imu/gx",
     ]
 
     SYS_ID_DATA_STREAM_TYPE = (
@@ -63,6 +76,9 @@ class SIDols(Node):
         self.fourier_streams: Dict[str, SysIdDataStream] = {}
         self.differ_streams: Dict[str, SysIdDataStream] = {}
 
+        self.aircraft: Dict = {}
+        self.load_current_aircraft()
+
         self.add_static_topics()
 
         if self.DYNAMIC_SUBS:
@@ -80,6 +96,27 @@ class SIDols(Node):
             "SID ols node initialized"
             f" | dynamic_subs={self.DYNAMIC_SUBS}"
         )
+
+    def load_current_aircraft(self) -> None:
+        """
+        Load the current aircraft configuration from JSON.
+        """
+        try:
+            with self.CURRENT_AIRCRAFT_FILE.open("r", encoding="utf-8") as file:
+                self.aircraft = json.load(file)
+        except FileNotFoundError:
+            self.get_logger().error(
+                f"Current aircraft file not found: "
+                f"{self.CURRENT_AIRCRAFT_FILE}"
+            )
+        except json.JSONDecodeError as error:
+            self.get_logger().error(
+                f"Invalid JSON in current aircraft file: {error}"
+            )
+        except OSError as error:
+            self.get_logger().error(
+                f"Unable to read current aircraft file: {error}"
+            )
 
 
     def add_static_topics(self) -> None:
@@ -362,24 +399,84 @@ class SIDols(Node):
         The resulting measured output and regressors published by publish_ols()
         should remain in the time domain.
         """
-        p_dot = self.get_differ_stream("imu/gx")
-        lp = self.get_fourier_stream("lp")
-        lail = self.get_fourier_stream("lail")
-        qr = self.get_fourier_stream("qr")
-        rpq = self.get_fourier_stream("rpq")
+        m = self.aircraft["geometry"]["mass_kg"] if self.aircraft["geometry"]["mass_kg"] is not None else 1.0
+        b = self.aircraft["geometry"]["wing_span_m"] if self.aircraft["geometry"]["wing_span_m"] is not None else 1.0
+        S = self.aircraft["geometry"]["wing_area_m2"] if self.aircraft["geometry"]["wing_area_m2"] is not None else 1.0
+        c = self.aircraft["geometry"]["mac_m"] if self.aircraft["geometry"]["mac_m"] is not None else 1.0
 
-        if p_dot is None or lp is None or lail is None or qr is None or rpq is None:
-            return
-        result = self.frequency_ols(
-            measured_output=p_dot,
-            regressors=[lp, lail, qr, rpq]
-        )
-        self.publish_ols(
-            ols_name="rol",
-            measured_output=result.measured_output,
-            regressor=result.regressors,
-            parameter=result.parameters,
-        )
+        Ixx = self.aircraft["inertia"]["Ixx_kgm2"] if self.aircraft["inertia"]["Ixx_kgm2"] is not None else 1.0
+        Iyy = self.aircraft["inertia"]["Iyy_kgm2"] if self.aircraft["inertia"]["Iyy_kgm2"] is not None else 1.0
+        Izz = self.aircraft["inertia"]["Izz_kgm2"] if self.aircraft["inertia"]["Izz_kgm2"] is not None else 1.0
+        Ixy = self.aircraft["inertia"]["Ixy_kgm2"] if self.aircraft["inertia"]["Ixy_kgm2"] is not None else 1.0
+        Ixz = self.aircraft["inertia"]["Ixz_kgm2"] if self.aircraft["inertia"]["Ixz_kgm2"] is not None else 1.0
+        Iyz = self.aircraft["inertia"]["Iyz_kgm2"] if self.aircraft["inertia"]["Iyz_kgm2"] is not None else 1.0
+
+        p_dot = self.get_differ_stream("imu/gx")
+        q_dot = self.get_differ_stream("imu/gy")
+        r_dot = self.get_differ_stream("imu/gz")
+        p = self.get_fourier_stream("imu/gx")
+        q = self.get_fourier_stream("imu/gy")
+        r = self.get_fourier_stream("imu/gz")
+        ail = self.get_fourier_stream("rcout/ail")
+        elv = self.get_fourier_stream("rcout/elv")
+        rud = self.get_fourier_stream("rcout/rud")
+
+        if p_dot is not None and p is not None and ail is not None:
+            result = self.frequency_ols(
+                measured_output=p_dot,
+                regressors=[p, ail]
+            )
+            self.publish_ols(
+                ols_name="rol",
+                measured_output=result.measured_output,
+                regressor=result.regressors,
+                parameter=result.parameters,
+            )
+        if q_dot is not None and q is not None and elv is not None:
+            result = self.frequency_ols(
+                measured_output=q_dot,
+                regressors=[q, elv]
+            )
+            self.publish_ols(
+                ols_name="pit",
+                measured_output=result.measured_output,
+                regressor=result.regressors,
+                parameter=result.parameters,
+            )
+        if r_dot is not None and r is not None and rud is not None:
+            result = self.frequency_ols(
+                measured_output=r_dot,
+                regressors=[r, rud]
+            )
+            self.publish_ols(
+                ols_name="yaw",
+                measured_output=result.measured_output,
+                regressor=result.regressors,
+                parameter=result.parameters,
+            )
+        
+        nd_p = self.get_fourier_stream("non_dim/p")
+        nd_r = self.get_fourier_stream("non_dim/r")
+        nd_ail = self.get_fourier_stream("non_dim/ail")
+        nd_rud = self.get_fourier_stream("non_dim/rud")
+        nd_qr = self.get_fourier_stream("non_dim/qr")
+        nd_rpq = self.get_fourier_stream("non_dim/rpq")
+
+        if p_dot is not None and nd_p is not None and nd_r is not None and nd_ail is not None and nd_rud is not None and nd_qr is not None and nd_rpq is not None:
+            result = self.frequency_ols(
+                measured_output=p_dot,
+                regressors=[nd_p, nd_r, nd_ail, nd_rud, nd_qr, nd_rpq]
+            )
+            result.parameters[0] = (0.5 * S * b ** 2) / Ixx * result.parameters[0]
+            result.parameters[1] = (0.5 * S * b ** 2) / Ixx * result.parameters[1]
+            result.parameters[2] = (S * b) / Ixx * result.parameters[2]
+            result.parameters[3] = (S * b) / Ixx * result.parameters[3]
+            self.publish_ols(
+                ols_name="nondim/rol",
+                measured_output=result.measured_output,
+                regressor=result.regressors,
+                parameter=result.parameters,
+            )
 
 
     def _add_ols_publisher(

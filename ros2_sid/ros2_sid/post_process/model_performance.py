@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from pathlib import Path
 import re
 from typing import Any, Dict, Optional, Sequence, Union
 
@@ -16,10 +17,17 @@ from matplotlib.patches import Patch
 from scipy.stats import gaussian_kde
 
 from ros2_sid.plotter_class import PlotFigure
-from ros2_sid.model_processing_utils import (extract_model, process_models,
-    sliding_adjusted_cod, sliding_vif_cod, sliding_svd_cond, sliding_correlation_matrix)
+from ros2_sid.model_processing_utils import (
+    extract_model, process_models,
+    sliding_adjusted_cod, sliding_vif_cod,
+    sliding_svd_cond, sliding_correlation_matrix
+)
 
 ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
+
+
+POST_PROCESS_DIR = Path(__file__).resolve().parent
+DATA_FILE_DIR = POST_PROCESS_DIR / "topic_data_files"
 
 
 # __all__ = ['']
@@ -831,44 +839,6 @@ def plot_correlation(
     return figures
 
 
-def plot_filter_duration(
-        dataframe: pd.DataFrame,
-        start_time: Optional[float] = None,
-        end_time: Optional[float] = None,
-        plot_labels: Optional[dict] = None
-        ) -> PlotFigure:
-
-    if dataframe is None or dataframe.empty or 'timestamp' not in dataframe.columns:
-        raise ValueError("Invalid DataFrame provided.")
-    if plot_labels is None:
-        plot_labels = {}
-        
-    if start_time is not None:
-        dataframe = dataframe[dataframe["timestamp"] >= start_time]
-    if end_time is not None:
-        dataframe = dataframe[dataframe["timestamp"] <= end_time]
-
-    time = dataframe["timestamp"]
-    elapsed = dataframe["elapsed"] * 1000
-    ema_elapsed = dataframe["ema_elapsed"] * 1000
-    max_elapsed = dataframe["max_elapsed"] * 1000
-    min_elapsed = dataframe["min_elapsed"] * 1000
-
-    fig = PlotFigure(nrows=1, ncols=1, figsize=(12, 6), sharex=True)
-    base_title = "Filter Performance - Duration"
-    subtitle = plot_labels.get("subtitle", "Last Test")
-    fig.set_figure_title(f"{base_title}\n{subtitle}" if subtitle else base_title)
-
-    fig.define_subplot(0, title="Filter Duration Over Time", ylabel="Time\n[ms]", xlabel="Time [s]")
-    fig.add_scatter(0, time, elapsed, color='tab:blue')
-    fig.add_data(0, time, ema_elapsed, color='black')
-    fig.add_fill_between(0, time, max_elapsed, min_elapsed, "Bounds", color="tab:blue")
-
-    fig.set_all_legends(loc='upper right', fontsize='medium')
-    fig.set_all_grids(True, alpha=0.5)
-    return fig
-
-
 def polor_plot(
         dataframes: dict[str, pd.DataFrame],
         *,
@@ -929,97 +899,105 @@ def polor_plot(
     return fig
 
 
-def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
-    model_dataframes: Dict[str, pd.DataFrame] = {}
+def load_models(
+    csv_files: dict[str, dict[str, str]],
+    ) -> dict[str, pd.DataFrame]:
+    models = {}
     for name, info in csv_files.items():
         try:
-            df = pd.read_csv(info["path"])
-            model_dataframes[name] = extract_model(df, info["prefix"])
+            dataframe = pd.read_csv(info["path"])
+            models[name] = extract_model(dataframe, info["prefix"])
         except Exception as error:
-            raise RuntimeError(f"Failed processing '{name}'") from error
-    processed_models = process_models(model_dataframes)
+            raise RuntimeError(
+                f"Failed processing model '{name}'."
+            ) from error
+    return process_models(models)
 
-    if not separate:
-        # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-        plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-        plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_error_kde(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
-        plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions
+def generate_combined_plots(
+    models: dict[str, pd.DataFrame],
+    *,
+    start_time: float | None = None,
+    end_time: float | None = None,
+    plot_labels: dict | None = None,
+    ) -> None:
+    # plot_parameter_data(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    plot_regressor_data(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    plot_confidence(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    # plot_percent_confidence(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    plot_error(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    plot_error_kde(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    plot_fit(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    plot_conditioning(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+    plot_correlation(models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+
+def generate_individual_plots(
+    models: dict[str, pd.DataFrame],
+    *,
+    start_time: float | None = None,
+    end_time: float | None = None,
+    plot_labels: dict | None = None,
+    ) -> None:
+    for name, dataframe in models.items():
+        model = {name: dataframe}
+        # plot_parameter_data(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_regressor_data(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_confidence(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_percent_confidence(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        plot_error(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_error_kde(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_fit(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_conditioning(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        # plot_correlation(model, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+
+def run_analysis(
+    csv_files: dict[str, dict[str, str]],
+    *,
+    start_time: float | None = None,
+    end_time: float | None = None,
+    plot_labels: dict | None = None,
+    mode: str = "individual",
+    ) -> None:
+    models = load_models(csv_files)
+    if mode == "individual":
+        generate_individual_plots(
+            models,
+            start_time=start_time,
+            end_time=end_time,
+            plot_labels=plot_labels,
+        )
+    elif mode == "combined":
+        generate_combined_plots(
+            models,
+            start_time=start_time,
+            end_time=end_time,
+            plot_labels=plot_labels,
+        )
     else:
-        for i, (name, df) in enumerate(processed_models.items()):
-            # plot_parameter_data({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_regressor_data({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            plot_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_percent_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            plot_error({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_error_kde({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_fit({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_conditioning({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_correlation({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # polor_plot({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-    
+        print(f"ERROR: Provided mode ({mode}) not allowed.")
     plt.show()
 
-def main():
+def main() -> None:
     csv_files = {
-        "Model": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_rol_data.csv"},
-        # "Small Roll Nondim": {"prefix": "ols_rol_nondim_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_data.csv"},
-        # "Small SSA Roll": {"prefix": "ols_rol_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_ssa_data.csv"},
-        # "Large Roll": {"prefix": "ols_rol_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_data.csv"},
-        # "Large SSA Roll": {"prefix": "ols_rol_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_ssa_data.csv"},
-        # "Pitch": {"prefix": "ols_pit_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_data.csv"},
-        # "AOA Pitch": {"prefix": "ols_pit_aoa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_aoa_data.csv"},
-        # "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
-        # "Small SSA Yaw": {"prefix": "ols_yaw_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_ssa_data.csv"},
-        # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
-        # "Large SSA Yaw": {"prefix": "ols_yaw_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_ssa_data.csv"},
-
-        # "Old Small Roll Nondim": {"prefix": "ols_rol_nondim_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_old_data.csv"},
+        "Roll": {"prefix": "rol_", "path": DATA_FILE_DIR / "rol_data.csv"},
+        # "Pitch": {"prefix": "pit_", "path": DATA_FILE_DIR / "pit_data.csv"},
+        # "Yaw": {"prefix": "yaw_", "path": DATA_FILE_DIR / "yaw_data.csv"},
+        # "Non-Dim Roll": {"prefix": "rol_nondim_", "path": DATA_FILE_DIR / "rol_nondim_data.csv"},
     }
-
-    start_time = 0
-    end_time = 9999
 
     plot_labels = {
-        "title": " ",
-        "subtitle": " ",
-        # "time": "Time [s]",
-
-        # "terms":{
-        #     0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
-        #     1: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     2: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        #     # 3: {"term": "Side Slip Angle", "units": "[deg]", "param_units": "[rad/s²-deg]"},
-        #     # 4: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     # 5: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        # },
-        # "terms":{
-        #     0: {"term": "Pitch Acceleration", "units": "[rad/s²]"},
-        #     1: {"term": "Pitch Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     2: {"term": "Elevator Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        #     3: {"term": "Angle of Attack", "units": "[deg]", "param_units": "[rad/s²-deg]"},
-        # },
-        # "terms":{
-        #     0: {"term": "Yaw Acceleration", "units": "[rad/s²]"},
-        #     1: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     2: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        #     # 3: {"term": "Side Slip Angle", "units": "[deg]", "param_units": "[rad/s²-deg]"},
-        #     # 4: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     # 5: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        # },
+        "title": "",
+        "subtitle": "",
     }
 
-    plot_models(csv_files, start_time, end_time, plot_labels, separate=False)
+    run_analysis(
+        csv_files,
+        start_time=12.0,
+        end_time=25.0,
+        plot_labels=plot_labels,
+        # mode="individual",
+        mode="combined",
+    )
 
-    # TODO: Move filter duration to signal_analysis
-    # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))
-    # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_duration_data.csv"))
-    # plt.show()
 
 if __name__ == "__main__":
     main()
