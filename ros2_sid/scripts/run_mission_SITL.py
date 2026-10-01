@@ -702,7 +702,7 @@ class PubInputSignals(Node):
             )
         else:
             print(
-                f"MANEUVER STOPPED: "
+                f"MANEUVER CANCELED: "
                 f"{self.current_maneuver_name}"
             )
         

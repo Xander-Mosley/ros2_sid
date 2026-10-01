@@ -455,12 +455,12 @@ class SIDols(Node):
                 parameter=result.parameters,
             )
         
-        nd_p = self.get_fourier_stream("non_dim/p")
-        nd_r = self.get_fourier_stream("non_dim/r")
-        nd_ail = self.get_fourier_stream("non_dim/ail")
-        nd_rud = self.get_fourier_stream("non_dim/rud")
-        nd_qr = self.get_fourier_stream("non_dim/qr")
-        nd_rpq = self.get_fourier_stream("non_dim/rpq")
+        nd_p = self.get_fourier_stream("nondim/p")
+        nd_r = self.get_fourier_stream("nondim/r")
+        nd_ail = self.get_fourier_stream("nondim/ail")
+        nd_rud = self.get_fourier_stream("nondim/rud")
+        nd_qr = self.get_fourier_stream("nondim/qr")
+        nd_rpq = self.get_fourier_stream("nondim/rpq")
 
         if p_dot is not None and nd_p is not None and nd_r is not None and nd_ail is not None and nd_rud is not None and nd_qr is not None and nd_rpq is not None:
             result = self.frequency_ols(

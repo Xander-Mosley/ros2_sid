@@ -68,9 +68,9 @@ def plot_overall(
     df = preprocess(dataframes[0])
     t = df["timestamp"]
     fig.define_subplot(0, title="Control Commands Over Time", ylabel="PWM Signal")
-    fig.add_data(0, t, df["rcout_ch1"], label="Aileron", color="tab:blue")
-    fig.add_data(0, t, df["rcout_ch2"], label="Elevator", color="tab:red")
-    fig.add_data(0, t, df["rcout_ch4"], label="Rudder", color="tab:green")
+    fig.add_data(0, t, df["rcout_ch5"], label="Aileron", color="tab:blue")
+    fig.add_data(0, t, df["rcout_ch7"], label="Elevator", color="tab:red")
+    fig.add_data(0, t, df["rcout_ch8"], label="Rudder", color="tab:green")
     fig.add_data(0, t, df["rcout_ch3"], label="Thrust", color="black")
 
     # ---------- Subplot 1: Rates ----------
@@ -124,9 +124,9 @@ def plot_controls(
         dataframe = dataframe[dataframe["timestamp"] <= end_time]
 
     time = dataframe["timestamp"]
-    ail_def = dataframe["rcout_ch1"]
-    elv_def = dataframe["rcout_ch2"]
-    rud_def = dataframe["rcout_ch4"]
+    ail_def = dataframe["rcout_ch5"]
+    elv_def = dataframe["rcout_ch7"]
+    rud_def = dataframe["rcout_ch8"]
     thrust = dataframe["rcout_ch3"]
 
     fig = PlotFigure(nrows=4, ncols=1, figsize=(12, 6), sharex=True)
@@ -422,7 +422,6 @@ def flight_data(folder_path, start_time, end_time):
          pd.read_csv(f"{folder_path}altitude_data.csv")
          ], start_time, end_time)
     # plot_controls(pd.read_csv(f"{folder_path}rcout_data.csv"), start_time, end_time)
-    # plot_rates(pd.read_csv(f"{folder_path}telem_data.csv"), start_time, end_time)
     # plot_rates(pd.read_csv(f"{folder_path}imu_data.csv"), start_time, end_time)
     # plot_raw_rates(pd.read_csv(f"{folder_path}imu_raw_data.csv"), start_time, end_time)
     # plot_attitude(pd.read_csv(f"{folder_path}odometry_data.csv"), start_time, end_time)

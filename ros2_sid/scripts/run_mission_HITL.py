@@ -158,7 +158,7 @@ class PubInputSignals(Node):
         self.setup_subs()
         self.kill_switch: float = 0.0
         self.rc_bias: int = 1   # Channel 1 starts at index 0
-        self.kill_switch_channel: int = 9 - self.rc_bias
+        self.kill_switch_channel: int = 8 - self.rc_bias
         self.kill_switch_threshold: float = 1550
         
         # Execution States
@@ -779,7 +779,7 @@ class PubInputSignals(Node):
             )
         else:
             print(
-                f"MANEUVER STOPPED: "
+                f"MANEUVER CANCELED: "
                 f"{self.current_maneuver_name}"
             )
 

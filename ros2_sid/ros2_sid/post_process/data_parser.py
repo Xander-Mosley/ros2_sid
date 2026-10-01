@@ -478,32 +478,36 @@ def topic_extractor(bag_file, topics_to_extract):
     close(db_connection)
 
 def main() -> None:
-    bag_file = '/develop_ws/bag_files/2026-08-31_Testing-Nondim-Code/rosbag2_2026_08_31-15_24_34_0.db3'
+    bag_file = '/develop_ws/bag_files/2026-09-24_Amp15-Replay1/rosbag2_2026_09_24-19_15_52_0.db3'
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
-        # '/mavros/imu/data_raw': 'imu_raw',
-        # '/mavros/imu/diff_pressure': 'diff_pressure',
-        # '/mavros/imu/static_pressure': 'static_pressure',
-        # '/mavros/imu/temperature_baro': 'temperature_baro',
-        # '/mavros/local_position/odom': 'odometry',
-        # '/mavros/global_position/global': 'gps',
-        # '/mavros/global_position/raw/gps_vel': 'gps_vel',
-        # '/mavros/global_position/rel_alt': 'altitude',
+        '/mavros/imu/data_raw': 'imu_raw',
+        '/mavros/imu/diff_pressure': 'diff_pressure',
+        '/mavros/imu/static_pressure': 'static_pressure',
+        '/mavros/imu/temperature_baro': 'temperature_baro',
+        '/mavros/local_position/odom': 'odometry',
+        '/mavros/global_position/global': 'gps',
+        '/mavros/global_position/raw/gps_vel': 'gps_vel',
+        '/mavros/global_position/rel_alt': 'altitude',
         # '/mavros/rc/in': 'rcin',
         # '/mavros/rc/out': 'rcout',
 
-        # '/trajectory': 'trajectory',
+        '/trajectory': 'trajectory',
         # '/telem': 'telem',    # Not working currently.
 
-        # '/ap/imu/experimental/data': 'imu',
-        # '/ap/rcout': 'rcout',
-        # '/ap/rcin': 'rcin',
+        '/ap/imu/experimental/data': 'imu',
+        '/ap/rcout': 'rcout',
+        '/ap/rcin': 'rcin',
 
         '/sid/ols/rol': 'rol',
         '/sid/ols/pit': 'pit',
         '/sid/ols/yaw': 'yaw',
         '/sid/ols/nondim/rol': 'rol_nondim',
+
+        '/sid/differ/imu/gx': 'rol_differ',
+        '/sid/fourier/imu/gx': 'rol_fourier',
+        '/sid/fourier/rcout/ail': 'ail_fourier',
         }
 
     topic_extractor(bag_file, topics_to_extract)

@@ -978,8 +978,8 @@ def run_analysis(
 
 def main() -> None:
     csv_files = {
-        "Roll": {"prefix": "rol_", "path": DATA_FILE_DIR / "rol_data.csv"},
-        # "Pitch": {"prefix": "pit_", "path": DATA_FILE_DIR / "pit_data.csv"},
+        # "Roll": {"prefix": "rol_", "path": DATA_FILE_DIR / "rol_data.csv"},
+        "Pitch": {"prefix": "pit_", "path": DATA_FILE_DIR / "pit_data.csv"},
         # "Yaw": {"prefix": "yaw_", "path": DATA_FILE_DIR / "yaw_data.csv"},
         # "Non-Dim Roll": {"prefix": "rol_nondim_", "path": DATA_FILE_DIR / "rol_nondim_data.csv"},
     }
@@ -991,8 +991,8 @@ def main() -> None:
 
     run_analysis(
         csv_files,
-        start_time=12.0,
-        end_time=25.0,
+         start_time=316,
+        end_time=16+316,
         plot_labels=plot_labels,
         # mode="individual",
         mode="combined",

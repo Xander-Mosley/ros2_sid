@@ -374,19 +374,19 @@ class SIDFilter(Node):
         self._publish_stream(
             stream_name="rcout/ail",
             header=sub_msg.header,
-            value=float(sub_msg.values[0]) - 1500.0,
+            value=float(sub_msg.values[4]) - 1500.0,
             dt=dt
         )
         self._publish_stream(
             stream_name="rcout/elv",
             header=sub_msg.header,
-            value=float(sub_msg.values[1]) - 1500.0,
+            value=float(sub_msg.values[6]) - 1500.0,
             dt=dt
         )
         self._publish_stream(
             stream_name="rcout/rud",
             header=sub_msg.header,
-            value=float(sub_msg.values[3]) - 1500.0,
+            value=float(sub_msg.values[7]) - 1500.0,
             dt=dt
         )
 
