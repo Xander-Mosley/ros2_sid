@@ -102,7 +102,6 @@ class CircularBuffer:
         self._index = 0
         self._size = self._capacity
 
-
 class RecursiveFourierTransform:
     config = _load_frequency_config()
     default_frequencies: np.ndarray = np.asarray(
@@ -189,7 +188,6 @@ class RecursiveFourierTransform:
                 raise ValueError("frequencies must be non-negative")
             cls.default_frequencies = frequencies.copy()
 
-
 class RegressorData:
     def __init__(
             self,
@@ -211,13 +209,70 @@ def ordinary_least_squares(
         measured_output: np.ndarray,
         regressors: np.ndarray
         ) -> np.ndarray:
+    measured_output = np.asarray(measured_output).reshape(-1)
+    regressors = np.asarray(regressors)
     if measured_output.shape[0] != regressors.shape[0]:
         raise ValueError("Number of samples in measured_output and regressors must match")
-    parameters = np.real(
-        np.linalg.pinv(regressors.T @ regressors)
-            @ (regressors.T @ measured_output)
-        ).ravel()
-    return parameters
+    XhX = np.conj(regressors).T @ regressors
+    XhZ = np.conj(regressors).T @ measured_output
+    parameters = np.linalg.pinv(XhX) @ XhZ
+    return parameters.ravel()
+
+def confidence_intervals(
+        measured_output: np.ndarray,
+        regressors: np.ndarray,
+        parameters: np.ndarray,
+        confidence_multiplier: float = 1.96,
+        ) -> tuple[float | np.ndarray, np.ndarray]:
+    measured_output = np.asarray(measured_output).reshape(-1)
+    regressors = np.asarray(regressors)
+    parameters = np.asarray(parameters).reshape(-1)
+    
+    if regressors.ndim != 2:
+        raise ValueError("Regressors must be a 2D array")
+    num_observations, num_regressors = regressors.shape
+    dof = num_observations - num_regressors
+    if dof <= 0:
+        raise ValueError("Degrees of freedom must be positive for confidence interval calculation")
+    if num_observations != measured_output.shape[0]:
+        raise ValueError("Number of observations in regressors and measured_output must match")
+    if num_regressors != parameters.shape[0]:
+        raise ValueError("Number of regressors and parameters must match")
+    is_complex = (
+        np.iscomplexobj(measured_output) or
+        np.iscomplexobj(regressors)
+    )
+    
+    if not is_complex:
+        residuals = measured_output - regressors @ parameters
+        sigma_squared = np.sum(residuals ** 2) / dof
+        XtX_inv = np.linalg.pinv(regressors.T @ regressors)
+    
+        djj = np.diag(XtX_inv)
+        param_variance = sigma_squared * djj
+        param_ci = confidence_multiplier * np.sqrt(np.maximum(param_variance, 0))
+
+        x_i = regressors[-1, :].reshape(1, -1)
+        model_variance = sigma_squared * np.real(x_i @ XtX_inv @ x_i.T).item()
+        model_ci = confidence_multiplier * np.sqrt(np.maximum(model_variance, 0))
+    else:
+        residuals = measured_output - regressors @ parameters
+        sigma_squared = np.sum(np.abs(residuals) ** 2) / dof
+        XtX_inv = np.linalg.pinv(np.conj(regressors).T @ regressors)
+        param_covariance = sigma_squared * XtX_inv
+        
+        param_variance = np.real(np.diag(param_covariance)) / 2     # circular complex Gaussian assumption? 0.5*
+        param_ci = confidence_multiplier * np.sqrt(np.maximum(param_variance, 0))
+        
+        model_variance = np.einsum(
+            'ij,jk,ik->i',
+            regressors,
+            param_covariance,
+            np.conj(regressors)
+            ).real / 2
+        model_ci = confidence_multiplier * np.sqrt(np.maximum(model_variance, 0))
+
+    return model_ci, param_ci
 
 
 if (__name__ == '__main__'):
