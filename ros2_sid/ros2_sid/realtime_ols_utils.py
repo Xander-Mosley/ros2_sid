@@ -30,7 +30,11 @@ import warnings
 import numpy as np
 
 
-__all__ = ['CircularBuffer', 'RecursiveFourierTransform', 'RegressorData', 'ordinary_least_squares']
+__all__ = [
+    'CircularBuffer', 'RecursiveFourierTransform', 'RegressorData', 'ordinary_least_squares',
+    'modeled_outputs', 'residuals', 'mean_squared_errors', 'coefficient_of_determination', 'confidence_intervals',
+    'variance_inflation_factors', 'singular_value_decomposition', 'matrix_correlation',
+    ]
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
@@ -52,6 +56,25 @@ def _load_frequency_config() -> dict:
         print(f"Error loading frequency configuration: {error}")
         raise
     return config
+
+def _euclidean_norm(
+        matrix: np.ndarray,
+        ) -> np.ndarray:
+    matrix = np.asarray(matrix)
+    if matrix.ndim != 2:
+        raise ValueError("Matrix must be a 2D array")
+    is_complex = np.iscomplexobj(matrix)
+
+    if is_complex:
+        matrix_mean = 0
+    else:
+        matrix_mean = np.mean(matrix, axis=0, keepdims=True)
+
+    sjj = np.sum(np.abs(matrix - matrix_mean) ** 2, axis=0, keepdims=True)
+    sjj_safe = np.where(sjj == 0, 1, sjj)
+    matrix_norm = (matrix - matrix_mean) / np.sqrt(sjj_safe)
+
+    return matrix_norm
 
 
 class CircularBuffer:
@@ -213,10 +236,89 @@ def ordinary_least_squares(
     regressors = np.asarray(regressors)
     if measured_output.shape[0] != regressors.shape[0]:
         raise ValueError("Number of samples in measured_output and regressors must match")
+    
     XhX = np.conj(regressors).T @ regressors
     XhZ = np.conj(regressors).T @ measured_output
     parameters = np.linalg.pinv(XhX) @ XhZ
     return parameters.ravel()
+
+def modeled_outputs(
+        regressors: np.ndarray,
+        parameters: np.ndarray,
+        ) -> float | np.ndarray:
+    regressors = np.asarray(regressors)
+    parameters = np.asarray(parameters)
+    if regressors.shape[-1] != parameters.shape[-1]:
+        raise ValueError("Number of regressors and parameters must match")
+    return regressors @ parameters
+
+def residuals(
+        measured_output: float | np.ndarray,
+        regressors: np.ndarray,
+        parameters: np.ndarray,
+        ) -> float | np.ndarray:
+    measured_output = np.asarray(measured_output).reshape(-1)
+    regressors = np.asarray(regressors)
+    parameters = np.asarray(parameters)
+    if regressors.shape[-1] != parameters.shape[-1]:
+        raise ValueError("Number of regressors and parameters must match")
+
+    res = measured_output - modeled_outputs(regressors, parameters)
+    return res.item() if res.size == 1 else res
+
+def mean_squared_errors(
+        measured_output: float | np.ndarray,
+        regressors: np.ndarray,
+        parameters: np.ndarray,
+        ) -> float:
+    measured_output = np.asarray(measured_output).reshape(-1)
+    regressors = np.asarray(regressors)
+    parameters = np.asarray(parameters)
+    if regressors.shape[-1] != parameters.shape[-1]:
+        raise ValueError("Number of regressors and parameters must match")
+    
+    residual = residuals(measured_output, regressors, parameters)
+    mse = np.mean(np.abs(residual) ** 2)
+    return float(mse)
+
+def coefficient_of_determination(
+        measured_output: np.ndarray,
+        regressors: np.ndarray,
+        parameters: np.ndarray,
+        *,
+        recentered: bool = True,
+        adjusted: bool = False,
+        ) -> float:
+    measured_output = np.asarray(measured_output).reshape(-1)
+    regressors = np.asarray(regressors)
+    parameters = np.asarray(parameters)
+    
+    if regressors.ndim != 2:
+        raise ValueError("Regressors must be a 2D array")
+    num_observations, num_regressors = regressors.shape
+    dof = num_observations - num_regressors
+    if dof <= 0:
+        raise ValueError("Degrees of freedom must be positive for R² calculation")
+    if num_observations != measured_output.shape[0]:
+        raise ValueError("Number of observations in regressors and measured_output must match")
+    if num_regressors != parameters.shape[-1]:
+        raise ValueError("Number of regressors and parameters must match")
+
+    if recentered:
+        measured_output_mean = np.mean(measured_output)
+    else:
+        measured_output_mean = 0
+    ss_tot = np.sum(np.abs(measured_output - measured_output_mean) ** 2)
+    if ss_tot == 0:
+        return np.nan
+
+    residual = residuals(measured_output, regressors, parameters)
+    ss_res = np.sum(np.abs(residual) ** 2)
+
+    r2 = 1 - (ss_res / ss_tot)
+    if adjusted:
+        r2 = 1 - (1 - r2) * (num_observations - 1) / (num_observations - num_regressors - 1)
+    return r2
 
 def confidence_intervals(
         measured_output: np.ndarray,
@@ -226,7 +328,7 @@ def confidence_intervals(
         ) -> tuple[float | np.ndarray, np.ndarray]:
     measured_output = np.asarray(measured_output).reshape(-1)
     regressors = np.asarray(regressors)
-    parameters = np.asarray(parameters).reshape(-1)
+    parameters = np.asarray(parameters)
     
     if regressors.ndim != 2:
         raise ValueError("Regressors must be a 2D array")
@@ -236,43 +338,99 @@ def confidence_intervals(
         raise ValueError("Degrees of freedom must be positive for confidence interval calculation")
     if num_observations != measured_output.shape[0]:
         raise ValueError("Number of observations in regressors and measured_output must match")
-    if num_regressors != parameters.shape[0]:
+    if num_regressors != parameters.shape[-1]:
         raise ValueError("Number of regressors and parameters must match")
     is_complex = (
         np.iscomplexobj(measured_output) or
         np.iscomplexobj(regressors)
     )
     
-    if not is_complex:
-        residuals = measured_output - regressors @ parameters
-        sigma_squared = np.sum(residuals ** 2) / dof
-        XtX_inv = np.linalg.pinv(regressors.T @ regressors)
-    
-        djj = np.diag(XtX_inv)
-        param_variance = sigma_squared * djj
-        param_ci = confidence_multiplier * np.sqrt(np.maximum(param_variance, 0))
+    residual = residuals(measured_output, regressors, parameters)
+    sigma_squared = np.sum(np.abs(residual) ** 2) / dof
+    XtX_inv = np.linalg.pinv(np.conj(regressors).T @ regressors)
+    param_covariance = sigma_squared * XtX_inv
 
+    if not is_complex:
+        param_variance = np.real(np.diag(param_covariance))
         x_i = regressors[-1, :].reshape(1, -1)
         model_variance = sigma_squared * np.real(x_i @ XtX_inv @ x_i.T).item()
-        model_ci = confidence_multiplier * np.sqrt(np.maximum(model_variance, 0))
     else:
-        residuals = measured_output - regressors @ parameters
-        sigma_squared = np.sum(np.abs(residuals) ** 2) / dof
-        XtX_inv = np.linalg.pinv(np.conj(regressors).T @ regressors)
-        param_covariance = sigma_squared * XtX_inv
-        
         param_variance = np.real(np.diag(param_covariance)) / 2     # circular complex Gaussian assumption? 0.5*
-        param_ci = confidence_multiplier * np.sqrt(np.maximum(param_variance, 0))
-        
         model_variance = np.einsum(
             'ij,jk,ik->i',
             regressors,
             param_covariance,
             np.conj(regressors)
             ).real / 2
-        model_ci = confidence_multiplier * np.sqrt(np.maximum(model_variance, 0))
+
+    param_ci = confidence_multiplier * np.sqrt(np.maximum(param_variance, 0))
+    model_ci = confidence_multiplier * np.sqrt(np.maximum(model_variance, 0))
 
     return model_ci, param_ci
+
+def variance_inflation_factors(
+        regressors: np.ndarray,
+        *,
+        return_cod: bool = False,
+        ) -> np.ndarray:
+    regressors = np.asarray(regressors)
+    if regressors.ndim != 2:
+        raise ValueError("Regressors must be a 2D array")
+
+    regressors_norm = _euclidean_norm(regressors)
+
+    column_norms = np.linalg.norm(regressors_norm, axis=0)
+    valid = column_norms > 0
+    vif = np.full(regressors.shape[1], np.nan, dtype=float)
+    if np.count_nonzero(valid) < 2:
+        return vif
+    regressors_norm_safe = regressors_norm[:, valid]
+
+    correlation = np.conj(regressors_norm_safe).T @ regressors_norm_safe
+    try:
+        correlation_inv = np.linalg.inv(correlation)
+    except np.linalg.LinAlgError:
+        return vif
+
+    vif_valid = np.real(np.diag(correlation_inv))
+    vif[valid] = vif_valid
+    if not return_cod:
+        return vif
+
+    cod = np.full_like(vif, np.nan)
+    positive = vif > 0
+    cod[positive] = 1 - (1 / vif[positive])
+    return cod
+
+def singular_value_decomposition(
+    regressors: np.ndarray,
+    *,
+    return_cond_nums: bool = False,
+    ) -> np.ndarray:
+    regressors = np.asarray(regressors)
+    if regressors.ndim != 2:
+        raise ValueError("Regressors must be a 2D array")
+
+    regressors_norm = _euclidean_norm(regressors)
+    singular_values = np.linalg.svd(regressors_norm, compute_uv=False)
+
+    if not return_cond_nums:
+        return singular_values
+    
+    max_sv = np.max(singular_values)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        condition_numbers = singular_values[0] / singular_values
+    return condition_numbers
+    
+def matrix_correlation(
+        matrix: np.ndarray,
+        ) -> np.ndarray:
+    matrix = np.asarray(matrix)
+    if matrix.ndim != 2:
+        raise ValueError("Matrix must be a 2D array")
+
+    matrix_norm = _euclidean_norm(matrix)
+    return np.conj(matrix_norm).T @ matrix_norm
 
 
 if (__name__ == '__main__'):
