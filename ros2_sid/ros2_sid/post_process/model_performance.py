@@ -166,7 +166,7 @@ def plot_regressor_data(
         
     max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2 + 2 * max_num_terms), sharex=True)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
     base_title = "Model Performance - Regressors"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
@@ -177,7 +177,7 @@ def plot_regressor_data(
     term_units = term_info.get("units", "")
     if term_units != "":
         term_units = f"\n[{term_units}]"
-    fig.define_subplot(0, title=f"Measured {term_name}", ylabel=f"Amplitude{term_units}")
+    fig.define_subplot(0, title=f"Measured {term_name}", ylabel=f"Output\nAmplitude{term_units}", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
         term_info = terms.get(1 + i, {})
         term_name = term_info.get("term")
@@ -187,9 +187,9 @@ def plot_regressor_data(
         if term_units != "":
             term_units = f"\n[{term_units}]"
         title = f"{term_name} Over Time"
-        ylabel = f"Amplitude{term_units}"
+        ylabel = f"Regressor $X_{{{i+1}}}$'s\nAmplitude{term_units}"
         xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel)
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
             
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
@@ -213,7 +213,13 @@ def plot_regressor_data(
         for j in range(regressors.shape[1]):
             fig.add_data(1 + j, time, regressors[:, j], label=name, color=model_colors[name], marker='.')
 
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+    fig.set_all_legends(
+        loc="upper right",
+        fontsize=9,
+        borderpad=0.3,
+        labelspacing=0.25,
+        handlelength=1.5,
+    )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
@@ -231,7 +237,7 @@ def plot_parameter_data(
         
     max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2 + 2 * max_num_terms), sharex=True)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
     base_title = "Model Performance - Parameters"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
@@ -242,7 +248,7 @@ def plot_parameter_data(
     term_units = term_info.get("units", "")
     if term_units != "":
         term_units = f"\n[{term_units}]"
-    fig.define_subplot(0, title=f"Measured vs Modeled {term_name}", ylabel=f"Amplitude{term_units}")
+    fig.define_subplot(0, title=f"Measured vs Modeled {term_name}", ylabel=f"Output\nAmplitude{term_units}", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
         term_info = terms.get(1 + i, {})
         term_name = term_info.get("term")
@@ -251,12 +257,12 @@ def plot_parameter_data(
         else:
             term_name = f"Parameter {chr(65+i)}"
             title = f"{term_name} Over Time"
-        term_units = term_info.get("units", "")
+        term_units = term_info.get("param_units", "")
         if term_units != "":
             term_units = f"\n[{term_units}]"
-        ylabel = f"Amplitude{term_units}"
+        ylabel = f"Param {chr(65+i)}'s\nAmplitude{term_units}"
         xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel)
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
 
     real_labels = {i: [] for i in range(1 + max_num_terms)}
     real_handles = {i: [] for i in range(1 + max_num_terms)}
@@ -315,8 +321,11 @@ def plot_parameter_data(
                 batch_labels[i],
                 title="Batch",
                 loc="upper left",
-                fontsize="medium",
                 bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
             ax.add_artist(batch_legend)
         if real_handles[i]:
@@ -325,7 +334,10 @@ def plot_parameter_data(
                     real_handles[i],
                     real_labels[i],
                     loc="upper right",
-                    fontsize="medium",
+                    fontsize=9,
+                    borderpad=0.3,
+                    labelspacing=0.25,
+                    handlelength=1.5,
                 )
                 continue
             ax.legend(
@@ -333,7 +345,10 @@ def plot_parameter_data(
                 real_labels[i],
                 title="Live",
                 loc="upper right",
-                fontsize="medium",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
     fig.set_all_grids(True, alpha=0.5)
     return fig
@@ -352,7 +367,7 @@ def plot_confidence(
         
     max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2 + 2 * max_num_terms), sharex=True)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
     base_title = "Model Performance - Confidence Intervals (CIs)"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
@@ -363,7 +378,7 @@ def plot_confidence(
     term_units = term_info.get("units", "")
     if term_units != "":
         term_units = f"\n[{term_units}]"
-    fig.define_subplot(0, title=f"Measured vs Modeled {term_name}", ylabel=f"Amplitude{term_units}")
+    fig.define_subplot(0, title=f"Measured vs Modeled {term_name}", ylabel=f"Output\nAmplitude{term_units}", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
         term_info = terms.get(1 + i, {})
         term_name = term_info.get("term")
@@ -372,12 +387,12 @@ def plot_confidence(
         else:
             term_name = f"Parameter {chr(65+i)}"
             title = f"{term_name} Over Time"
-        term_units = term_info.get("units", "")
+        term_units = term_info.get("param_units", "")
         if term_units != "":
             term_units = f"\n[{term_units}]"
-        ylabel = f"Amplitude{term_units}"
+        ylabel = f"Param {chr(65+i)}'s\nAmplitude{term_units}"
         xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel)
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
 
     real_labels = {i: [] for i in range(1 + max_num_terms)}
     real_handles = {i: [] for i in range(1 + max_num_terms)}
@@ -442,7 +457,7 @@ def plot_confidence(
 
             batch_labels[index].append(f"{batch_parameters[j]:.2e}")
             batch_handles[index].append(
-                fig.add_line(index, batch_parameters[j], 'h', color=model_colors[name], linestyle='--', alpha=0.7)
+                fig.add_line(index, batch_parameters[j], 'h', color=model_colors[name], linestyle='--', alpha=0.6)
             )
             fig.autoscale_from_lines(1 + j)
 
@@ -453,8 +468,11 @@ def plot_confidence(
                 batch_labels[i],
                 title="Batch",
                 loc="upper left",
-                fontsize="medium",
                 bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
             ax.add_artist(batch_legend)
         if real_handles[i]:
@@ -463,7 +481,10 @@ def plot_confidence(
                     real_handles[i],
                     real_labels[i],
                     loc="upper right",
-                    fontsize="medium",
+                    fontsize=9,
+                    borderpad=0.3,
+                    labelspacing=0.25,
+                    handlelength=1.5,
                 )
                 continue
             ax.legend(
@@ -471,8 +492,115 @@ def plot_confidence(
                 real_labels[i],
                 title="Live",
                 loc="upper right",
-                fontsize="medium",
-                handler_map={tuple: HandlerTuple(ndivide=1)}
+                handler_map={tuple: HandlerTuple(ndivide=1)},
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+    fig.set_all_grids(True, alpha=0.5)
+    return fig
+
+def plot_batch_output(
+        models: Dict[str, OLSResult],
+        *,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        plot_labels: dict | None = None
+        ) -> PlotFigure:
+    if not models:
+        raise ValueError("No models provided.")
+    if plot_labels is None:
+        plot_labels = {}
+        
+    max_num_terms = _get_max_num_terms(models)
+
+    fig = PlotFigure(nrows=1, ncols=1, figsize=(12, 6.5), sharex=True)
+    base_title = "Model Performance - Batch Comparison"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
+    fig.set_figure_title(f"{base_title}\n{subtitle}")
+
+    terms = plot_labels.get("terms", {})
+    term_info = terms.get(0, {})
+    term_name = term_info.get("term", "Output")
+    term_units = term_info.get("units", "")
+    if term_units != "":
+        term_units = f"\n[{term_units}]"
+    fig.define_subplot(
+        0,
+        title=f"Measured vs Modeled {term_name}",
+        ylabel=f"Output Amplitude{term_units}",
+        xlabel=plot_labels.get("time", "Time [s]"),
+        title_kwargs={"pad": 5}
+    )
+
+    real_labels = {i: [] for i in range(1 + max_num_terms)}
+    real_handles = {i: [] for i in range(1 + max_num_terms)}
+    batch_labels = {i: [] for i in range(1 + max_num_terms)}
+    batch_handles = {i: [] for i in range(1 + max_num_terms)}
+            
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
+
+    references_plotted = False
+
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
+            continue
+        
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
+
+        time = model.timestamp[mask]
+        modeled_output = model.modeled_output[mask]
+
+        measured_output = model.measured_output[mask]
+        regressors = model.regressors[mask]
+        batch_parameters = ordinary_least_squares(measured_output, regressors)
+        batch_modeled_output = regressors @ batch_parameters
+
+        if not references_plotted:
+            real_labels[0].append('Measured')
+            real_handles[0].append(
+                fig.add_data(0, time, measured_output, color='black', linestyle='--', alpha=0.7)
+            )
+            references_plotted = True
+
+        real_labels[0].append(f"{name}")
+        real_handles[0].append(
+            fig.add_data(0, time, modeled_output, color=model_colors[name])
+        )
+        batch_labels[0].append(f"{name}")
+        batch_handles[0].append(
+            fig.add_data(0, time, batch_modeled_output, color=model_colors[name], linestyle='-.')
+        )
+        fig.autoscale_from_lines(0)
+
+    for i, ax in enumerate(fig.all_axes):
+        if batch_handles[i]:
+            batch_legend = ax.legend(
+                batch_handles[i],
+                batch_labels[i],
+                title="Batch",
+                loc="upper left",
+                bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+            ax.add_artist(batch_legend)
+        if real_handles[i]:
+            ax.legend(
+                real_handles[i],
+                real_labels[i],
+                loc="upper right",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
     fig.set_all_grids(True, alpha=0.5)
     return fig
@@ -491,7 +619,7 @@ def plot_percent_confidence(
         
     max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2 + 2 * max_num_terms), sharex=True)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
     base_title = "Model Performance - Percent Confidence"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
@@ -499,7 +627,7 @@ def plot_percent_confidence(
     terms = plot_labels.get("terms", {})
     term_info = terms.get(0, {})
     term_name = term_info.get("term", "Output")
-    fig.define_subplot(0, title=f"Percent Confidence of Modeled {term_name} Over Time", ylabel=f"Percent\nConfidence [%]")
+    fig.define_subplot(0, title=f"Percent Confidence of Modeled {term_name} Over Time", ylabel=f"Output's Percent\nConfidence [%]", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
         term_info = terms.get(1 + i, {})
         term_name = term_info.get("term")
@@ -508,9 +636,9 @@ def plot_percent_confidence(
         else:
             term_name = f"Parameter {chr(65+i)}"
             title = f"Percent Confidence of {term_name} Over Time"
-        ylabel = f"Percent\nConfidence [%]"
+        ylabel = f"Param {chr(65+i)}'s Percent\nConfidence [%]"
         xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel)
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
             
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
@@ -535,7 +663,12 @@ def plot_percent_confidence(
 
     for i in fig.axes:
         fig.set_log_scale(i, 'y')
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+    fig.set_all_legends(
+        fontsize=9,
+        borderpad=0.3,
+        labelspacing=0.25,
+        handlelength=1.5,
+    )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
@@ -550,15 +683,13 @@ def plot_error(
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
-        
-    max_num_terms = _get_max_num_terms(models)
 
     layout = {
         0: (slice(0, 1), slice(0, 1)),   # upper-left
         1: (slice(1, 2), slice(0, 1)),   # lower-left
         2: (slice(0, 2), slice(1, 2)),   # right (spans rows)
     }
-    fig = PlotFigure(nrows=2, ncols=2, figsize=(12, 6), gridspec=True, layout=layout)
+    fig = PlotFigure(nrows=2, ncols=2, figsize=(12, 6.5), gridspec=True, layout=layout)
     base_title = "Model Performance - Error"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
@@ -575,6 +706,7 @@ def plot_error(
         ylabel=f"Residual {term_name}{term_units}",
         # xlabel=plot_labels.get("time", "Time [s]"),
         grid=True,
+        title_kwargs={"pad": 5},
     )
     fig.define_subplot(
         1,
@@ -582,6 +714,7 @@ def plot_error(
         ylabel="MSE",
         xlabel=plot_labels.get("time", "Time [s]"),
         grid=True,
+        title_kwargs={"pad": 5},
     )
     fig.define_subplot(
         2,
@@ -589,6 +722,7 @@ def plot_error(
         ylabel=f"Residual {term_name}{term_units}",
         xlabel=f"Modeled {term_name}{term_units}",
         grid=True,
+        title_kwargs={"pad": 5},
     )
 
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -655,7 +789,10 @@ def plot_error(
                 batch_labels[i],
                 title="Batch",
                 loc="upper left",
-                fontsize="medium",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
             ax.add_artist(batch_legend)
         if real_handles[i]:
@@ -663,8 +800,11 @@ def plot_error(
                 real_handles[i],
                 real_labels[i],
                 loc="upper right",
-                fontsize="medium",
                 handler_map={tuple: HandlerTuple(ndivide=1)},
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
     fig.set_all_grids(True, alpha=0.5)
     return fig
@@ -681,7 +821,7 @@ def plot_error_kde(
     if plot_labels is None:
         plot_labels = {}
         
-    fig = PlotFigure(figsize=(12, 6))
+    fig = PlotFigure(figsize=(12, 6.5))
     base_title = "Model Performance - Error KDE"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
@@ -699,6 +839,7 @@ def plot_error_kde(
         ylabel=f"Density",
         xlabel=f"Residuals{term_units}",
         grid=True,
+        title_kwargs={"pad": 5},
     )
             
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -730,11 +871,26 @@ def plot_error_kde(
         fig.add_line(0, mean, 'v', min_val=0, max_val=kde_at_max, color=model_colors[name], linestyle="--")
         
     subplot = fig._get_ax(0)
-    legend1 = subplot.legend(loc="upper right", fontsize='medium')
+    legend1 = subplot.legend(
+        loc="upper right",
+        fontsize=9,
+        borderpad=0.3,
+        labelspacing=0.25,
+        handlelength=1.5,
+    )
     subplot.add_artist(legend1)
     mean_proxy = Line2D([0], [0], color="grey", linestyle="--", linewidth=2)
     sigma_proxy = Patch(facecolor="grey", alpha=0.25)
-    subplot.legend(handles=[mean_proxy, sigma_proxy], labels=["Mean", "±2σ Region"], loc="upper left", frameon=True)
+    subplot.legend(
+        handles=[mean_proxy, sigma_proxy],
+        labels=["Mean", "±2σ Region"],
+        loc="upper left",
+        frameon=True,
+        fontsize=9,
+        borderpad=0.3,
+        labelspacing=0.25,
+        handlelength=1.5,
+    )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
@@ -752,14 +908,14 @@ def plot_fit(
         
     max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2 + 2 * max_num_terms), sharex=True)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
     base_title = "Model Performance - Model Fit"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
 
     terms = plot_labels.get("terms", {})
     term_info = terms.get(0, {})
-    fig.define_subplot(0, title="Coefficient of Determination (R²) Over Time", ylabel="R² [%]")
+    fig.define_subplot(0, title="Coefficient of Determination (R²) Over Time", ylabel="R² [%]", title_kwargs={"pad": 5})
     fig.shade_subplot(0, y_range=(75, 100), color='#A8D5BA', alpha=0.3)  # green
     fig.shade_subplot(0, y_range=(50, 75), color='#FFF3B0', alpha=0.3)  # yellow
     fig.shade_subplot(0, y_range=(00, 50), color='#F4CCCC', alpha=0.3)  # red
@@ -770,9 +926,9 @@ def plot_fit(
             title = f"{term_name}'s Parameter Fit (r²) Over Time"
         else:
             title = f"Parameter {chr(65+i)}'s Fit (r²) Over Time"
-        ylabel = f"Parameter\nr² [%]"
+        ylabel = f"Param {chr(65+i)}'s\nr² [%]"
         xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel)
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
         fig.shade_subplot(1 + i, y_range=(75, 100), color='#F4CCCC', alpha=0.3)  # red
         fig.shade_subplot(1 + i, y_range=(50, 75), color='#FFF3B0', alpha=0.3)  # yellow
         fig.shade_subplot(1 + i, y_range=(00, 50), color='#A8D5BA', alpha=0.3)  # green
@@ -833,8 +989,11 @@ def plot_fit(
                 batch_labels[i],
                 title="Batch",
                 loc="upper left",
-                fontsize="medium",
                 bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
             ax.add_artist(batch_legend)
         if real_handles[i]:
@@ -843,7 +1002,10 @@ def plot_fit(
                 real_labels[i],
                 title="Live",
                 loc="upper right",
-                fontsize="medium",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
     fig.set_all_grids(True, alpha=0.5)
     fig.apply_to_all_axes('set_ylim', [0, 100])
@@ -863,13 +1025,13 @@ def plot_conditioning(
         
     max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2 + 2 * max_num_terms), sharex=True)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
     base_title = "Model Performance - Conditioning"
     subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
 
     terms = plot_labels.get("terms", {})
-    fig.define_subplot(0, title="Max Condition Number Over Time", ylabel="Amplitude")
+    fig.define_subplot(0, title="Max Condition Number Over Time", ylabel="Max Condition\nNumber", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
         term_info = terms.get(1+i, {})
         term_name = term_info.get("term")
@@ -878,9 +1040,9 @@ def plot_conditioning(
         else:
             term_name = f"Parameter {chr(65+i)}"
             title = f"{term_name}'s Conditioning Over Time"
-        ylabel = "Amplitude"
+        ylabel = f"Param {chr(65+i)}'s\nConditioning"
         xlabel = plot_labels.get(f"time", "Time [s]") if i == max_num_terms - 1 else None
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel)
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
 
     real_labels = {i: [] for i in range(1 + max_num_terms)}
     real_handles = {i: [] for i in range(1 + max_num_terms)}
@@ -911,7 +1073,7 @@ def plot_conditioning(
         real_handles[0].append(
             fig.add_data(0, time, max_cond, color=model_colors[name], marker='.')
         )
-        batch_labels[0].append(f"{batch_max_cond:.1f}")
+        batch_labels[0].append(f"{batch_max_cond:.2f}")
         batch_handles[0].append(
             fig.add_line(0, batch_max_cond, 'h', color=model_colors[name], linestyle='--')
         )
@@ -922,7 +1084,7 @@ def plot_conditioning(
             real_handles[index].append(
                 fig.add_data(index, time, regressor_conds[:, j], color=model_colors[name], marker='.')
             )
-            batch_labels[index].append(f"{batch_regressor_conds[j]:.1f}")
+            batch_labels[index].append(f"{batch_regressor_conds[j]:.2f}")
             batch_handles[index].append(
                 fig.add_line(index, batch_regressor_conds[j], 'h', color=model_colors[name], linestyle='--', alpha=0.7)
             )
@@ -934,8 +1096,11 @@ def plot_conditioning(
                 batch_labels[i],
                 title="Batch",
                 loc="upper left",
-                fontsize="medium",
                 bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
             ax.add_artist(batch_legend)
         if real_handles[i]:
@@ -944,7 +1109,10 @@ def plot_conditioning(
                 real_labels[i],
                 title="Live",
                 loc="upper right",
-                fontsize="medium",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
             )
     fig.set_all_grids(True, alpha=0.5)
     return fig
@@ -979,7 +1147,7 @@ def plot_correlation(
         
         max_num_terms = regressors.shape[1]
 
-        fig = PlotFigure(nrows=max_num_terms, ncols=1, figsize=(12, 2 * max_num_terms), sharex=True)
+        fig = PlotFigure(nrows=max_num_terms, ncols=1, figsize=(12, 2.25 * max_num_terms), sharex=True)
         base_title = "Model Performance - Regressor Correlations"
         subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
         fig.set_figure_title(f"{base_title}\n{subtitle}")
@@ -995,7 +1163,7 @@ def plot_correlation(
             title = f"Parameter {chr(65 + j)}'s Correlation Over Time"
             ylabel = f"Param {chr(65 + j)}\nCorrelation"
             xlabel = plot_labels.get(f"time", "Time [s]") if j == max_num_terms - 1 else None
-            fig.define_subplot(j, title=title, ylabel=ylabel, xlabel=xlabel)
+            fig.define_subplot(j, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
             fig.shade_subplot(j, y_range=( 0.90,  1.00), color='#F4CCCC', alpha=0.3)  # red
             fig.shade_subplot(j, y_range=( 0.75,  0.90), color='#FFF3B0', alpha=0.3)  # yellow
             fig.shade_subplot(j, y_range=(-0.75,  0.75), color='#A8D5BA', alpha=0.3)  # green
@@ -1023,8 +1191,11 @@ def plot_correlation(
                     batch_labels[i],
                     title="Batch",
                     loc="upper left",
-                    fontsize="medium",
                     bbox_to_anchor=(1.0, 1.0),
+                    fontsize=9,
+                    borderpad=0.3,
+                    labelspacing=0.25,
+                    handlelength=1.5,
                 )
                 ax.add_artist(batch_legend)
             if real_handles[i]:
@@ -1033,7 +1204,10 @@ def plot_correlation(
                     real_labels[i],
                     title="Live",
                     loc="upper right",
-                    fontsize="medium",
+                    fontsize=9,
+                    borderpad=0.3,
+                    labelspacing=0.25,
+                    handlelength=1.5,
                 )
         fig.set_all_grids(True, alpha=0.5)
         fig.apply_to_all_axes('set_ylim', [-1, 1])
@@ -1086,6 +1260,7 @@ def generate_plots(
         ("regs", plot_regressor_data),
         ("params", plot_parameter_data),
         ("conf", plot_confidence),
+        ("batch", plot_batch_output),
         ("per_conf", plot_percent_confidence),
         ("err", plot_error),
         ("kde", plot_error_kde),
@@ -1115,10 +1290,9 @@ def generate_plots(
                 f"{index_suffix}.svg"
             )
 
-            fig.fig.savefig(
+            fig.savefig(
                 save_dir / filename,
                 format="svg",
-                bbox_inches="tight",
             )
 
     if plot_figures:
@@ -1146,11 +1320,11 @@ def main() -> None:
             # "title": "",
             # "subtitle": "",
             # "time": "Time [s]",
-            # "terms":{
-            #     0: {"term": "Roll Acceleration", "units": "rad/s²"},
-            #     1: {"term": "Roll Rate", "units": "rad/s", "param_units": "1/s"},
-            #     2: {"term": "Aileron Command", "units": "PWM", "param_units": "rad/s²-PWM"},
-            # }
+            "terms":{
+                0: {"term": "Roll Acceleration", "units": "rad/s²"},
+                1: {"term": "Roll Rate", "units": "rad/s", "param_units": "1/s"},
+                2: {"term": "Aileron Command", "units": "PWM", "param_units": "rad/s²-PWM"},
+            }
         },
         plot_figures=False,
         save_figures=True,

@@ -45,8 +45,10 @@ import pandas as pd
 import matplotlib
 matplotlib.use("TkAgg")  # or "Qt5Agg", "GTK3Agg", depending on your system
 import matplotlib.pyplot as plt
+from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.gridspec import GridSpec
+from matplotlib.legend import Legend
 
 ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
 
@@ -275,7 +277,12 @@ class PlotFigure:
             ax.legend()
 
 
-    def set_figure_title(self, title: str, fontsize: int = 14) -> None:
+    def set_figure_title(
+            self, 
+            title: str, 
+            fontsize: int = 14,
+            **kwargs,
+        ) -> None:
         """
         Set or update the figure title.
 
@@ -286,12 +293,13 @@ class PlotFigure:
         fontsize : int, default = 14
             Font size of the title.
         """
-        self.fig.suptitle(title, fontsize=fontsize)
+        self.fig.suptitle(title, fontsize=fontsize, **kwargs)
 
     def define_subplot(
         self,
         ax_pos: int,
         title: Optional[str] = None,
+        title_kwargs: Optional[dict] = None,
         xlabel: Optional[str] = None,
         ylabel: Optional[str] = None,
         y2label: Optional[str] = None,
@@ -329,7 +337,8 @@ class PlotFigure:
         """
         ax = self._get_ax(ax_pos)
         if title:
-            ax.set_title(title)
+            title_kwargs = title_kwargs or {"pad": 0}
+            ax.set_title(title, **title_kwargs)
         if xlabel:
             ax.set_xlabel(xlabel)
         if ylabel:
@@ -530,6 +539,33 @@ class PlotFigure:
         ) -> None:
         ax = self._get_ax(subplot)
         ax.annotate(text, xy=xy, xycoords=xycoords, **kwargs)
+
+    def savefig(self, *args, **kwargs):
+        extra_artists = kwargs.pop("bbox_extra_artists", None)
+        if extra_artists is None:
+            extra_artists = []
+        elif isinstance(extra_artists, Artist):
+            extra_artists = [extra_artists]
+        else:
+            extra_artists = [
+                artist for artist in extra_artists
+                if isinstance(artist, Artist)
+            ]
+        for ax in self.all_axes:
+            extra_artists.extend(
+                artist
+                for artist in ax.get_children()
+                if isinstance(artist, Legend)
+            )
+        suptitle = getattr(self.fig, "_suptitle", None)
+        if suptitle is not None:
+            extra_artists.append(suptitle)
+        self.fig.subplots_adjust(top=0.84, right=0.80)
+        kwargs.setdefault("bbox_inches", "tight")
+        kwargs.setdefault("pad_inches", 0.2)
+        if extra_artists:
+            kwargs["bbox_extra_artists"] = extra_artists
+        return self.fig.savefig(*args, **kwargs)
 
 
     def add_data(
