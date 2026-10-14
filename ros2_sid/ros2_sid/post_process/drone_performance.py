@@ -464,7 +464,7 @@ def main():
     # aerodynamic_performance(folder_path, start_time, end_time)
     # climb_performance(folder_path, start_time, end_time)
     # landing_performance(folder_path, start_time, end_time)
-    control_performance(folder_path, start_time, end_time)
+    # control_performance(folder_path, start_time, end_time)
     plt.show()
 
 if __name__ == "__main__":

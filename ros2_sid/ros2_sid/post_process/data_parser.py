@@ -478,32 +478,32 @@ def topic_extractor(bag_file, topics_to_extract):
     close(db_connection)
 
 def main() -> None:
-    bag_file = '/develop_ws/bag_files/2026-09-24_Amp15-Replay1/rosbag2_2026_09_24-19_15_52_0.db3'
+    bag_file = '/develop_ws/bag_files/2026-09-24_Cessna-Amp15_Replay1/rosbag2_2026_09_24-19_15_52_0.db3'
     
     topics_to_extract = {
-        # # '/mavros/imu/data': 'imu',
-        # '/mavros/imu/data_raw': 'imu_raw',
-        # '/mavros/imu/diff_pressure': 'diff_pressure',
-        # '/mavros/imu/static_pressure': 'static_pressure',
-        # '/mavros/imu/temperature_baro': 'temperature_baro',
-        # '/mavros/local_position/odom': 'odometry',
-        # '/mavros/global_position/global': 'gps',
-        # '/mavros/global_position/raw/gps_vel': 'gps_vel',
-        # '/mavros/global_position/rel_alt': 'altitude',
-        # # '/mavros/rc/in': 'rcin',
-        # # '/mavros/rc/out': 'rcout',
+        # '/mavros/imu/data': 'imu',
+        '/mavros/imu/data_raw': 'imu_raw',
+        '/mavros/imu/diff_pressure': 'diff_pressure',
+        '/mavros/imu/static_pressure': 'static_pressure',
+        '/mavros/imu/temperature_baro': 'temperature_baro',
+        '/mavros/local_position/odom': 'odometry',
+        '/mavros/global_position/global': 'gps',
+        '/mavros/global_position/raw/gps_vel': 'gps_vel',
+        '/mavros/global_position/rel_alt': 'altitude',
+        # '/mavros/rc/in': 'rcin',
+        # '/mavros/rc/out': 'rcout',
 
-        # '/trajectory': 'trajectory',
-        # # '/telem': 'telem',    # Not working currently.
+        '/trajectory': 'trajectory',
+        # '/telem': 'telem',    # Not working currently.
 
-        # '/ap/imu/experimental/data': 'imu',
-        # '/ap/rcout': 'rcout',
-        # '/ap/rcin': 'rcin',
+        '/ap/imu/experimental/data': 'imu',
+        '/ap/rcout': 'rcout',
+        '/ap/rcin': 'rcin',
 
-        # '/sid/ols/rol': 'rol',
-        # '/sid/ols/pit': 'pit',
-        # '/sid/ols/yaw': 'yaw',
-        # '/sid/ols/nondim/rol': 'rol_nondim',
+        '/sid/ols/rol': 'rol',
+        '/sid/ols/pit': 'pit',
+        '/sid/ols/yaw': 'yaw',
+        '/sid/ols/nondim/rol': 'rol_nondim',
 
         '/sid/differ/imu/gx': 'differ_imu_gx',
         '/sid/differ/imu/gy': 'differ_imu_gy',
@@ -514,6 +514,13 @@ def main() -> None:
         '/sid/fourier/rcout/ail': 'fourier_rcout_ail',
         '/sid/fourier/rcout/elv': 'fourier_rcout_elv',
         '/sid/fourier/rcout/rud': 'fourier_rcout_rud',
+
+        '/sid/fourier/nondim/p': 'nondim_p',
+        '/sid/fourier/nondim/r': 'nondim_r',
+        '/sid/fourier/nondim/ail': 'nondim_ail',
+        '/sid/fourier/nondim/rud': 'nondim_rud',
+        '/sid/fourier/nondim/qr': 'nondim_qr',
+        '/sid/fourier/nondim/rpq': 'nondim_rpq',
         }
 
     topic_extractor(bag_file, topics_to_extract)

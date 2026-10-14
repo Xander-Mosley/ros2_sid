@@ -22,7 +22,7 @@ from ros2_sid.realtime_ols_utils import (
 )
 
 
-# __all__ = ['']
+__all__ = ['SysIdData', 'OLSResult', 'load_data_topic', 'load_model_topic']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
@@ -196,14 +196,14 @@ def load_model_topic(model_name: str) -> OLSResult:
     if regressor_cond_columns:
         result.regressor_conds = df[regressor_cond_columns].to_numpy()
 
-    def get_correlation_matrix(prefix: str) -> np.ndarray:
-        pattern = re.compile(rf"^{re.escape(prefix)}_(\d+)_to_(\d+)$")
+    def get_correlation_matrix(model_name: str) -> np.ndarray:
+        pattern = re.compile(rf"^{re.escape(model_name)}_correlation_(\d+)_to_(\d+)$")
         columns = []
         for column in df.columns:
             match = pattern.match(column)
             if match:
-                j = int(match.group(1))
-                k = int(match.group(2))
+                j = int(match.group(1)) - 1
+                k = int(match.group(2)) - 1
                 columns.append((j, k, column))
         if not columns:
             return np.empty((len(df), 0, 0))
@@ -221,7 +221,7 @@ def load_model_topic(model_name: str) -> OLSResult:
         matrix[:, indices, indices] = 1.0
         return matrix
 
-    result.correlation_matrix = get_correlation_matrix(f"{model_name}_correlation")
+    result.correlation_matrix = get_correlation_matrix(model_name)
 
     return result
 
@@ -283,17 +283,18 @@ def save_model_result(
 
     for j in range(result.regressors.shape[1]):
         for k in range(result.regressors.shape[1]):
-            if j != k:
-                correlation_element = result.correlation_matrix[:, j, k]
-                correlation_element_label = f"{model_name}_correlation_{j + 1}_to_{k + 1}"
-                data[correlation_element_label] = correlation_element
+            if j == k:
+                continue
+            correlation_element = result.correlation_matrix[:, j, k]
+            correlation_element_label = f"{model_name}_correlation_{j + 1}_to_{k + 1}"
+            data[correlation_element_label] = correlation_element
 
     df = pd.DataFrame(data)
     df.to_csv(filepath, index=False)
     print(f"Results saved to: {filepath}")
 
 
-def run_system_identification(
+def rerun_live_sid(
         measured_output: SysIdData,
         regressors: list[SysIdData],
         *,
@@ -442,11 +443,13 @@ def run_system_identification(
         result.correlation_matrix[i, :, :] = np.real(matrix_correlation(X))
     return result
 
-def add_missing_ols_results(
+def reconstruct_missing_results(
         existing_result: OLSResult,
+        *,
+        window_size: int = 100,
         ) -> OLSResult:
-    window_size = 100
-
+    if window_size < 1:
+        raise ValueError("Window size must be a positive integer")
     result = OLSResult(
         timestamp=existing_result.timestamp.copy(),
         measured_output=existing_result.measured_output.copy(),
@@ -513,9 +516,9 @@ def add_missing_ols_results(
         if np.any(np.isnan(z)) or np.any(np.isnan(x)):
             continue  # Skip if there are NaNs in the current window.
 
-        # if np.isnan(result.parameters[i, :]).any():
-        theta = ordinary_least_squares(z, x)
-        result.parameters[i, :] = theta
+        if np.isnan(result.parameters[i, :]).any():
+            theta = ordinary_least_squares(z, x)
+            result.parameters[i, :] = theta
 
         if np.isnan(result.modeled_output[i]):
             result.modeled_output[i] = modeled_outputs(result.regressors[i, :], result.parameters[i, :])
@@ -565,24 +568,43 @@ def array_shift(
     setattr(
         structure,
         array_name,
-        np.roll(array, shift=shift),
+        np.roll(array, shift=shift, axis=0),
     )
     return structure
 
 
-if (__name__ == "__main__"):
+def main() -> None:
     rol_accel = load_data_topic("differ_imu_gx")
     rol_velo = load_data_topic("fourier_imu_gx")
     ail = load_data_topic("fourier_rcout_ail")
     # rol_accel = array_shift(rol_accel, "value", -12)
-    awesome_result = run_system_identification(
+    awesome_result = rerun_live_sid(
         measured_output=rol_accel,
         regressors=[rol_velo, ail],
         calculation_rate_hz=25.0,
-        # regressors_lags=[4, 1]
+        # measured_output_lag=30,
+        # regressors_lags=[0, 15],
     )
     save_model_result(awesome_result, "rol_2")
 
     rol_model = load_model_topic("rol")
-    rol_model = add_missing_ols_results(rol_model)
-    save_model_result(rol_model, "rol_time")
+    rol_model = reconstruct_missing_results(rol_model)
+    save_model_result(rol_model, "rol_fixed")
+
+    nd_p = load_data_topic("nondim_p")
+    nd_r = load_data_topic("nondim_r")
+    nd_ail = load_data_topic("nondim_ail")
+    nd_rud = load_data_topic("nondim_rud")
+    nd_qr = load_data_topic("nondim_qr")
+    nd_rpq = load_data_topic("nondim_rpq")
+
+    nondim_result = rerun_live_sid(
+        measured_output=rol_accel,
+        regressors=[nd_p, nd_r, nd_ail, nd_rud, nd_qr, nd_rpq],
+        calculation_rate_hz=25.0,
+        measured_output_lag=(3*25+5)*6,
+    )
+    save_model_result(nondim_result, "nondim_2")
+
+if (__name__ == "__main__"):
+    main()

@@ -79,6 +79,8 @@ def _euclidean_norm(
 
 class CircularBuffer:
     def __init__(self, capacity: int, start_value: float = 0.0):
+        if self._capacity < 1:
+            raise ValueError("Capacity must be a positive integer")
         self._capacity = capacity
         self._data = np.zeros(capacity, dtype=float)
         self._index = 0
@@ -218,7 +220,8 @@ class RegressorData:
             eff: float | None = None,
             frequencies: np.ndarray | None = None
             ) -> None:
-        
+        if delay < 1:
+            raise ValueError("Delay must be a postive integer")
         self.timedata = CircularBuffer(capacity=delay+1)
         self.timedata.fill_all(0)
         self.spectrum = RecursiveFourierTransform(eff=eff, frequencies=frequencies)
@@ -296,9 +299,6 @@ def coefficient_of_determination(
     if regressors.ndim != 2:
         raise ValueError("Regressors must be a 2D array")
     num_observations, num_regressors = regressors.shape
-    dof = num_observations - num_regressors
-    if dof <= 0:
-        raise ValueError("Degrees of freedom must be positive for R² calculation")
     if num_observations != measured_output.shape[0]:
         raise ValueError("Number of observations in regressors and measured_output must match")
     if num_regressors != parameters.shape[-1]:
@@ -317,13 +317,16 @@ def coefficient_of_determination(
 
     r2 = 1 - (ss_res / ss_tot)
     if adjusted:
-        r2 = 1 - (1 - r2) * (num_observations - 1) / (num_observations - num_regressors - 1)
+        if num_observations - num_regressors - 1 <= 0:
+            raise ValueError("Degrees of freedom must be positive for R² calculation")
+        r2 = 1 - (1 - r2) * ((num_observations - 1) / (num_observations - num_regressors - 1))
     return r2
 
 def confidence_intervals(
         measured_output: np.ndarray,
         regressors: np.ndarray,
         parameters: np.ndarray,
+        *,
         confidence_multiplier: float = 1.96,
         ) -> tuple[float | np.ndarray, np.ndarray]:
     measured_output = np.asarray(measured_output).reshape(-1)
@@ -355,7 +358,7 @@ def confidence_intervals(
         x_i = regressors[-1, :].reshape(1, -1)
         model_variance = sigma_squared * np.real(x_i @ XtX_inv @ x_i.T).item()
     else:
-        param_variance = np.real(np.diag(param_covariance)) / 2     # circular complex Gaussian assumption? 0.5*
+        param_variance = np.real(np.diag(param_covariance)) / 2     # circular complex Gaussian assumption
         model_variance = np.einsum(
             'ij,jk,ik->i',
             regressors,
@@ -386,13 +389,13 @@ def variance_inflation_factors(
         return vif
     regressors_norm_safe = regressors_norm[:, valid]
 
-    correlation = np.conj(regressors_norm_safe).T @ regressors_norm_safe
+    XtX = np.conj(regressors_norm_safe).T @ regressors_norm_safe
     try:
-        correlation_inv = np.linalg.inv(correlation)
+        XtX_inv = np.linalg.inv(XtX)
     except np.linalg.LinAlgError:
         return vif
 
-    vif_valid = np.real(np.diag(correlation_inv))
+    vif_valid = np.real(np.diag(XtX_inv))
     vif[valid] = vif_valid
     if not return_cod:
         return vif
@@ -417,7 +420,6 @@ def singular_value_decomposition(
     if not return_cond_nums:
         return singular_values
     
-    max_sv = np.max(singular_values)
     with np.errstate(divide="ignore", invalid="ignore"):
         condition_numbers = singular_values[0] / singular_values
     return condition_numbers
@@ -435,9 +437,7 @@ def matrix_correlation(
 
 if (__name__ == '__main__'):
     warnings.warn(
-        "\nThis script defines the structures necessary for real-time\n"
-        "ordinary-least-squares; and is intended to be imported, not\n"
-        "executed directly.\n"
-        "Import this script using:\n"
-        "\tfrom realtime_ols_utils import StoredData, ModelStructure",
+        "This module provides utilities for real-time "
+        "frequency-domain OLS estimation. It is intended "
+        "to be imported, not executed directly.",
         UserWarning)
