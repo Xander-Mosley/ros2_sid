@@ -1,0 +1,64 @@
+{
+  "units": "normalized_surface",
+  "rate": 100,
+  "duration": 20,
+  "axes": {
+    "roll": {
+      "signal": "multisine",
+      "amplitude": 0.1,
+      "frequencies": [
+        0.5,
+        1,
+        2
+      ],
+      "amplitudes": [
+        0.03,
+        0.03,
+        0.04
+      ],
+      "phases": [
+        0,
+        1,
+        2
+      ]
+    },
+    "pitch": {
+      "signal": "multisine",
+      "amplitude": 0.1,
+      "frequencies": [
+        0.4,
+        0.8,
+        1.6
+      ],
+      "amplitudes": [
+        0.03,
+        0.03,
+        0.04
+      ],
+      "phases": [
+        0.5,
+        1.5,
+        2.5
+      ]
+    },
+    "yaw": {
+      "signal": "multisine",
+      "amplitude": 0.1,
+      "frequencies": [
+        0.3,
+        0.6,
+        1.2
+      ],
+      "amplitudes": [
+        0.03,
+        0.03,
+        0.04
+      ],
+      "phases": [
+        1,
+        2,
+        3
+      ]
+    }
+  }
+}

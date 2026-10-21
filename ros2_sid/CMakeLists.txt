@@ -51,6 +51,8 @@ ament_python_install_package(${PROJECT_NAME})
 # Install Python executables
 install(PROGRAMS
   scripts/gcs_test_input.py
+  scripts/record_surface_excitation.sh
+  scripts/plot_surface_excitation.py
   scripts/run_mission_SITL.py
   scripts/run_mission_HITL.py
   scripts/sid_filter.py
@@ -72,6 +74,9 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   set(_pytest_tests
     tests/dummy_test.py
+    tests/test_surface_analysis.py
+    tests/test_surface_signals.py
+    tests/test_surface_mission_ros.py
     # Add other test files here
   )
   foreach(_test_path ${_pytest_tests})
@@ -87,5 +92,6 @@ endif()
 #launch
 install(DIRECTORY
   launch
+  config
   DESTINATION share/${PROJECT_NAME}
 )

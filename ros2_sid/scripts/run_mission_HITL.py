@@ -47,6 +47,21 @@ Date: 11 Jul 2025
 """
 
 
+# Select the normalized-surface DDS backend before importing legacy trajectory dependencies.
+# Both backends are owned by this mission entrypoint; they never publish concurrently.
+import sys
+
+if __name__ == "__main__" and "--interface" in sys.argv:
+    position = sys.argv.index("--interface")
+    if position + 1 < len(sys.argv) and sys.argv[position + 1] == "dds":
+        from ros2_sid.surface_mission import main as surface_main
+
+        raise SystemExit(surface_main(hitl=True))
+    if position + 1 < len(sys.argv) and sys.argv[position + 1] == "trajectory":
+        del sys.argv[position : position + 2]
+    else:
+        raise SystemExit("--interface must be dds or trajectory")
+
 from pathlib import Path
 import json
 import math

@@ -1,0 +1,20 @@
+/ap/sid/control_surface:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/ap/sid/status:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/ap/sid/output:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/ap/time:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
