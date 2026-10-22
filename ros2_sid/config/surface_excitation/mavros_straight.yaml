@@ -3,6 +3,7 @@
     plugin_allowlist:
       - sys_status
       - sys_time
+      - setpoint_raw
       - command
       - rc_io
       - imu

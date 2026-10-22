@@ -1,5 +1,38 @@
 # Run the DDS control-surface SITL tests yourself
 
+### Return to the test-start location
+
+With the default straight-flight coordinator, each maneuver saves the aircraft's
+latitude, longitude, and altitude above home **before straight-flight setup begins**.
+After completion, `stop`, `quit`, Ctrl-C, or an HITL RC stop, it:
+
+1. Disables excitation and waits for observed zero applied perturbation.
+2. Commands LOITER centered on that saved location, at the saved altitude.
+3. Confirms LOITER mode and a fresh navigation-target echo matching the saved coordinates.
+
+The aircraft flies back and circles the saved point using its configured loiter
+radius. `DONE` confirms the return target was accepted; it does **not** mean the
+aircraft has already arrived. Keep recording to capture the return flight.
+Operator mode changes, disarming, and failsafes still take precedence. A new
+maneuver captures a new start point. `--no-straight-flight` disables this recovery.
+
+**Setup requirement:** rebuild ArduPlane from this updated repository (including
+Cube Simulation-on-Hardware firmware for HITL), rebuild `ros2_sid`, and restart
+MAVROS with `config/surface_excitation/mavros_straight.yaml`. It now enables
+`setpoint_raw` to receive the navigation-target echo. The coordinator requests that
+MAVLink message at 5 Hz automatically. It also requires a fresh global GPS fix
+from `/mavros/global_position/global` before setup can start.
+
+Older firmware ignores the location in this LOITER command and may circle the
+end point; the coordinator reports recovery unconfirmed if its target does not
+match. No hardware is flashed automatically by this change. The eight-second
+`recovery_timeout_s` bounds command/target confirmation, not the flight back.
+Saved coordinates and target echoes are recorded in `/sid/straight_flight` and
+the command log's `.straight.jsonl` file. See the
+[return-to-start verification report](return_to_start_verification.md) for tests
+and recorded tracks.
+
+
 > **DDS default:** `run_mission_SITL.py --interface dds` now loads the packaged
 > `straight_flight_sitl.json` automatically. MAVROS is required: defaults target
 > 75 m above home, 23 m/s, and the current ground course, then wait for settling.
@@ -795,7 +828,7 @@ Freshness and authorization checks continue throughout.
 
 To shorten settling, change `dwell_s` first and assess the recorded entry conditions
 in SITL. Reducing it does not make the aircraft reach its targets faster, and a
-shorter dwell provides less evidence that the initial condition is steady.
+shorter dwell provides less evidence that the initikval condition is steady.
 `setup_timeout_s: 90` is the maximum setup wait; reducing it causes an earlier
 abort. `recovery_timeout_s: 8` bounds recovery confirmation. Neither telemetry
 freshness timeout is a settling delay. `max_duration_s: 30` bounds the selected
@@ -816,7 +849,7 @@ target settings; it does not validate this new 0.25-second dwell configuration.
 With the default straight-flight coordination, recovery means repeated DDS disable, observation
 of a fresh **zero excitation contribution** (not neutral total servo output), then
 requesting and confirming LOITER if the aircraft remains armed and authorized in
-GUIDED. Look for `Straight flight: DONE: LOITER confirmed` before shutting down
+GUIDED. Look for `Straight flight: DONE: LOITER target confirmed at saved start` before shutting down
 supporting services. Operator/failsafe mode changes and disarm take precedence;
 the coordinator does not force GUIDED back on.
 

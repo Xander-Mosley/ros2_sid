@@ -15,8 +15,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ardupilot_msgs.msg import ControlSurfaceOutput
     from geometry_msgs.msg import PoseStamped, TwistStamped
-    from mavros_msgs.msg import State
+    from mavros_msgs.msg import GlobalPositionTarget, State
     from rclpy.node import Node
+    from sensor_msgs.msg import NavSatFix
     from std_msgs.msg import Float64
 
 
@@ -32,9 +33,10 @@ class StraightFlight:
         """Create optional ROS endpoints; importing this module does not start flight."""
         from ardupilot_msgs.msg import ControlSurfaceOutput
         from geometry_msgs.msg import PoseStamped, TwistStamped
-        from mavros_msgs.msg import State
-        from mavros_msgs.srv import CommandLong, SetMode
+        from mavros_msgs.msg import GlobalPositionTarget, State
+        from mavros_msgs.srv import CommandInt, CommandLong
         from rclpy.qos import qos_profile_sensor_data
+        from sensor_msgs.msg import NavSatFix
         from std_msgs.msg import Float64, String
 
         self.node = node
@@ -105,10 +107,27 @@ class StraightFlight:
         self.position: tuple[float, float] | None = None
         self.last_event = -math.inf
         self.mode_requested = False
+        self.global_position: tuple[float, float] | None = None
+        self.global_position_time = -math.inf
+        self.recovery_target: tuple[float, float] | None = None
+        self.recovery_target_time = -math.inf
+        self.start_location: tuple[float, float, float] | None = None
+        self.loiter_client = node.create_client(CommandInt, "/mavros/cmd/command_int")
         self.command_client = node.create_client(CommandLong, "/mavros/cmd/command")
-        self.mode_client = node.create_client(SetMode, "/mavros/set_mode")
         self.events = node.create_publisher(String, "/sid/straight_flight", 10)
         self.event_file = open(event_path, "w")
+        node.create_subscription(
+            NavSatFix,
+            "/mavros/global_position/global",
+            self.on_global_position,
+            qos_profile_sensor_data,
+        )
+        node.create_subscription(
+            GlobalPositionTarget,
+            "/mavros/setpoint_raw/target_global",
+            self.on_recovery_target,
+            qos_profile_sensor_data,
+        )
         node.create_subscription(State, "/mavros/state", self.on_state, 10)
         node.create_subscription(
             ControlSurfaceOutput,
@@ -160,6 +179,24 @@ class StraightFlight:
         point = msg.pose.position
         if math.isfinite(point.x) and math.isfinite(point.y):
             self.position = (point.x, point.y)
+
+    def on_recovery_target(self, msg: GlobalPositionTarget) -> None:
+        """Observe the firmware navigation target, independently of command ACKs."""
+        if math.isfinite(msg.latitude) and math.isfinite(msg.longitude):
+            self.recovery_target = (msg.latitude, msg.longitude)
+            self.recovery_target_time = time.monotonic()
+
+    def on_global_position(self, msg: NavSatFix) -> None:
+        """Retain a valid global fix for the test-start recovery location."""
+        if (
+            msg.status.status >= 0
+            and math.isfinite(msg.latitude)
+            and math.isfinite(msg.longitude)
+            and -90 <= msg.latitude <= 90
+            and -180 <= msg.longitude <= 180
+        ):
+            self.global_position = (msg.latitude, msg.longitude)
+            self.global_position_time = time.monotonic()
 
     def on_altitude(self, msg: Float64) -> None:
         """Receive altitude above home in meters, matching COMMAND_LONG semantics."""
@@ -229,6 +266,8 @@ class StraightFlight:
             climb_m_s=self.climb,
             configuration=self.config,
             position_enu_m=self.position,
+            recovery_start_location=self.start_location,
+            recovery_target_latlon=self.recovery_target,
             bank_deg=math.degrees(self.output.attitude[0]) if self.output else None,
             airspeed_m_s=float(self.output.airspeed) if self.output else None,
             groundspeed_m_s=self.speed,
@@ -257,6 +296,7 @@ class StraightFlight:
         """Start setup only on user request; do not command until telemetry is valid."""
         if duration > self.config["max_duration_s"]:
             raise RuntimeError("Maneuver exceeds straight-flight maximum duration")
+        self.start_location = None
         self.started = now
         self.failed = self.owned = self.mode_requested = False
         self.dwell_start = None
@@ -293,10 +333,19 @@ class StraightFlight:
         if self.phase == "WAITING":
             if not self.authorized(now) or not self.fresh(now):
                 return False
+            if (
+                self.global_position is None
+                or now - self.global_position_time > self.config["telemetry_timeout_s"]
+            ):
+                return False
+            if self.global_position == (0.0, 0.0):
+                raise RuntimeError("Zero latitude/longitude is reserved for loiter-here commands")
+            self.start_location = (*self.global_position, self.altitude)
             self.target_course = self.config.get("course_deg")
             if self.target_course is None:
                 self.target_course = self.course
             self.commands = [
+                (511, dict(param1=87.0, param2=200000.0)),  # target echo at 5 Hz
                 (
                     43000,
                     dict(param1=0.0, param2=self.config["airspeed_m_s"], param3=1.0),
@@ -338,7 +387,8 @@ class StraightFlight:
                     CommandLong.Request(command=command, **fields)
                 )
                 self.future_started = now
-                self.owned = True
+                if command != 511:  # A telemetry-rate request does not own navigation.
+                    self.owned = True
                 return False
             self.transition("SETTLING")
         bank = abs(math.degrees(self.output.attitude[0]))
@@ -378,8 +428,8 @@ class StraightFlight:
         return self.phase == "READY"
 
     def recover(self, now: float) -> bool:
-        """Wait for observed zero excitation, request LOITER, and confirm actual mode."""
-        from mavros_msgs.srv import SetMode
+        """After zero excitation, command LOITER about the saved setup-start fix."""
+        from mavros_msgs.srv import CommandInt
 
         if self.phase == "DONE":
             return True
@@ -391,25 +441,60 @@ class StraightFlight:
             self.state is not None
             and now - self.state_time <= self.config["state_timeout_s"]
         )
-        if state_fresh and (
-            not self.state.armed
-            or self.state.mode != "GUIDED"
-            or self.state.system_status != 4
-        ):
-            reason = (
-                "LOITER confirmed"
-                if self.mode_requested and self.state.mode == "LOITER"
-                else f"Yielded to vehicle mode {self.state.mode}, system status {self.state.system_status}"
+        expected_loiter = bool(
+            state_fresh
+            and self.mode_requested
+            and self.state.mode == "LOITER"
+            and self.state.armed
+            and self.state.system_status == 4
+        )
+        if (
+            state_fresh
+            and not expected_loiter
+            and (
+                not self.state.armed
+                or self.state.mode != "GUIDED"
+                or self.state.system_status != 4
             )
-            self.transition("DONE", reason)
+        ):
+            self.transition(
+                "DONE",
+                f"Yielded to vehicle mode {self.state.mode}, system status {self.state.system_status}",
+            )
             return True
+        target_matches = bool(
+            self.start_location
+            and self.recovery_target
+            and self.recovery_target_time > self.future_started
+            and now - self.recovery_target_time <= self.config["telemetry_timeout_s"]
+            and all(
+                abs(a - b) < 1e-6
+                for a, b in zip(self.start_location[:2], self.recovery_target)
+            )
+        )
+        if expected_loiter and target_matches and self.future.done():
+            try:
+                result = self.future.result()
+            except Exception as exc:
+                self.failed = True
+                self.transition(
+                    "DONE",
+                    f"LOITER service failed: {exc}; operator intervention required",
+                )
+                return True
+            if result and result.success:
+                self.transition(
+                    "DONE",
+                    "LOITER target confirmed at saved start; aircraft returning (arrival not confirmed)",
+                )
+                return True
         if now - self.return_started > self.config["recovery_timeout_s"]:
             self.failed = True
             self.transition(
                 "DONE", "Recovery unconfirmed: operator intervention required"
             )
             return True
-        if not self.authorized(now):
+        if not self.authorized(now) and not expected_loiter:
             return False
         zero = (
             self.output is not None
@@ -418,10 +503,24 @@ class StraightFlight:
             and all(abs(v) < 1e-6 for v in self.output.applied)
             and all(v == 0 for v in self.output.delta[: self.output.count])
         )
-        if zero and not self.mode_requested and self.mode_client.service_is_ready():
+        if zero and not self.mode_requested and self.loiter_client.service_is_ready():
+            if self.start_location is None:
+                self.failed = True
+                self.transition(
+                    "DONE",
+                    "Missing saved start location; operator intervention required",
+                )
+                return True
             try:
-                self.future = self.mode_client.call_async(
-                    SetMode.Request(custom_mode="LOITER")
+                latitude, longitude, altitude = self.start_location
+                self.future = self.loiter_client.call_async(
+                    CommandInt.Request(
+                        command=17,
+                        frame=3,  # NAV_LOITER_UNLIM, GLOBAL_RELATIVE_ALT
+                        x=round(latitude * 1e7),
+                        y=round(longitude * 1e7),
+                        z=float(altitude),
+                    )
                 )
             except Exception as exc:
                 self.failed = True
@@ -430,9 +529,11 @@ class StraightFlight:
                     f"LOITER service failed: {exc}; operator intervention required",
                 )
                 return True
+            self.future_started = now
             self.mode_requested = True
             self.transition(
-                "RECOVERY", "Zero applied perturbation confirmed; requesting LOITER"
+                "RECOVERY",
+                "Zero applied perturbation confirmed; requesting LOITER at saved start",
             )
         if self.mode_requested and self.future.done():
             try:
@@ -444,7 +545,7 @@ class StraightFlight:
                     f"LOITER service failed: {exc}; operator intervention required",
                 )
                 return True
-            if not result or not result.mode_sent:
+            if not result or not result.success:
                 self.failed = True
                 self.transition(
                     "DONE", "LOITER request rejected; operator intervention required"

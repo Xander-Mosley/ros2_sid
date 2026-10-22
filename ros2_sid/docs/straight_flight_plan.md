@@ -76,7 +76,7 @@ flowchart TD
     D --> E[Sample maneuver CSV; fixed navigation targets]
     E --> F[Completion, stop, quit, or interrupt]
     F --> G[Repeated DDS disable; observe zero applied perturbation]
-    G --> H[Request LOITER if still armed GUIDED]
+    G --> H[Request LOITER at saved start if still armed GUIDED]
     H --> I[Confirm vehicle mode; finish]
 ```
 
@@ -99,8 +99,9 @@ publishing and adds a bounded navigation handoff for the new straight-flight opt
    or immediate removal when authorization is lost.
 3. Wait for a fresh `/ap/sid/output` sample received after stopping with zero applied
    normalized excitation and zero physical PWM contribution.
-4. If still connected, armed, and GUIDED, request LOITER once. Confirm the actual
-   `/mavros/state` mode; a service response alone is insufficient.
+4. If still connected, armed, and GUIDED, request LOITER at the saved setup-start
+   location once. Confirm the actual `/mavros/state` mode and a fresh matching
+   `/mavros/setpoint_raw/target_global` echo; a service response alone is insufficient.
 5. If the operator/failsafe already changed mode or disarmed, yield without sending
    another mode request. If confirmation is unavailable for eight seconds in the
    example configuration, report failure and the need for operator intervention.
@@ -183,3 +184,29 @@ for parameter names, numeric ranges, timer reset behavior, and the difference
 between settling and active abort checks. The current source configuration uses
 a 75 m target, 23 m/s airspeed, and a 0.25-second dwell. Historical SITL verification
 used a three-second dwell; its results are not validation of these edited settings.
+
+## Implemented revision: return to the maneuver start
+
+The shared SITL/HITL coordinator captures a fresh GPS fix and relative altitude
+before sending its first setup command. Completion and all normal cancellation
+paths retain the existing zero-excitation gate, then send COMMAND_INT
+NAV_LOITER_UNLIM with the captured location. The Plane handler now validates that
+location and fence before changing mode, then installs the target after LOITER
+entry. A zero-coordinate command preserves the existing loiter-here behavior.
+The coordinator reserves latitude/longitude (0, 0) rather than silently invoking
+that behavior. Loiter radius and direction retain the aircraft's existing setup.
+
+MAVROS's setpoint_raw plugin receives POSITION_TARGET_GLOBAL_INT; a fresh matching
+target plus a successful service send and LOITER mode confirms handoff.
+MAVROS CommandInt reports transmission success, not a command ACK; the target
+echo is therefore required. Old firmware
+that ignores the requested location cannot pass this check at a different end
+point. The eight-second confirmation budget covers the handoff, not transit.
+The autopilot finishes the return independently after publisher exit.
+
+Validation includes stale GPS, capture-once/reset-per-maneuver, zero-before-turn,
+wrong/stale target echoes, rejected commands, and operator/failsafe precedence.
+The SITL harness option `--verify-start-return` additionally records the return
+track and requires 15 continuous seconds within 130 m of the saved center while
+in LOITER (test-only loiter radius 80 m). Use it with `--straight-flight` or
+`--hitl-rc`. This is simulated evidence, not validation on a physical Cube.

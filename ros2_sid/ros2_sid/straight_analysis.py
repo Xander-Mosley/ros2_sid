@@ -9,6 +9,10 @@ from typing import Any
 
 def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Check each recorded segment's entry dwell, fixed targets, and zero-before-turn."""
+    # Bag storage order can differ from publisher order during clock synchronization.
+    # A single coordinator's monotonic event time is authoritative for phase ordering.
+    if rows and all("monotonic_s" in row for row in rows):
+        rows = sorted(rows, key=lambda row: row["monotonic_s"])
     segments: list[list[dict[str, Any]]] = []
     for row in rows:
         if row["phase"] == "WAITING" or not segments:
@@ -83,13 +87,27 @@ def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             )
         )
         loiter = final["phase"] == "DONE" and final.get("vehicle_mode") == "LOITER"
+        saved = final.get("recovery_start_location")
+        target = final.get("recovery_target_latlon")
+        # Historical logs lack this field; do not reinterpret them as start-return evidence.
+        start_target_verified = bool(
+            saved
+            and target
+            and all(abs(a - b) < 1e-6 for a, b in zip(saved[:2], target))
+            and "target confirmed" in final.get("reason", "")
+        )
+        recovery_ok = (
+            start_target_verified if "recovery_start_location" in final else loiter
+        )
         reports.append(
             dict(
+                return_to_start_target_verified=start_target_verified,
                 passed=bool(active)
                 and dwell_ok
                 and fixed_targets
                 and zero_before_turn
-                and loiter,
+                and loiter
+                and recovery_ok,
                 active_events=len(active),
                 entry_dwell_verified=dwell_ok,
                 fixed_targets=fixed_targets,
@@ -134,6 +152,7 @@ def analyze_straight(bag: str, output: str) -> dict[str, Any]:
             rows.append(json.loads(deserialize_message(data, String).data))
     if not rows:
         raise ValueError("Bag contains no /sid/straight_flight events")
+    rows.sort(key=lambda row: row["monotonic_s"])
     destination = Path(output)
     destination.mkdir(parents=True, exist_ok=True)
     (destination / "straight_events.jsonl").write_text(
