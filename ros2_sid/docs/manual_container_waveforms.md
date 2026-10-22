@@ -1,5 +1,16 @@
 # Send control-surface waveforms from inside the ROS container
 
+> **DDS default:** `run_mission_SITL.py --interface dds` now loads the packaged
+> `straight_flight_sitl.json` automatically. MAVROS is required: defaults target
+> 75 m above home, 23 m/s, and the current ground course, then wait for settling.
+> `--straight-flight PATH` overrides these settings; `--no-straight-flight`
+> explicitly disables navigation coordination and automatic LOITER recovery.
+> The shared HITL DDS entrypoint has the same default and retains its RC gate;
+> the packaged settings remain SITL examples, not validated physical-flight settings.
+> The legacy trajectory interface is unchanged. Rebuild/restart the ROS service
+> before using this new default; do not restart it during a running experiment.
+
+
 For automatic mission loading and creating your own chirps/multisines, see [Custom DDS waveforms](custom_surface_waveforms.md).
 
 This walkthrough uses `ros2_sid` directly: enter the container, create a waveform,
@@ -484,12 +495,10 @@ Clamp to servo limits → final actuator outputs
 
 The DDS publisher adds surface perturbations while normal GUIDED navigation and
 stabilization continue. It does not itself establish a straight flight path. See
-[Straight-flight coordination and safe exit](straight_flight_plan.md) for the optional
-minimal-change approach and phase-by-phase tests. This plan is not yet implemented.
+[Straight-flight coordination and safe exit](straight_flight_plan.md) for the default coordinator and phase-by-phase tests.
 
 
-For a settled straight segment, add `--straight-flight` using the SITL configuration
-and MAVROS setup in [the straight-flight guide](straight_flight_plan.md). The default
+Straight-flight coordination is now the DDS default. Follow the MAVROS setup in [the straight-flight guide](straight_flight_plan.md). The default
 CSV selection still applies. With this option, `stop`, `quit`, EOF, and Ctrl-C
 disable excitation, wait for observed zero contribution, and confirm LOITER while
 the vehicle remains armed GUIDED. Keep the agent, MAVROS, and recorder running

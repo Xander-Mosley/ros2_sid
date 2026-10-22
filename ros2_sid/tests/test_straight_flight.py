@@ -19,6 +19,11 @@ def coordinator(tmp_path):
         Path(__file__).parents[1]
         / "config/surface_excitation/straight_flight_sitl.json"
     )
+    # Keep deterministic test conditions independent of operator-edited settings.
+    config = json.loads(path.read_text())
+    config.update(airspeed_m_s=18, min_airspeed_m_s=10)
+    path = tmp_path / "test-settings.json"
+    path.write_text(json.dumps(config))
     flight = StraightFlight(node, str(path), str(tmp_path / "events.jsonl"))
     flight.command_client = Mock()
     flight.mode_client = Mock()

@@ -251,3 +251,32 @@ def test_clock_loss_during_straight_setup_stops(node, monkeypatch):
     node.tick()
     assert node.failed and node.stopping == 100.0
     node.straight.request_stop.assert_called_once_with(100.0)
+
+
+def test_default_navigation_cli(tmp_path, monkeypatch):
+    """Default enables packaged settings; custom settings and explicit opt-out work."""
+    import argparse
+    from ros2_sid.surface_mission import add_navigation_arguments, resolve_straight_flight
+
+    config = tmp_path / "config/surface_excitation/straight_flight_sitl.json"
+    config.parent.mkdir(parents=True)
+    config.write_text("{}")
+    monkeypatch.setattr("ament_index_python.packages.get_package_share_directory", lambda name: str(tmp_path))
+    parser = argparse.ArgumentParser()
+    add_navigation_arguments(parser)
+    args = parser.parse_args([])
+    resolve_straight_flight(args)
+    assert args.straight_flight == str(config)
+    custom = tmp_path / "custom.json"
+    custom.write_text("{}")
+    args = parser.parse_args(["--straight-flight", str(custom)])
+    resolve_straight_flight(args)
+    assert args.straight_flight == str(custom)
+    config.unlink()
+    args = parser.parse_args(["--no-straight-flight"])
+    resolve_straight_flight(args)
+    assert args.straight_flight is None
+    with pytest.raises(FileNotFoundError):
+        resolve_straight_flight(parser.parse_args([]))
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--straight-flight", str(custom), "--no-straight-flight"])

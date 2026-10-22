@@ -16,6 +16,22 @@ def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         segments[-1].append(row)
     reports = []
     for segment in segments:
+        final = segment[-1]
+        if (
+            final["phase"] == "DONE"
+            and final.get("reason") == "No navigation ownership"
+            and all(r["phase"] in ("RETURNING", "DONE") for r in segment)
+        ):
+            reports.append(
+                dict(
+                    passed=False,
+                    skipped=True,
+                    active_events=0,
+                    final_reason=final["reason"],
+                    skip_reason="Idle shutdown without a recorded maneuver attempt",
+                )
+            )
+            continue
         active = [r for r in segment if r["phase"] == "ACTIVE"]
         ready = next((r for r in segment if r["phase"] == "READY"), None)
         stable_since = None
@@ -83,6 +99,12 @@ def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             )
         )
     return reports
+
+
+def segments_passed(reports: list[dict[str, Any]]) -> bool:
+    """Require a real evaluated maneuver and success for every evaluated attempt."""
+    evaluated = [report for report in reports if not report.get("skipped", False)]
+    return bool(evaluated) and all(report["passed"] for report in evaluated)
 
 
 def analyze_straight(bag: str, output: str) -> dict[str, Any]:
@@ -187,7 +209,7 @@ def analyze_straight(bag: str, output: str) -> dict[str, Any]:
     active = [r for r in rows if r["phase"] == "ACTIVE"]
     segments = validate_events(rows)
     report = {
-        "passed": bool(segments) and all(r["passed"] for r in segments),
+        "passed": segments_passed(segments),
         "segments": segments,
         "event_count": len(rows),
         "active_event_count": len(active),

@@ -1,6 +1,17 @@
 # Straight-flight DDS excitation
 
-The optional ROS coordinator is implemented. It commands fixed course, altitude,
+> **DDS default:** `run_mission_SITL.py --interface dds` now loads the packaged
+> `straight_flight_sitl.json` automatically. MAVROS is required: defaults target
+> 75 m above home, 23 m/s, and the current ground course, then wait for settling.
+> `--straight-flight PATH` overrides these settings; `--no-straight-flight`
+> explicitly disables navigation coordination and automatic LOITER recovery.
+> The shared HITL DDS entrypoint has the same default and retains its RC gate;
+> the packaged settings remain SITL examples, not validated physical-flight settings.
+> The legacy trajectory interface is unchanged. Rebuild/restart the ROS service
+> before using this new default; do not restart it during a running experiment.
+
+
+The ROS coordinator is implemented and enabled by default for DDS missions. It commands fixed course, altitude,
 and airspeed through MAVROS, waits for a continuous settling dwell, and then runs
 the existing DDS maneuver. Verification results and limitations are tracked in
 `ardupilot_sid/docs/control_surface_excitation/VERIFICATION.md`.
@@ -27,7 +38,6 @@ ros2 service call /mavros/set_stream_rate mavros_msgs/srv/StreamRate \
   '{stream_id: 6, message_rate: 10, on_off: true}'
 
 ros2 run ros2_sid run_mission_SITL.py --interface dds \
-  --straight-flight "$SHARE/config/surface_excitation/straight_flight_sitl.json" \
   --wait-timeout 180 --command-log "$RUN/straight-commands.csv"
 ```
 
@@ -38,10 +48,11 @@ Do not use `--with-drone` or another guidance publisher at the same time.
 Take off and enter GUIDED using the existing operator workflow. The coordinator
 never arms, takes off, or forces GUIDED. Use `list`, `select N`, and `start` to run
 the selected legacy-layout CSV. Neither `--experiment` nor `--mission-plan` is
-required. Omitting `--straight-flight` preserves the existing DDS workflow.
+required. Straight-flight coordination is enabled by default. Use `--no-straight-flight`
+for excitation-only behavior without navigation targets or LOITER recovery.
 
-The example configuration is for SITL: 100 m above home, 18 m/s airspeed, captured
-current ground course, three seconds of continuous settling. Copy the JSON to
+The example configuration is for SITL: 75 m above home, 23 m/s airspeed, captured
+current ground course, 0.25 seconds of continuous settling. Copy the JSON to
 change explicit targets/tolerances; these values are not aircraft-independent
 flight-test settings. Position stream requests apply to the current MAVLink link.
 Check that telemetry is arriving before starting.
@@ -163,3 +174,12 @@ interrupted maneuvers (console quit/stop, SIGINT, SIGTERM) completed the recorde
 zero-output-to-LOITER handoff. The corrected safety probe and bag/DataFlash checks
 also passed. See the verification report for failures retained during development
 and the limits of these simulation results.
+
+
+## Tolerance and dwell reference
+
+See the manual's [settling tolerances and active limits](manual_surface_excitation_sitl.md#settling-tolerances-and-active-limits)
+for parameter names, numeric ranges, timer reset behavior, and the difference
+between settling and active abort checks. The current source configuration uses
+a 75 m target, 23 m/s airspeed, and a 0.25-second dwell. Historical SITL verification
+used a three-second dwell; its results are not validation of these edited settings.

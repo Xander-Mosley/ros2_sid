@@ -1,5 +1,16 @@
 # Run the DDS control-surface SITL tests yourself
 
+> **DDS default:** `run_mission_SITL.py --interface dds` now loads the packaged
+> `straight_flight_sitl.json` automatically. MAVROS is required: defaults target
+> 75 m above home, 23 m/s, and the current ground course, then wait for settling.
+> `--straight-flight PATH` overrides these settings; `--no-straight-flight`
+> explicitly disables navigation coordination and automatic LOITER recovery.
+> The shared HITL DDS entrypoint has the same default and retains its RC gate;
+> the packaged settings remain SITL examples, not validated physical-flight settings.
+> The legacy trajectory interface is unchanged. Rebuild/restart the ROS service
+> before using this new default; do not restart it during a running experiment.
+
+
 For automatic mission loading and creating your own chirps/multisines, see [Custom DDS waveforms](custom_surface_waveforms.md).
 
 This guide reproduces the individual roll, pitch, and yaw chirp/multisine tests,
@@ -348,6 +359,8 @@ the baseline and applied delta separately.
 | Docker permission denied | Resolve Docker access for your host account before running the harness. |
 | Topics listed but no data | Agent port 2021, domain 0, and the UDP-only Fast DDS profile must agree. Allow DDS startup delays. |
 | ROS interface/package missing | Build/source `/tmp/install/setup.bash` inside the same ROS container. |
+| `ros_env.sh: unexpected end of file` on shell startup | Check `cat -v /usr/local/bin/ros_env.sh` for `^M` Windows line endings. In the container, repair with `sed -i 's/\r$//' /usr/local/bin/ros_env.sh`, then `bash -n /usr/local/bin/ros_env.sh`. Source `/opt/ros/humble/setup.bash` and `/tmp/install/setup.bash` again. The Dockerfile normalizes this generated script for future builds. |
+| Plotter cannot find `metadata.yaml` | Set `BAG` to the actual recorded bag directory. Selecting `RUN` does not set `BAG`; check `ros2 bag info "$BAG"` first. |
 | Excitation stays inactive | Check `/ap/sid/status`, airborne GUIDED, normal arming, `SX_ENABLE`, failsafes, and calibration. |
 | Timeout/jitter abort | Keep speedup 1, use the tested 50 Hz rate, and reduce host load. Preserve the failure logs; do not relax safety deadlines. |
 | Repeating a bag name | The recorder adds `_1`, `_2`, etc.; use the printed path for analysis. |
@@ -573,9 +586,9 @@ following section gives the commands to use it in this manual workflow.
 
 ## 7. Run an interactive straight-flight maneuver
 
-This option uses MAVROS to establish a steady course, altitude, and airspeed,
+The DDS mission defaults to using MAVROS to establish a steady course, altitude, and airspeed,
 then sends the selected maneuver through DDS. Normal ArduPlane guidance and
-stabilization continue throughout. Use it in place of the ordinary publisher
+stabilization continue throughout. Follow the MAVROS setup below before using the publisher
 command in section 5; run only one excitation publisher at a time.
 
 First complete the firmware/Compose setup and the section 5 host SITL launch,
@@ -617,6 +630,54 @@ another instance. The example YAML loads the telemetry and command plugins neede
 here without background parameter/mission downloads. Do not use `--with-drone`
 or another guidance publisher while the straight-flight coordinator owns targets.
 
+### Which component routes MAVLink?
+
+For this manual's SITL setup, the host launcher already uses MAVProxy to forward
+MAVLink to localhost UDP 14552. `run_live.sh` starts MAVROS on that endpoint:
+
+```text
+ArduPlane SITL ↔ host launcher / MAVProxy ↔ UDP 14552 ↔ MAVROS
+                                                           ↕
+                                                straight-flight coordinator
+
+ROS mission ↔ Micro XRCE-DDS Agent ↔ ArduPlane DDS excitation interface
+```
+
+MAVROS supplies navigation commands and telemetry. The DDS agent remains necessary
+for surface excitation; MAVLink routing does not replace it. `run_live.sh` starts
+neither the DDS agent nor the mission publisher.
+
+You can start MAVROS and the all-topic recorder together, using this command
+**instead of** the MAVROS-only launch above and the standalone recorder in terminal C:
+
+```bash
+bash /work/useful_shell_scripts/run_live.sh --detach \
+  --fcu-url 'udp://:14552@127.0.0.1' \
+  --mavros-config "$SHARE/config/surface_excitation/mavros_straight.yaml" \
+  --bag "$RUN/bag_straight"
+```
+
+Attach with `tmux attach -t MavrosSession`. Use Ctrl-B then `w` to select the
+`mavros` or `recorder` window; Ctrl-B then `d` detaches without stopping them.
+If the session already exists, attach and inspect it rather than starting another
+MAVROS instance. Check the recorder window for its actual output path, including
+any automatically added index.
+
+The script also supports **mavlink-routerd for a serial connection** through
+`--serial-device PATH --baud RATE`. In that mode it starts a `router` window and
+forwards to localhost UDP 14551, 14552 (MAVROS), and 14553. Those options require
+`mavlink-routerd` and access to the specified serial device. The SITL Compose
+configuration intentionally exposes no hardware devices, and this manual does not
+use that serial path. For the existing host SITL launcher, retain MAVProxy's
+forwarding and omit `--serial-device`; adding another router on the same endpoints
+would duplicate the routing setup. `--fcu-url` selects MAVROS's connection but does
+not itself launch a UDP/TCP mavlink-routerd instance.
+
+Keep `--with-drone` off during straight-flight tests, because the coordinator owns
+the navigation targets. After launch, perform the stream-rate request and connection
+checks below. To shut down, quit the mission and wait for recovery, Ctrl-C the
+recorder to finalize its bag, then stop MAVROS (and the router if one was used).
+
 Request position telemetry on the MAVROS connection:
 
 ```bash
@@ -652,13 +713,12 @@ outputs, MAVROS telemetry, and `/sid/straight_flight` events.
 
 ### Terminal B: select and start a maneuver
 
-For this simulated airframe, the supplied configuration targets 100 m above home,
-18 m/s airspeed, and the ground course measured when setup begins. It requires a
-continuous three-second settling dwell before waveform publication.
+For this simulated airframe, the supplied configuration targets 75 m above home,
+23 m/s airspeed, and the ground course measured when setup begins. It requires a
+continuous 0.25-second settling dwell before waveform publication.
 
 ```bash
 ros2 run ros2_sid run_mission_SITL.py --interface dds \
-  --straight-flight "$SHARE/config/surface_excitation/straight_flight_sitl.json" \
   --wait-timeout 180 --command-log "$RUN/straight-commands.csv"
 ```
 
@@ -688,8 +748,64 @@ cp "$SHARE/config/surface_excitation/straight_flight_sitl.json" "$RUN/straight-f
 
 Edit that copy before launching. Maneuver amplitudes and waveforms still come from
 the selected CSV or an explicit experiment override; see
-[custom waveforms](custom_surface_waveforms.md). Omitting `--straight-flight`
-retains the ordinary DDS behavior without this navigation/LOITER coordinator.
+[custom waveforms](custom_surface_waveforms.md). Use `--no-straight-flight` to retain excitation-only behavior without this
+navigation/LOITER coordinator. Omitting both flags enables the packaged settings.
+
+### Settling tolerances and active limits
+
+These values reflect the current source `straight_flight_sitl.json`: target altitude
+**75 m above home**, airspeed **23 m/s**, and `dwell_s: 0.25`. The configuration
+file passed to the running publisher is authoritative; installed defaults can
+still contain older values until the package is rebuilt.
+
+Before excitation starts, **all** settling conditions must hold continuously:
+
+| Measurement | JSON parameter | Required condition with these targets |
+|---|---|---|
+| Ground course | `course_tolerance_deg: 5` | Within ±5° of the target course |
+| Bank angle | `bank_tolerance_deg: 5` | Within ±5° of wings level |
+| Roll, pitch, and yaw rates | `rate_tolerance_rad_s: 0.15` | Each within ±0.15 rad/s (about ±8.6°/s) |
+| Altitude above home | `altitude_tolerance_m: 5` | 70–80 m (75 m ±5 m) |
+| Airspeed | `airspeed_tolerance_m_s: 2` | 21–25 m/s (23 m/s ±2 m/s) |
+| Climb/descent rate | `climb_tolerance_m_s: 1.5` | Within ±1.5 m/s |
+
+With `course_deg: null`, the coordinator captures the measured ground course when
+fresh, authorized setup begins. It does not continually change the target to
+follow the current course. Any settling-condition violation resets the dwell
+timer. `dwell_s: 0.25` means 0.25 continuous seconds inside all tolerances, not
+0.25 seconds from typing `start`. Reaching the target condition can take longer.
+
+The existing freshness and authorization checks also apply: required navigation
+and output telemetry must be no older than `telemetry_timeout_s: 1`, vehicle state
+must be no older than `state_timeout_s: 3`, and the vehicle must be connected,
+armed, in GUIDED, and report normal active system status.
+
+Once READY/ACTIVE, wider limits allow the intended excitation response:
+
+| Measurement | JSON parameter | Allowed range with these targets |
+|---|---|---|
+| Bank magnitude | `max_bank_deg: 35` | At most 35° |
+| Altitude error | `max_altitude_error_m: 30` | Within ±30 m of target (45–105 m above home) |
+| Ground-course error | `max_course_error_deg: 40` | Within ±40° of the fixed target |
+| Airspeed | `min_airspeed_m_s: 20`, `max_airspeed_m_s: 30` | 20–30 m/s |
+
+Exceeding an active limit stops the maneuver and invokes the recovery procedure.
+The narrow settling rate/climb tolerances do not remain active abort limits.
+Freshness and authorization checks continue throughout.
+
+To shorten settling, change `dwell_s` first and assess the recorded entry conditions
+in SITL. Reducing it does not make the aircraft reach its targets faster, and a
+shorter dwell provides less evidence that the initial condition is steady.
+`setup_timeout_s: 90` is the maximum setup wait; reducing it causes an earlier
+abort. `recovery_timeout_s: 8` bounds recovery confirmation. Neither telemetry
+freshness timeout is a settling delay. `max_duration_s: 30` bounds the selected
+maneuver duration rather than setting dwell time.
+
+Pass your edited source file with `--straight-flight PATH`, or rebuild the ROS
+package to update the installed default. Do not restart services during an active
+experiment. These are configured test thresholds, not physical-flight safety
+limits. The earlier recorded verification used a three-second dwell and different
+target settings; it does not validate this new 0.25-second dwell configuration.
 
 ### Stop, quit, and run another segment
 
@@ -697,7 +813,7 @@ retains the ordinary DDS behavior without this navigation/LOITER coordinator.
 - `quit`, EOF, Ctrl-C, and SIGTERM cancel the maneuver and exit after recovery.
 - Normal completion follows the same recovery procedure.
 
-With the straight-flight option, recovery means repeated DDS disable, observation
+With the default straight-flight coordination, recovery means repeated DDS disable, observation
 of a fresh **zero excitation contribution** (not neutral total servo output), then
 requesting and confirming LOITER if the aircraft remains armed and authorized in
 GUIDED. Look for `Straight flight: DONE: LOITER confirmed` before shutting down
@@ -741,6 +857,15 @@ recovery turns from later identification. Deliberately interrupted maneuvers cov
 only the transmitted portion of the waveform, not the full requested sweep.
 For a bag spanning multiple publisher processes, repeat `--command-log` for each
 process's CSV. The earlier DataFlash comparison option remains available.
+
+Plots can be written even when validation exits with status 1. Inspect
+`report.json` and `straight_report.json` for the failing check. A confirmed idle
+shutdown (`RETURNING`/`DONE`, reason `No navigation ownership`, with no recorded
+maneuver attempt) is reported as skipped, not as a passed maneuver. At least one
+evaluated maneuver must pass, and every evaluated attempt must pass. Started but
+aborted attempts and incomplete recordings are not excused by this rule. Only the
+CSVs supplied with `--command-log` receive command-to-applied-signal validation;
+navigation checks alone do not establish that every waveform was delivered.
 
 ### Optional automated straight-flight and exit tests
 
@@ -786,3 +911,28 @@ pairs with command/applied excitation, baseline/final servo PWM, angular rates,
 attitude changes, and airspeed. This helper is for conventional surfaces.
 See the [report's individual-axis figures](../../../ardupilot_sid/docs/control_surface_excitation/VERIFICATION.md#individual-axis-straight-flight-chirp-and-multisine-plots)
 for the recorded examples.
+
+
+### Default mission command and explicit opt-out
+
+After the MAVROS/telemetry setup above, no navigation JSON flag is needed:
+
+```bash
+ros2 run ros2_sid run_mission_SITL.py --interface dds \
+  --wait-timeout 180 --command-log "$RUN/straight-commands.csv"
+```
+
+To intentionally keep the aircraft's existing GUIDED navigation (which may be
+loitering) and send only the excitation:
+
+```bash
+ros2 run ros2_sid run_mission_SITL.py --interface dds --no-straight-flight \
+  --wait-timeout 180 --command-log "$RUN/excitation-only-commands.csv"
+```
+
+The opt-out still disables excitation on exit, but does not request LOITER. Missing
+MAVROS telemetry in the default workflow withholds excitation; it does not silently
+fall back to excitation-only mode. The automated `surface_sitl.py` runner retains
+its own `--straight-flight` switch: without it, it explicitly opts its publisher
+out, preserving the original excitation-only test. The plotting command's
+`--straight-flight` flag still requests navigation plots and has not changed.

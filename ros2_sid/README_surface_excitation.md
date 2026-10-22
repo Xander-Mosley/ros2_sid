@@ -1,5 +1,16 @@
 # DDS surface-excitation development
 
+> **DDS default:** `run_mission_SITL.py --interface dds` now loads the packaged
+> `straight_flight_sitl.json` automatically. MAVROS is required: defaults target
+> 75 m above home, 23 m/s, and the current ground course, then wait for settling.
+> `--straight-flight PATH` overrides these settings; `--no-straight-flight`
+> explicitly disables navigation coordination and automatic LOITER recovery.
+> The shared HITL DDS entrypoint has the same default and retains its RC gate;
+> the packaged settings remain SITL examples, not validated physical-flight settings.
+> The legacy trajectory interface is unchanged. Rebuild/restart the ROS service
+> before using this new default; do not restart it during a running experiment.
+
+
 For automatic mission loading and creating your own chirps/multisines, see [Custom DDS waveforms](docs/custom_surface_waveforms.md).
 
 The shared DDS backend is selected from `run_mission_SITL.py` or
@@ -127,7 +138,7 @@ selects an exact existing run. Always use `source` so the helper exports `RUN`
 into the shell where you will record, publish, or analyze.
 
 
-## Optional straight-flight coordination
+## Default straight-flight coordination
 
 See [straight-flight setup and safe exit](docs/straight_flight_plan.md) for the
 `--straight-flight` option shared by the SITL/HITL DDS entrypoints. It uses MAVROS

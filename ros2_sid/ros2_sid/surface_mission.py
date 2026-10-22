@@ -35,6 +35,39 @@ QOS = QoSProfile(
 )
 
 
+def add_navigation_arguments(parser: argparse.ArgumentParser) -> None:
+    """Expose default straight-flight coordination and an explicit opt-out."""
+    navigation = parser.add_mutually_exclusive_group()
+    navigation.add_argument(
+        "--straight-flight",
+        metavar="CONFIG",
+        help="Override packaged straight-flight settings (MAVROS required by default)",
+    )
+    navigation.add_argument(
+        "--no-straight-flight",
+        action="store_true",
+        help="Disable navigation coordination and LOITER recovery; publish DDS excitation only",
+    )
+
+
+def resolve_straight_flight(args: argparse.Namespace) -> None:
+    """Resolve default settings from the installed package unless explicitly disabled."""
+    if args.no_straight_flight:
+        args.straight_flight = None
+        return
+    if args.straight_flight is None:
+        from ament_index_python.packages import get_package_share_directory
+
+        args.straight_flight = str(
+            Path(get_package_share_directory("ros2_sid"))
+            / "config/surface_excitation/straight_flight_sitl.json"
+        )
+    if not Path(args.straight_flight).is_file():
+        raise FileNotFoundError(
+            f"Straight-flight configuration not found: {args.straight_flight}"
+        )
+
+
 def resolve_mission_source(args: argparse.Namespace) -> None:
     """Resolve the packaged current DDS mission unless an explicit source was given."""
     if args.experiment or args.mission_plan:
@@ -402,10 +435,7 @@ def main(hitl: bool = False) -> int:
         action="store_true",
         help="SITL automated start after firmware authorization",
     )
-    parser.add_argument(
-        "--straight-flight",
-        help="Optional straight-flight coordination JSON (MAVROS required)",
-    )
+    add_navigation_arguments(parser)
     parser.add_argument("--command-log", default="surface_commands.csv")
     parser.add_argument("--wait-timeout", type=float, default=30.0)
     parser.add_argument(
@@ -420,9 +450,13 @@ def main(hitl: bool = False) -> int:
         parser.error("HITL requires a fresh low-to-high RC transition")
     try:
         resolve_mission_source(args)
+        resolve_straight_flight(args)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     print(f"DDS mission source: {args.experiment or args.mission_plan}")
+    print(
+        f"Straight-flight coordination: {args.straight_flight or 'disabled (--no-straight-flight)'}"
+    )
     from rclpy.signals import SignalHandlerOptions
 
     rclpy.init(args=ros_args, signal_handler_options=SignalHandlerOptions.NO)

@@ -439,6 +439,8 @@ def main() -> int:
         help="Also export coordinator events and navigation plots from the bag",
     )
     a = p.parse_args()
+    if not a.log.strip():
+        p.error("Input path is empty. Set BAG to the recorded bag directory first.")
     report = analyze(a.log, a.output)
     if a.straight_flight:
         from .straight_analysis import analyze_straight
