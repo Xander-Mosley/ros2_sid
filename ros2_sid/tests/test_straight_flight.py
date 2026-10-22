@@ -21,7 +21,7 @@ def coordinator(tmp_path):
     )
     # Keep deterministic test conditions independent of operator-edited settings.
     config = json.loads(path.read_text())
-    config.update(airspeed_m_s=18, min_airspeed_m_s=10)
+    config.update(airspeed_m_s=18, min_airspeed_m_s=10, altitude_relative_m=100, dwell_s=3)
     path = tmp_path / "test-settings.json"
     path.write_text(json.dumps(config))
     flight = StraightFlight(node, str(path), str(tmp_path / "events.jsonl"))

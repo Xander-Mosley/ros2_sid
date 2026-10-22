@@ -69,6 +69,7 @@ def test_hitl_stale_and_high_start(node, monkeypatch):
     current = [100.0]
     monkeypatch.setattr("ros2_sid.surface_mission.time.monotonic", lambda: current[0])
     node.hitl = True
+    node.requested = False
     node.clock_sync.update(1000.0, 100.0)
     node.status = SimpleNamespace(state=1)
     node.status_time = 100.0
@@ -280,3 +281,96 @@ def test_default_navigation_cli(tmp_path, monkeypatch):
         resolve_straight_flight(parser.parse_args([]))
     with pytest.raises(SystemExit):
         parser.parse_args(["--straight-flight", str(custom), "--no-straight-flight"])
+
+
+@pytest.mark.parametrize("phase", ["waiting", "active"])
+@pytest.mark.parametrize("channels", [[1500] * 8, []])
+def test_hitl_legacy_low_or_missing_stops_between_ticks(node, monkeypatch, phase, channels):
+    """RC low/missing cancels preparation or sampling before a subsequent high callback."""
+    from ros2_sid.surface_signals import RCGate, Cadence
+
+    monkeypatch.setattr("ros2_sid.surface_mission.time.monotonic", lambda: 100.0)
+    node.hitl = True
+    node.rc = RCGate()
+    node.requested = True
+    if phase == "active":
+        node.cadence = Cadence(100, 100)
+    node.on_mavros_rc(SimpleNamespace(channels=channels))
+    assert node.stopping == 100
+    assert node.cadence is None and not node.requested
+    node.on_mavros_rc(SimpleNamespace(channels=[1500] * 7 + [1900]))
+    assert not node.rc.allowed(100)
+    node.clock_sync.update(1000, 100)
+    sent = []
+    node.send = lambda enable, values=(0, 0, 0): sent.append(enable)
+    node.tick()
+    assert sent == [False]
+
+
+def test_hitl_console_cannot_start(node, monkeypatch):
+    """Console start cannot bypass the physical RC gate."""
+    monkeypatch.setattr("ros2_sid.surface_mission.time.monotonic", lambda: 100.0)
+    node.hitl = True
+    node.requested = False
+    node.clock_sync.update(1000, 100)
+    node.events.put("start")
+    sent = []
+    node.send = lambda enable, values=(0, 0, 0): sent.append(enable)
+    node.tick()
+    assert not node.requested and True not in sent
+
+
+@pytest.mark.parametrize("source,topic", [("mavros", "/mavros/rc/in"), ("dds", "/ap/rcin")])
+def test_hitl_constructor_uses_selected_rc_source(node, tmp_path, source, topic):
+    """The real HITL constructor subscribes to exactly the requested RC transport."""
+    args = SimpleNamespace(**vars(node.args))
+    args.rc_source = source
+    args.command_log = str(tmp_path / (source + ".csv"))
+    child = SurfaceMission(args, hitl=True)
+    try:
+        topics = {sub.topic_name for sub in child.subscriptions}
+        assert topic in topics
+        assert ({"/mavros/rc/in", "/ap/rcin"} - {topic}).isdisjoint(topics)
+        assert not child.requested
+    finally:
+        child.logfile.close()
+        child.destroy_node()
+
+
+def test_hitl_waiting_status_is_clear_and_not_repeated(node, monkeypatch):
+    """Waiting for RC is visible without flooding the console every timer tick."""
+    from unittest.mock import Mock
+
+    logger = Mock()
+    monkeypatch.setattr(node, "get_logger", lambda: logger)
+    monkeypatch.setattr("ros2_sid.surface_mission.time.monotonic", lambda: 100.0)
+    node.hitl = True
+    node.requested = False
+    node.clock_sync.update(1000, 100)
+    node.send = lambda *args: None
+    node.tick()
+    node.tick()
+    assert logger.info.call_count == 1
+    assert "RC input missing" in logger.info.call_args.args[0]
+    node.events.put("start")
+    node.tick()
+    assert any("console start is ignored" in c.args[0] for c in logger.info.call_args_list)
+    assert not node.requested
+
+
+def test_hitl_running_message_requires_firmware_ack(node, monkeypatch):
+    """Only an ACTIVE acknowledgement for this publisher can announce RUNNING."""
+    from unittest.mock import Mock
+    from ros2_sid.surface_signals import Cadence
+
+    logger = Mock()
+    monkeypatch.setattr(node, "get_logger", lambda: logger)
+    node.hitl = True
+    node.cadence = Cadence(100, 100)
+    node.last_enabled_sequence = 1000
+    node.on_status(SimpleNamespace(state=2, sequence_id=10))
+    assert not node.active_seen and not logger.info.called
+    node.on_status(SimpleNamespace(state=2, sequence_id=1000))
+    node.on_status(SimpleNamespace(state=2, sequence_id=1000))
+    assert node.active_seen and logger.info.call_count == 1
+    assert "RUNNING" in logger.info.call_args.args[0]

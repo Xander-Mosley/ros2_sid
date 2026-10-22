@@ -148,3 +148,12 @@ for fixed navigation targets and settling, then the existing DDS waveform path.
 Normal completion and manual exit observe zero perturbation before requesting
 LOITER, while preserving operator/failsafe mode changes. Bag-based plots include
 course, altitude, airspeed, phases, and ground track. Physical flight is unverified.
+
+## Cube Orange Plus installation
+
+For hardware builds, USB DDS, flashing and restoring standard ArduPlane, see
+[Cube Orange Plus Simulation on Hardware](ros2_sid/docs/cubeorangeplus_simulation_on_hardware.md).
+The guide distinguishes firmware installation from loading a parameter file.
+
+For the RC-gated HITL entrypoint, see [manual HITL excitation](ros2_sid/docs/manual_surface_excitation_hitl.md)
+and its [implementation/test plan](ros2_sid/docs/hitl_excitation_plan.md).

@@ -20,6 +20,7 @@ from pathlib import Path
 import rclpy
 from ardupilot_msgs.msg import ControlSurfaceExcitation, ControlSurfaceStatus, RcIn
 from builtin_interfaces.msg import Time
+from mavros_msgs.msg import RCIn
 from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -159,6 +160,7 @@ class SurfaceMission(Node):
         super().__init__("surface_excitation_mission")
         self.args = args
         self.hitl = hitl
+        self.last_operator_status: str | None = None
         if args.experiment:
             self.experiments = [
                 (Path(args.experiment).stem, Experiment(args.experiment))
@@ -178,7 +180,10 @@ class SurfaceMission(Node):
             ControlSurfaceStatus, "/ap/sid/status", self.on_status, QOS
         )
         if hitl:
-            self.create_subscription(RcIn, "/ap/rcin", self.on_rc, QOS)
+            if getattr(args, "rc_source", "mavros") == "mavros":
+                self.create_subscription(RCIn, "/mavros/rc/in", self.on_mavros_rc, QOS)
+            else:
+                self.create_subscription(RcIn, "/ap/rcin", self.on_rc, QOS)
         self.sequence = secrets.randbits(32)
         self.status: ControlSurfaceStatus | None = None
         self.status_time = 0.0
@@ -211,6 +216,11 @@ class SurfaceMission(Node):
             self.tick,
             clock=Clock(clock_type=ClockType.STEADY_TIME),
         )
+        if hitl:
+            self.operator_status(
+                f"WAITING: RC channel {args.rc_channel} (index {args.rc_channel - 1}); "
+                f"set LOW below {args.rc_threshold}, select a maneuver, then switch HIGH."
+            )
         if not args.autostart:
             threading.Thread(target=self.console, daemon=True).start()
 
@@ -257,11 +267,36 @@ class SurfaceMission(Node):
             and self.last_enabled_sequence is not None
             and ((self.last_enabled_sequence - msg.sequence_id) & 0xFFFFFFFF) < 100
         ):
+            if not self.active_seen:
+                self.operator_status(
+                    "RUNNING: firmware confirmed ACTIVE excitation. Switch LOW to stop."
+                )
             self.active_seen = True
+
+    def operator_status(self, message: str) -> None:
+        """Report HITL status changes once without logging every control-loop tick."""
+        if self.hitl and message != self.last_operator_status:
+            self.get_logger().info(message)
+            self.last_operator_status = message
+
+    def on_mavros_rc(self, msg: RCIn) -> None:
+        """Read the legacy MAVROS RC channel layout; missing channels fail closed."""
+        self.rc.update(msg.channels, (1 << len(msg.channels)) - 1, time.monotonic())
+        self.check_rc_stop()
 
     def on_rc(self, msg: RcIn) -> None:
         """Refresh the HITL RC gate from the message validity mask and channel values."""
         self.rc.update(msg.values, msg.valid_mask, time.monotonic())
+        self.check_rc_stop()
+
+    def check_rc_stop(self) -> None:
+        """Latch RC loss even when low and high callbacks arrive between timer ticks."""
+        if (
+            self.hitl
+            and (self.requested or self.cadence is not None)
+            and not self.rc.allowed(time.monotonic())
+        ):
+            self.stop("RC switch off, invalid, or stale")
 
     def send(self, enable: bool, values: AxisSample = (0.0, 0.0, 0.0)) -> None:
         """Publish one synchronized normalized sample and retain its sequence in the command CSV."""
@@ -302,7 +337,11 @@ class SurfaceMission(Node):
         now = time.monotonic()
         while not self.events.empty():
             command = self.events.get_nowait()
-            if command == "start" and not self.hitl and self.stopping is None:
+            if command == "start" and self.hitl:
+                self.get_logger().info(
+                    "HITL starts with the RC switch: LOW, select, then HIGH; console start is ignored."
+                )
+            elif command == "start" and not self.hitl and self.stopping is None:
                 self.requested = True
             elif command in ("stop", "quit"):
                 self.quit_requested = command == "quit"
@@ -345,7 +384,8 @@ class SurfaceMission(Node):
         if self.hitl:
             allowed = self.rc.allowed(now)
             if (
-                self.cadence
+                self.requested
+                or self.cadence
                 or (
                     self.straight
                     and self.straight.owned
@@ -354,10 +394,31 @@ class SurfaceMission(Node):
             ) and not allowed:
                 self.stop("RC switch off, invalid, or stale")
                 return
+            if allowed and not self.requested:
+                self.operator_status(
+                    "START REQUESTED: RC is HIGH; checking flight readiness."
+                )
+            elif not allowed:
+                if self.rc.last is None or now - self.rc.last > self.rc.timeout:
+                    self.operator_status(
+                        "WAITING: RC input missing, invalid or stale. Check the RC topic."
+                    )
+                elif self.rc.high:
+                    self.operator_status(
+                        "WAITING: switch is HIGH; switch LOW first, then HIGH to start."
+                    )
+                else:
+                    self.operator_status(
+                        "WAITING: switch is LOW. Select a maneuver, then switch HIGH."
+                    )
             self.requested = allowed
         try:
             self.clock_sync.stamp(now)
         except RuntimeError as exc:
+            if self.requested:
+                self.operator_status(
+                    "WAITING: no synchronized /ap/time clock from the aircraft."
+                )
             if self.cadence or (
                 self.straight and self.straight.owned and self.straight.phase != "DONE"
             ):
@@ -376,6 +437,9 @@ class SurfaceMission(Node):
                 self.stop(str(exc), failed=True)
                 return
             if not ready:
+                self.operator_status(
+                    f"PREPARING: straight-flight phase {self.straight.phase}; excitation has not started."
+                )
                 self.started = now
                 if now - self.last_disable >= 0.05:
                     self.send(False)
@@ -393,10 +457,18 @@ class SurfaceMission(Node):
                 or now - self.status_time > 0.5
                 or self.status.state != ExcitationState.ARMED
             ):
+                state = self.status.state if self.status is not None else "unavailable"
+                reason = getattr(self.status, "reason", "unavailable")
+                self.operator_status(
+                    f"WAITING: firmware authorization/disable acknowledgement; state={state}, reason={reason}."
+                )
                 if now - self.started > self.args.wait_timeout:
                     self.stop("Firmware did not authorize mission", failed=True)
                 return
             self.cadence = Cadence(self.experiment.rate, now)
+            self.operator_status(
+                "STARTING: sending excitation; waiting for firmware ACTIVE confirmation."
+            )
         if (
             self.status is None
             or now - self.status_time > 0.5
@@ -439,12 +511,25 @@ def main(hitl: bool = False) -> int:
     parser.add_argument("--command-log", default="surface_commands.csv")
     parser.add_argument("--wait-timeout", type=float, default=30.0)
     parser.add_argument(
-        "--rc-channel", type=int, default=7, help="one-based RC switch channel (HITL)"
+        "--rc-channel",
+        type=int,
+        default=8,
+        help="one-based RC switch channel (HITL; legacy default 8)",
     )
-    parser.add_argument("--rc-threshold", type=int, default=1800)
+    parser.add_argument("--rc-threshold", type=int, default=1550)
     parser.add_argument("--rc-timeout", type=float, default=0.5)
+    parser.add_argument(
+        "--rc-source",
+        choices=("mavros", "dds"),
+        default="mavros",
+        help="HITL RC input: legacy /mavros/rc/in or /ap/rcin",
+    )
     args, ros_args = parser.parse_known_args()
-    if not 1 <= args.rc_channel <= 16 or not 0 < args.rc_timeout <= 2:
+    if (
+        not 1 <= args.rc_channel <= 16
+        or not 0 < args.rc_timeout <= 2
+        or not 800 <= args.rc_threshold <= 2200
+    ):
         parser.error("invalid RC gate configuration")
     if hitl and args.autostart:
         parser.error("HITL requires a fresh low-to-high RC transition")

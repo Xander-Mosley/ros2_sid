@@ -146,3 +146,12 @@ for fixed navigation targets and settling, then the existing DDS waveform path.
 Normal completion and manual exit observe zero perturbation before requesting
 LOITER, while preserving operator/failsafe mode changes. Bag-based plots include
 course, altitude, airspeed, phases, and ground track. Physical flight is unverified.
+
+## Cube Orange Plus Simulation on Hardware
+
+See [installation and flashing](docs/cubeorangeplus_simulation_on_hardware.md) for
+building this fork with onboard Plane simulation and custom DDS, connecting the
+two USB interfaces, and returning to standard ArduPlane firmware.
+
+The [manual HITL guide](docs/manual_surface_excitation_hitl.md) covers the legacy
+RC channel-8 switch, shared DDS mission library, recording and RC timing plots.

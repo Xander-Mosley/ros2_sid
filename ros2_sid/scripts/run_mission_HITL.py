@@ -9,6 +9,15 @@ and system identification. Unlike 'run_mission_SITL.py', this node maps the run/
 switch to a physical RC kill switch channel on the flight controller, enabling live
 hardware control over signal execution.
 
+DDS surface excitation
+----------------------
+Use ``ros2 run ros2_sid run_mission_HITL.py --interface dds`` for the shared
+SITL waveform library, straight-flight coordination, rosbag telemetry and plots.
+The default RC gate remains MAVROS channel 8: >=1550 runs, <1550 stops. DDS
+requires a fresh low/high edge and stops on stale or invalid RC input. The
+experiment switch must not also select flight mode (check FLTMODE_CH/RC8_OPTION).
+See docs/manual_surface_excitation_hitl.md for setup, stop/recovery and tests.
+
 Key Features
 ------------
 - Load maneuvers from CSV files to ensure reproducibility.
@@ -29,7 +38,7 @@ Usage
 -----
 1. Launch the node:
     '''bash
-    ros2 run ros2_sid testingsignals_HINL.py
+    ros2 run ros2_sid run_mission_HITL.py --interface trajectory
     '''
 2. Use the RC kill switch to start/stop maneuver execution.
 3. When the kill switch is inactive (low), select maneuvers via console input.

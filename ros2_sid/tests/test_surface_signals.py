@@ -139,3 +139,21 @@ def test_multisine_maneuver_examples():
             assert abs(values[j]) <= spec["amplitude"]
     assert len(set(e.sample(0.37))) == 3
     assert e.sample(e.duration) == (0.0, 0.0, 0.0)
+
+
+def test_legacy_rc_defaults_and_gap_reactivation():
+    """Channel eight is high at 1550; a delivery gap requires another low edge."""
+    gate = RCGate()
+    channels = [1500] * 8
+    gate.update(channels, 255, 0)
+    channels[7] = 1550
+    gate.update(channels, 255, .1)
+    assert gate.allowed(.1)
+    gate.update(channels, 255, 1)
+    assert not gate.allowed(1)
+    channels[7] = 1549
+    gate.update(channels, 255, 1.1)
+    assert not gate.allowed(1.1)
+    channels[7] = 1550
+    gate.update(channels, 255, 1.2)
+    assert gate.allowed(1.2)

@@ -4,6 +4,7 @@
       - sys_status
       - sys_time
       - command
+      - rc_io
       - imu
       - local_position
       - global_position

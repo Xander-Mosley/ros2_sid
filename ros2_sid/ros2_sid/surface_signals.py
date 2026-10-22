@@ -208,7 +208,7 @@ class RCGate:
     """Fail-closed RC authorization requiring a fresh low-to-high switch transition."""
 
     def __init__(
-        self, channel: int = 6, threshold: int = 1800, timeout: float = 0.5
+        self, channel: int = 7, threshold: int = 1550, timeout: float = 0.5
     ) -> None:
         """Configure a zero-based RC channel, PWM threshold, and freshness timeout in seconds."""
         self.channel = channel
@@ -225,6 +225,8 @@ class RCGate:
             self.high = False
             self.saw_low = False
             return
+        if self.last is not None and now - self.last > self.timeout:
+            self.saw_low = False
         high = values[self.channel] >= self.threshold
         if not high:
             self.saw_low = True
