@@ -11,7 +11,9 @@
 > before using this new default; do not restart it during a running experiment.
 
 
-For automatic mission loading and creating your own chirps/multisines, see [Custom DDS waveforms](docs/custom_surface_waveforms.md).
+For the detailed package guide, see [Surface excitation](ros2_sid/README_surface_excitation.md).
+
+For automatic mission loading and creating your own chirps/multisines, see [Custom DDS waveforms](ros2_sid/docs/custom_surface_waveforms.md).
 
 The shared DDS backend is selected from `run_mission_SITL.py` or
 `run_mission_HITL.py` with `--interface dds`. The legacy trajectory backend retains
@@ -19,9 +21,9 @@ its existing behavior. Architecture, C4 diagrams, usage, build instructions and
 experiment evidence are in `ardupilot_sid/docs/control_surface_excitation/` in the
 outer workspace.
 
-For a hands-on walkthrough, see [Run the DDS surface-excitation SITL tests yourself](docs/manual_surface_excitation_sitl.md). It covers setup, the six single-axis maneuver tests, interactive maneuver control, ROS bags, and plotting.
+For a hands-on walkthrough, see [Run the DDS surface-excitation SITL tests yourself](ros2_sid/docs/manual_surface_excitation_sitl.md). It covers setup, the six single-axis maneuver tests, interactive maneuver control, ROS bags, and plotting.
 
-To enter the container and send waveforms directly, follow [Manual container waveform commands](docs/manual_container_waveforms.md).
+To enter the container and send waveforms directly, follow [Manual container waveform commands](ros2_sid/docs/manual_container_waveforms.md).
 
 ## Automatic ROS setup
 
@@ -140,7 +142,7 @@ into the shell where you will record, publish, or analyze.
 
 ## Default straight-flight coordination
 
-See [straight-flight setup and safe exit](docs/straight_flight_plan.md) for the
+See [straight-flight setup and safe exit](ros2_sid/docs/straight_flight_plan.md) for the
 `--straight-flight` option shared by the SITL/HITL DDS entrypoints. It uses MAVROS
 for fixed navigation targets and settling, then the existing DDS waveform path.
 Normal completion and manual exit observe zero perturbation before requesting
