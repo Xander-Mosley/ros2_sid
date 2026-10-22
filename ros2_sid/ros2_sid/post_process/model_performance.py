@@ -1308,7 +1308,7 @@ def main() -> None:
     generate_plots(
         models={
             # "Roll": rol,
-            "Small Roll": rol2,
+            # "Small Roll": rol2,
             # "Roll Fixed": rol_fixed,
             # "Small Roll": rol_time,
             # "Nondim Roll": rol_nd,
