@@ -1,181 +1,159 @@
-"""Render individual-axis SITL command/response figures from recorded ROS bags."""
+"""Generate individual-axis maneuver figures from rosbag2 without replaying commands."""
 
 from __future__ import annotations
 
 import argparse
 import csv
 import json
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from .surface_bag import records
 
-AXES = ("roll", "pitch", "yaw")
-FIELDS = ("R", "P", "Y")
-FUNCTIONS = {"roll": 4, "pitch": 19, "yaw": 21}
 
-
-def render(run: Path, output: Path) -> dict[str, Any]:
-    """Save six PNG/PDF plots and verify that other logical axes stayed unexcited.
-
-    Command time comes from publisher AP-clock stamps. Applied outputs and aircraft
-    response come from coherent firmware snapshots in the ROS bag. Attitude is
-    unwrapped and expressed relative to the plotted window's first sample; the
-    normal GUIDED response has not been subtracted.
-    """
+def plot_maneuvers(
+    bag: Path, command_directory: Path, output: Path
+) -> list[dict[str, Any]]:
+    """Plot six conventional-airframe maneuvers using recorded firmware timestamps."""
     import matplotlib
+    import numpy as np
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    validation = json.loads((run / "plots/report.json").read_text())
-    if not validation["passed"] or len(validation.get("maneuvers", [])) != 6:
-        raise ValueError("Six validated single-axis maneuvers are required")
-    data: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for kind, row in records(run / "rosbag"):
-        if kind in ("SXA", "SXO", "ATT", "IMU"):
-            data[kind].append(row)
-    for series in data.values():
-        series.sort(key=lambda row: row["TimeUS"])
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for kind, row in records(bag):
+        grouped.setdefault(kind, []).append(row)
     output.mkdir(parents=True, exist_ok=True)
-    summary: dict[str, Any] = {"source_bag": str(run / "rosbag"), "experiments": []}
-    for axis_index, axis in enumerate(AXES):
+    summary = []
+    for axis, field, function in (
+        ("roll", "R", 4),
+        ("pitch", "P", 19),
+        ("yaw", "Y", 21),
+    ):
         for waveform in ("chirp", "multisine"):
             name = f"{waveform}_{axis}"
-            spec = json.loads((run / f"{name}.json").read_text())
-            if set(spec["axes"]) != {axis}:
-                raise ValueError(f"{name}: experiment is not single-axis")
-            with (run / f"{name}-commands.csv").open() as stream:
-                commands = [row for row in csv.DictReader(stream) if int(row["enable"])]
-            if not commands or any(
-                float(row[other]) != 0
-                for row in commands
-                for other in AXES
-                if other != axis
-            ):
+            with (command_directory / f"{name}-commands.csv").open() as stream:
+                commands = [r for r in csv.DictReader(stream) if int(r["enable"])]
+            if not commands:
+                raise ValueError(f"No enabled commands for {name}")
+            start, end = (float(commands[i]["stamp_s"]) * 1e6 for i in (0, -1))
+            reference = min(grouped["SXA"], key=lambda r: abs(r["ClockUS"] - start))
+            origin = reference["TimeUS"] + start - reference["ClockUS"]
+            duration = (end - start) / 1e6
+
+            def window(kind: str) -> list[dict[str, Any]]:
+                return sorted(
+                    [
+                        r
+                        for r in grouped[kind]
+                        if -1 <= (r["TimeUS"] - origin) / 1e6 <= duration + 0.5
+                    ],
+                    key=lambda r: r["TimeUS"],
+                )
+
+            def times(rows: list[dict[str, Any]]) -> list[float]:
+                return [(r["TimeUS"] - origin) / 1e6 for r in rows]
+
+            requested, applied = window("SXR"), window("SXA")
+            surfaces = [r for r in window("SXO") if r["Fn"] == function]
+            if not surfaces:
                 raise ValueError(
-                    f"{name}: missing commands or unexpected other-axis input"
+                    f"No conventional {axis} actuator; mixed-surface plotting requires function selection"
                 )
-            start = float(commands[0]["stamp_s"])
-            end = float(commands[-1]["stamp_s"])
-            frames = [
-                row
-                for row in data["SXA"]
-                if start - 0.5 <= row["ClockUS"] / 1e6 <= end + 1
-            ]
-            times = {row["TimeUS"]: row["ClockUS"] / 1e6 - start for row in frames}
-            active = [row for row in frames if start <= row["ClockUS"] / 1e6 <= end]
-            if not active:
-                raise ValueError(f"{name}: no firmware output frames")
-            other_axis_max = max(
-                abs(row[field])
-                for row in active
-                for index, field in enumerate(FIELDS)
-                if index != axis_index
+            attitude, rates, airspeed = window("ATT"), window("IMU"), window("ARSP")
+            fig, axes = plt.subplots(5, 1, figsize=(12, 13), sharex=True)
+            axes[0].plot(
+                times(requested),
+                [r[field] for r in requested],
+                label="DDS requested",
+                color="black",
+                linewidth=1,
             )
-            if other_axis_max > 1e-6:
-                raise ValueError(f"{name}: another logical axis was excited")
-            fig, panels = plt.subplots(4, 1, figsize=(12, 11), sharex=True)
-            command_times = [float(row["stamp_s"]) - start for row in commands]
-            panels[0].plot(
-                command_times,
-                [float(row[axis]) for row in commands],
-                label=f"Requested {axis}",
-                linewidth=1.3,
+            axes[0].plot(
+                times(applied),
+                [r[field] for r in applied],
+                label="Applied logical excitation",
+                color="tab:orange",
+                linewidth=1,
             )
-            panels[0].plot(
-                [times[row["TimeUS"]] for row in frames],
-                [row[FIELDS[axis_index]] for row in frames],
-                "--",
-                label="Firmware applied logical excitation",
-                linewidth=1.1,
-            )
-            panels[0].set_ylabel("Normalized excitation")
-            physical = [row for row in data["SXO"] if row["TimeUS"] in times]
-            other_pwm_max = max(
-                (abs(row["Delta"]) for row in physical if row["Fn"] != FUNCTIONS[axis]),
-                default=0,
-            )
-            if other_pwm_max:
-                raise ValueError(f"{name}: another surface has a nonzero perturbation")
-            for surface, function in FUNCTIONS.items():
-                rows = [row for row in physical if row["Fn"] == function]
-                panels[1].plot(
-                    [times[row["TimeUS"]] for row in rows],
-                    [row["Delta"] for row in rows],
-                    label=f"{surface}: final − baseline",
+            axes[0].set_ylabel("Normalized excitation")
+            for channel in sorted({r["Ch"] for r in surfaces}):
+                samples = [r for r in surfaces if r["Ch"] == channel]
+                axes[1].plot(
+                    times(samples),
+                    [r["Base"] for r in samples],
+                    "--",
+                    label=f"SERVO{channel + 1} baseline",
                 )
-            panels[1].set_ylabel("Applied ΔPWM (µs)")
-            rate_rows = [row for row in data["IMU"] if row["TimeUS"] in times]
-            for field, label in zip(
-                ("GyrX", "GyrY", "GyrZ"), ("p (roll)", "q (pitch)", "r (yaw)")
+                axes[1].plot(
+                    times(samples),
+                    [r["PWM"] for r in samples],
+                    label=f"SERVO{channel + 1} final",
+                )
+            axes[1].set_ylabel("Commanded PWM (µs)")
+            for component, label in zip(
+                ("GyrX", "GyrY", "GyrZ"), ("p: roll", "q: pitch", "r: yaw")
             ):
-                panels[2].plot(
-                    [times[row["TimeUS"]] for row in rate_rows],
-                    [row[field] for row in rate_rows],
-                    label=label,
+                axes[2].plot(times(rates), [r[component] for r in rates], label=label)
+            axes[2].set_ylabel("Angular rate (rad/s)")
+            for component in ("Roll", "Pitch", "Yaw"):
+                values = np.degrees(
+                    np.unwrap(np.radians([r[component] for r in attitude]))
                 )
-            panels[2].set_ylabel("Body rate (rad/s)")
-            attitude_rows = [row for row in data["ATT"] if row["TimeUS"] in times]
-            if not attitude_rows or not rate_rows:
-                raise ValueError(f"{name}: aircraft response data is missing")
-            for field in (axis.capitalize(),):
-                angles = np.rad2deg(
-                    np.unwrap(np.deg2rad([row[field] for row in attitude_rows]))
-                )
-                panels[3].plot(
-                    [times[row["TimeUS"]] for row in attitude_rows],
-                    angles - angles[0],
-                    label=field,
-                )
-            panels[3].set_ylabel(f"{axis.capitalize()} change (deg)")
-            panels[3].set_xlabel("Time since first enabled command (s)")
-            for panel in panels:
-                panel.axvline(0, color="black", alpha=0.3, linewidth=0.8)
-                panel.axvline(end - start, color="black", alpha=0.3, linewidth=0.8)
-                panel.grid(alpha=0.25)
-                panel.legend(loc="upper right", fontsize=9)
+                baseline = np.interp(0, times(attitude), values)
+                axes[3].plot(times(attitude), values - baseline, label=component)
+            axes[3].set_ylabel("Attitude change (deg)\nfrom maneuver start")
+            axes[4].plot(
+                times(airspeed), [r["Airspeed"] for r in airspeed], label="Airspeed"
+            )
+            axes[4].set_ylabel("Airspeed (m/s)")
+            for ax in axes:
+                ax.axvspan(0, duration, color="green", alpha=0.07, linewidth=0)
+                ax.axvline(0, color="grey", linestyle=":")
+                ax.axvline(duration, color="grey", linestyle=":")
+                ax.grid(alpha=0.2)
+                ax.legend(loc="upper right", fontsize=8)
+            axes[-1].set_xlabel(
+                "Time from first enabled command (s); shaded = commanded maneuver"
+            )
+            title = "Frequency sweep (chirp)" if waveform == "chirp" else "Multisine"
             fig.suptitle(
-                f"ArduPlane SITL — {axis.capitalize()} {waveform} — {spec['rate']:g} Hz publication"
+                f"{axis.title()} — {title}\nRecorded straight-flight SITL; normal controllers remain active"
             )
-            fig.text(
-                0.5,
-                0.01,
-                "Only the named axis is commanded. GUIDED remains active; response includes nominal motion and cross-axis coupling.",
-                ha="center",
-                fontsize=9,
-            )
-            fig.tight_layout(rect=(0, 0.025, 1, 0.97))
-            for suffix in ("png", "pdf"):
-                fig.savefig(output / f"{name}.{suffix}", dpi=150)
+            fig.tight_layout(rect=(0, 0, 1, 0.96))
+            for extension in ("png", "pdf"):
+                fig.savefig(output / f"{name}.{extension}", dpi=160)
             plt.close(fig)
-            summary["experiments"].append(
+            summary.append(
                 dict(
-                    name=name,
-                    rate=spec["rate"],
-                    duration=end - start,
-                    output_frames=len(active),
-                    other_axis_max=other_axis_max,
-                    other_surface_delta_max=other_pwm_max,
-                    figure=f"{name}.png",
+                    maneuver=name,
+                    commanded_duration_s=duration,
+                    output_frames=len(applied),
+                    physical_channels=sorted({r["Ch"] + 1 for r in surfaces}),
+                    png=f"{name}.png",
+                    pdf=f"{name}.pdf",
                 )
             )
-    (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    (output / "manifest.json").write_text(
+        json.dumps(dict(bag=str(bag), maneuvers=summary), indent=2) + "\n"
+    )
     return summary
 
 
-def main() -> int:
-    """Render report figures from a completed individual-axis SITL run."""
+def main() -> None:
+    """Run offline plotting against a bag and its six publisher command logs."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run", type=Path, required=True)
+    parser.add_argument("bag", type=Path)
+    parser.add_argument("--command-directory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    print(json.dumps(render(args.run, args.output), indent=2))
-    return 0
+    print(
+        json.dumps(
+            plot_maneuvers(args.bag, args.command_directory, args.output), indent=2
+        )
+    )
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

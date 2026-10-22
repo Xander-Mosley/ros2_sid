@@ -145,8 +145,9 @@ class PubInputSignals(Node):
         self.print_developer_info()
 
         # Paths
-        package_subroot = Path(__file__).resolve().parents[1]
-        self.mission_library = (package_subroot / "ros2_sid" / "setup" / "mission_library")
+        from ros2_sid.mission_library import mission_library_path
+
+        self.mission_library = mission_library_path()
         self.current_mission_file = (self.mission_library / "current_mission.json")
         
         # Execution States
@@ -238,6 +239,8 @@ class PubInputSignals(Node):
 
         with mission_plan_file.open("r", encoding="utf-8") as file:
             mission_plan = json.load(file)
+        if isinstance(mission_plan, dict) and mission_plan.get("units") == "normalized_surface":
+            raise ValueError("Surface mission selected: use --interface dds, or select a legacy attitude mission")
 
         if not isinstance(mission_plan, dict):
             raise ValueError(

@@ -30,10 +30,17 @@ class WaveformSpec(TypedDict, total=False):
 class Experiment:
     """Validated constant, linear-chirp, multisine, or interpolated CSV experiment."""
 
-    def __init__(self, path: str | Path) -> None:
-        """Load and validate a normalized-surface JSON experiment or CSV source."""
+    def __init__(
+        self, path: str | Path, *, config: dict[str, Any] | None = None
+    ) -> None:
+        """Validate a JSON experiment or an in-memory CSV mission configuration.
+
+        Relative CSV paths are resolved against ``path.parent`` in either case.
+        """
         self.path = Path(path)
-        self.config: dict[str, Any] = json.loads(self.path.read_text())
+        self.config: dict[str, Any] = (
+            json.loads(self.path.read_text()) if config is None else config
+        )
         c = self.config
         if c.get("units") != "normalized_surface":
             raise ValueError(

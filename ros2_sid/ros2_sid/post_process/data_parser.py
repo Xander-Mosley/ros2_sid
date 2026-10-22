@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
+import argparse
 import array
+import csv
+from typing import Any
 import math
 import os
 from pathlib import Path
 import sqlite3
 
 import numpy as np
-import pandas as pd
 
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
@@ -409,6 +411,8 @@ def parse_ros_message(topic_path, label, msg, relative_time):
 # ————————————————————————————————————————————————————————————
 
 def topic_extractor(bag_file, topics_to_extract):
+    import pandas as pd
+
     nanoseconds_per_second = 1e9
     tolerance = 0.02
 
@@ -477,8 +481,92 @@ def topic_extractor(bag_file, topics_to_extract):
 
     close(db_connection)
 
+SURFACE_TOPICS = {
+    "/ap/sid/control_surface": "surface_commands",
+    "/ap/sid/status": "surface_status",
+    "/ap/sid/output": "surface_output",
+    "/ap/time": "ap_time",
+}
+
+
+def flatten_surface_message(msg: Any, prefix: str = "") -> dict[str, Any]:
+    """Flatten ROS fields without changing units; array indices remain zero-based."""
+    row: dict[str, Any] = {}
+    for field in msg.get_fields_and_field_types():
+        value = getattr(msg, field)
+        name = f"{prefix}{field}"
+        if hasattr(value, "get_fields_and_field_types"):
+            row.update(flatten_surface_message(value, name + "_"))
+        elif isinstance(value, (list, tuple, array.array, np.ndarray)):
+            row.update({f"{name}_{i}": item for i, item in enumerate(value)})
+        else:
+            row[name] = value
+    return row
+
+
+def extract_surface_bag(bag: Path, output: Path) -> dict[str, int]:
+    """Export excitation topics from a rosbag2 directory without replay or time joins.
+
+    Output rows retain bag receipt nanoseconds and original source/firmware clocks.
+    A surface_output row is a coherent firmware snapshot; no nearest-time merge is
+    used to infer which command was applied. Split bags follow rosbag2 metadata.
+    """
+    import rosbag2_py
+    import yaml
+    from contextlib import ExitStack
+
+    metadata = yaml.safe_load((bag / "metadata.yaml").read_text())
+    storage = metadata["rosbag2_bagfile_information"]["storage_identifier"]
+    reader = rosbag2_py.SequentialReader()
+    reader.open(
+        rosbag2_py.StorageOptions(uri=str(bag), storage_id=storage),
+        rosbag2_py.ConverterOptions("", ""),
+    )
+    types = {
+        t.name: get_message(t.type)
+        for t in reader.get_all_topics_and_types()
+        if t.name in SURFACE_TOPICS
+    }
+    if "/ap/sid/output" not in types:
+        raise ValueError("Bag has no /ap/sid/output topic; record the excitation topics first")
+    output.mkdir(parents=True, exist_ok=True)
+    counts = {label: 0 for label in SURFACE_TOPICS.values()}
+    writers: dict[str, Any] = {}
+    with ExitStack() as stack:
+        for label in counts:
+            if (output / f"{label}_data.csv").exists():
+                raise FileExistsError(f"Choose a new output directory: {output}")
+        while reader.has_next():
+            topic, data, recorded_ns = reader.read_next()
+            if topic not in types:
+                continue
+            msg = deserialize_message(data, types[topic])
+            row = {"bag_time_ns": recorded_ns, **flatten_surface_message(msg)}
+            label = SURFACE_TOPICS[topic]
+            if label not in writers:
+                stream = stack.enter_context((output / f"{label}_data.csv").open("w", newline=""))
+                writers[label] = csv.DictWriter(stream, fieldnames=list(row))
+                writers[label].writeheader()
+            writers[label].writerow(row)
+            counts[label] += 1
+    if not counts["surface_output"]:
+        raise ValueError("Bag contains no applied-output samples")
+    return counts
+
+
 def main() -> None:
-    bag_file = '/develop_ws/bag_files/2026-09-24_Cessna-Amp15_Replay1/rosbag2_2026_09_24-19_15_52_0.db3'
+    parser = argparse.ArgumentParser(description="Export recorded ROS topics to CSV without replay")
+    parser.add_argument("bag", type=Path, help="rosbag2 directory with --surface; SQLite .db3 otherwise")
+    parser.add_argument("--output", type=Path, required=True, help="CSV output directory")
+    parser.add_argument("--surface", action="store_true", help="Export interactive DDS excitation topics")
+    args = parser.parse_args()
+    if args.surface:
+        for label, count in extract_surface_bag(args.bag, args.output).items():
+            print(f"{label}: {count} samples")
+        return
+    global OUTPUT_DIR
+    OUTPUT_DIR = args.output
+    bag_file = str(args.bag)
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',

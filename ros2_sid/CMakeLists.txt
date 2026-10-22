@@ -74,9 +74,11 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   set(_pytest_tests
     tests/dummy_test.py
+    tests/test_surface_data_parser.py
     tests/test_surface_analysis.py
     tests/test_surface_signals.py
     tests/test_surface_mission_ros.py
+    tests/test_straight_flight.py
     # Add other test files here
   )
   foreach(_test_path ${_pytest_tests})
@@ -95,3 +97,4 @@ install(DIRECTORY
   config
   DESTINATION share/${PROJECT_NAME}
 )
+install(DIRECTORY ros2_sid/setup/mission_library DESTINATION share/${PROJECT_NAME}/ros2_sid/setup)

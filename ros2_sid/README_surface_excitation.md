@@ -1,10 +1,28 @@
 # DDS surface-excitation development
 
+For automatic mission loading and creating your own chirps/multisines, see [Custom DDS waveforms](docs/custom_surface_waveforms.md).
+
 The shared DDS backend is selected from `run_mission_SITL.py` or
 `run_mission_HITL.py` with `--interface dds`. The legacy trajectory backend retains
 its existing behavior. Architecture, C4 diagrams, usage, build instructions and
 experiment evidence are in `ardupilot_sid/docs/control_surface_excitation/` in the
 outer workspace.
+
+For a hands-on walkthrough, see [Run the DDS surface-excitation SITL tests yourself](docs/manual_surface_excitation_sitl.md). It covers setup, the six single-axis maneuver tests, interactive maneuver control, ROS bags, and plotting.
+
+To enter the container and send waveforms directly, follow [Manual container waveform commands](docs/manual_container_waveforms.md).
+
+## Automatic ROS setup
+
+After building the DDS-enabled Plane binary, run from the outer workspace:
+
+```bash
+docker compose -f docker-compose.sid.yaml up -d --wait --wait-timeout 900
+```
+
+The ROS service builds the interfaces and mission packages and runs the surface
+Python tests before becoming healthy. See the manual guide for logs and rebuilding
+an already running service after source changes.
 
 ## Module responsibilities
 
@@ -82,3 +100,38 @@ perturbations, all three body rates, and the selected axis's unwrapped attitude 
 motion remains in the response; nonzero cross-axis response is not evidence that
 another excitation axis was commanded. The figures are embedded in the firmware
 `VERIFICATION.md` report.
+
+## Shared legacy/DDS mission library
+
+Both backends resolve `ros2_sid/setup/mission_library/current_mission.json` and its
+`subfolder`. The selected folder contains `mission_plan.json` with ordered
+`filename`/`name`/`order` entries and maneuver CSVs. DDS requires the additional
+plan marker `"units": "normalized_surface"`. The default selection is now
+`dds_surface`; select `mission_1` for legacy trajectory operation. Backend checks
+prevent interpreting surface fractions as legacy attitude commands or vice versa.
+Run `run_mission_SITL.py --interface dds` with no source argument for the default.
+See the custom-waveform guide for generating CSVs and switching missions.
+
+## Select a recording directory
+
+Inside the container, select an existing interactive SITL run without copying its
+timestamp:
+
+```bash
+source /work/tools/sid/use_run.sh --latest interactive_
+```
+
+For a new waveform session, use `--new container_waves` once, then
+`--latest container_waves_` in other shells. Check the printed path; `--path DIRECTORY`
+selects an exact existing run. Always use `source` so the helper exports `RUN`
+into the shell where you will record, publish, or analyze.
+
+
+## Optional straight-flight coordination
+
+See [straight-flight setup and safe exit](docs/straight_flight_plan.md) for the
+`--straight-flight` option shared by the SITL/HITL DDS entrypoints. It uses MAVROS
+for fixed navigation targets and settling, then the existing DDS waveform path.
+Normal completion and manual exit observe zero perturbation before requesting
+LOITER, while preserving operator/failsafe mode changes. Bag-based plots include
+course, altitude, airspeed, phases, and ground track. Physical flight is unverified.

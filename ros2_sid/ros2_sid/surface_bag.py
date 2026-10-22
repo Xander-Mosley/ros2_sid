@@ -36,7 +36,11 @@ def records(path: str | Path) -> Iterator[tuple[str, dict[str, Any]]]:
         rosbag2_py.StorageOptions(uri=str(path), storage_id=storage),
         rosbag2_py.ConverterOptions("", ""),
     )
-    topics = {t.name: get_message(t.type) for t in reader.get_all_topics_and_types()}
+    topics = {
+        t.name: get_message(t.type)
+        for t in reader.get_all_topics_and_types()
+        if t.name in ("/ap/sid/control_surface", "/ap/sid/output")
+    }
     pending_commands = []
     clock_offsets = []
     while reader.has_next():

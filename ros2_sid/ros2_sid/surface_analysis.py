@@ -433,8 +433,18 @@ def main() -> int:
         default=[],
         help="Validate full maneuver application against publisher CSV (repeatable)",
     )
+    p.add_argument(
+        "--straight-flight",
+        action="store_true",
+        help="Also export coordinator events and navigation plots from the bag",
+    )
     a = p.parse_args()
     report = analyze(a.log, a.output)
+    if a.straight_flight:
+        from .straight_analysis import analyze_straight
+
+        report["straight_flight"] = analyze_straight(a.log, a.output)
+        report["passed"] = report["passed"] and report["straight_flight"]["passed"]
     if a.compare_dataflash:
         report["dataflash_comparison"] = compare_outputs(a.log, a.compare_dataflash)
         report["passed"] = report["passed"] and report["dataflash_comparison"]["passed"]

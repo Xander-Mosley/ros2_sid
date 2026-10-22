@@ -18,3 +18,43 @@
   durability: volatile
   history: keep_last
   depth: 100
+/mavros/state:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/mavros/imu/data:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/mavros/imu/data_raw:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/mavros/local_position/odom:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/mavros/rc/in:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/mavros/rc/out:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/mavros/global_position/rel_alt:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/mavros/imu/diff_pressure:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100

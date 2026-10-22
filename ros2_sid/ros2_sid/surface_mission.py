@@ -5,8 +5,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import queue
 import secrets
+import select
+import signal
+import sys
 import threading
 import time
 from collections import deque
@@ -20,6 +24,7 @@ from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
+from .mission_library import mission_library_path
 from .surface_signals import AxisSample, Cadence, ClockSync, Experiment, RCGate
 
 QOS = QoSProfile(
@@ -28,6 +33,79 @@ QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     durability=DurabilityPolicy.VOLATILE,
 )
+
+
+def resolve_mission_source(args: argparse.Namespace) -> None:
+    """Resolve the packaged current DDS mission unless an explicit source was given."""
+    if args.experiment or args.mission_plan:
+        return
+    library = mission_library_path()
+    pointer = library / "current_mission.json"
+    selection = json.loads(pointer.read_text())
+    folder = selection.get("subfolder")
+    if not isinstance(folder, str) or not folder.strip():
+        raise ValueError(f"{pointer} requires a nonempty subfolder")
+    path = library / folder.strip() / "mission_plan.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"DDS mission plan not found: {path}")
+    args.mission_plan = str(path)
+
+
+def load_mission_experiments(plan_path: Path) -> list[tuple[str, Experiment]]:
+    """Load ordered legacy-layout CSVs or explicit DDS waveform definitions.
+
+    CSV plans must declare normalized_surface units; legacy angle data is rejected.
+    Sampling rate and duration are inferred from the CSV time column.
+    """
+    plan = json.loads(plan_path.read_text())
+    if plan.get("units") != "normalized_surface":
+        raise ValueError(
+            "DDS mission plan requires normalized_surface units; select a surface mission"
+        )
+    entries = plan["maneuvers"]
+    if not entries:
+        raise ValueError("empty mission plan")
+    if any("filename" in entry for entry in entries):
+        if not all(
+            isinstance(entry.get("order"), int)
+            and isinstance(entry.get("filename"), str)
+            for entry in entries
+        ):
+            raise ValueError(
+                "CSV mission entries require filename, name and integer order"
+            )
+        entries = sorted(entries, key=lambda entry: entry["order"])
+    result = []
+    for entry in entries:
+        if not isinstance(entry.get("name"), str) or not entry["name"].strip():
+            raise ValueError("maneuver name must be nonempty")
+        if "filename" in entry:
+            path = plan_path.parent / entry["filename"]
+            with path.open() as stream:
+                reader = csv.reader(stream)
+                next(reader)
+                times = [float(row[0]) for row in reader]
+            if len(times) < 2:
+                raise ValueError("CSV needs at least two samples")
+            dt = times[1] - times[0]
+            if dt <= 0 or any(
+                abs((b - a) - dt) > max(1e-9, abs(dt) * 1e-6)
+                for a, b in zip(times, times[1:])
+            ):
+                raise ValueError("CSV sample spacing must be positive and uniform")
+            experiment = Experiment(
+                plan_path,
+                config={
+                    "units": "normalized_surface",
+                    "csv": entry["filename"],
+                    "rate": 1 / dt,
+                    "duration": times[-1],
+                },
+            )
+        else:
+            experiment = Experiment(plan_path.parent / entry["experiment"])
+        result.append((entry["name"], experiment))
+    return result
 
 
 class ExcitationState(IntEnum):
@@ -54,15 +132,7 @@ class SurfaceMission(Node):
             ]
         else:
             plan_path = Path(args.mission_plan)
-            plan = json.loads(plan_path.read_text())
-            if plan.get("units") != "normalized_surface":
-                raise ValueError("DDS mission plan requires normalized_surface units")
-            self.experiments = [
-                (entry["name"], Experiment(plan_path.parent / entry["experiment"]))
-                for entry in plan["maneuvers"]
-            ]
-            if not self.experiments:
-                raise ValueError("empty mission plan")
+            self.experiments = load_mission_experiments(plan_path)
         self.experiment = self.experiments[0][1]
         self.quit_requested = False
         self.clock_sync = ClockSync()
@@ -96,6 +166,13 @@ class SurfaceMission(Node):
         self.log.writerow(
             ["monotonic_s", "stamp_s", "sequence", "enable", "roll", "pitch", "yaw"]
         )
+        self.straight = None
+        if getattr(args, "straight_flight", None):
+            from .straight_flight import StraightFlight
+
+            self.straight = StraightFlight(
+                self, args.straight_flight, args.command_log + ".straight.jsonl"
+            )
         self.timer = self.create_timer(
             1 / self.experiment.rate,
             self.tick,
@@ -105,17 +182,25 @@ class SurfaceMission(Node):
             threading.Thread(target=self.console, daemon=True).start()
 
     def console(self) -> None:
-        """Queue operator commands; the ROS timer remains the sole owner of mission state."""
+        """Queue console lines without holding Python stdin locks during shutdown."""
+        pending = b""
+        descriptor = sys.stdin.fileno()
+        print("DDS mission: list / select N / start / stop / quit:", flush=True)
         while not self.done:
-            try:
-                command = (
-                    input("DDS mission: list / select N / start / stop / quit: ")
-                    .strip()
-                    .lower()
-                )
-            except EOFError:
+            ready, _, _ = select.select([descriptor], [], [], 0.2)
+            if not ready:
+                continue
+            chunk = os.read(descriptor, 4096)
+            if not chunk:
+                self.events.put("quit")
                 return
-            self.events.put(command)
+            pending += chunk
+            while b"\n" in pending:
+                line, pending = pending.split(b"\n", 1)
+                command = line.decode("utf-8", errors="replace").strip().lower()
+                self.events.put(command)
+                if command == "quit":
+                    return
 
     def on_time(self, msg: Time) -> None:
         """Update AP-clock synchronization and abort on a detected clock discontinuity."""
@@ -169,6 +254,8 @@ class SurfaceMission(Node):
         if self.stopping is None:
             self.get_logger().info(reason)
             self.stopping = time.monotonic()
+            if self.straight is not None:
+                self.straight.request_stop(self.stopping)
         self.failed |= failed
         self.requested = False
         self.cadence = None
@@ -182,7 +269,7 @@ class SurfaceMission(Node):
         now = time.monotonic()
         while not self.events.empty():
             command = self.events.get_nowait()
-            if command == "start" and not self.hitl:
+            if command == "start" and not self.hitl and self.stopping is None:
                 self.requested = True
             elif command in ("stop", "quit"):
                 self.quit_requested = command == "quit"
@@ -211,7 +298,10 @@ class SurfaceMission(Node):
                 except RuntimeError:
                     pass  # Firmware monotonic timeout remains authoritative.
                 self.last_disable = now
-            if now - self.stopping >= 0.5:
+            recovered = self.straight is None or self.straight.recover(now)
+            if self.straight is not None:
+                self.failed |= self.straight.failed
+            if now - self.stopping >= 0.5 and recovered:
                 if self.args.autostart or self.quit_requested:
                     self.done = True
                 else:
@@ -221,18 +311,43 @@ class SurfaceMission(Node):
             return
         if self.hitl:
             allowed = self.rc.allowed(now)
-            if self.cadence and not allowed:
+            if (
+                self.cadence
+                or (
+                    self.straight
+                    and self.straight.owned
+                    and self.straight.phase != "DONE"
+                )
+            ) and not allowed:
                 self.stop("RC switch off, invalid, or stale")
                 return
             self.requested = allowed
         try:
             self.clock_sync.stamp(now)
         except RuntimeError as exc:
-            if self.cadence:
+            if self.cadence or (
+                self.straight and self.straight.owned and self.straight.phase != "DONE"
+            ):
                 self.stop(str(exc), failed=True)
             elif now - self.started > self.args.wait_timeout:
                 self.stop("No fresh AP clock", failed=True)
             return
+        if self.straight is not None and self.requested:
+            try:
+                ready = self.straight.step(
+                    now, True, self.cadence is not None, self.experiment.duration
+                )
+                if self.straight.failed:
+                    raise RuntimeError("Straight-flight event recording failed")
+            except (RuntimeError, ValueError) as exc:
+                self.stop(str(exc), failed=True)
+                return
+            if not ready:
+                self.started = now
+                if now - self.last_disable >= 0.05:
+                    self.send(False)
+                    self.last_disable = now
+                return
         if self.cadence is None:
             if now - self.last_disable >= 0.05:
                 self.send(False)
@@ -275,7 +390,7 @@ def main(hitl: bool = False) -> int:
     """Run the shared SITL/HITL DDS mission CLI; always attempt disable during shutdown."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--interface", choices=["dds"], required=True)
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group()
     source.add_argument(
         "--experiment", help="JSON with explicit normalized_surface units"
     )
@@ -286,6 +401,10 @@ def main(hitl: bool = False) -> int:
         "--autostart",
         action="store_true",
         help="SITL automated start after firmware authorization",
+    )
+    parser.add_argument(
+        "--straight-flight",
+        help="Optional straight-flight coordination JSON (MAVROS required)",
     )
     parser.add_argument("--command-log", default="surface_commands.csv")
     parser.add_argument("--wait-timeout", type=float, default=30.0)
@@ -299,14 +418,48 @@ def main(hitl: bool = False) -> int:
         parser.error("invalid RC gate configuration")
     if hitl and args.autostart:
         parser.error("HITL requires a fresh low-to-high RC transition")
-    rclpy.init(args=ros_args)
+    try:
+        resolve_mission_source(args)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
+    print(f"DDS mission source: {args.experiment or args.mission_plan}")
+    from rclpy.signals import SignalHandlerOptions
+
+    rclpy.init(args=ros_args, signal_handler_options=SignalHandlerOptions.NO)
     node = SurfaceMission(args, hitl)
+    previous_term = signal.signal(signal.SIGTERM, lambda *_: node.events.put("quit"))
     try:
         while rclpy.ok() and not node.done:
             rclpy.spin_once(node, timeout_sec=0.01)
     except KeyboardInterrupt:
+        node.quit_requested = True
         node.stop("Interrupted")
+    except Exception as exc:
+        node.quit_requested = True
+        node.stop(f"Exception: {exc}", failed=True)
     finally:
+        # Keep ROS alive to observe the return ramp and complete the recovery handoff.
+        if not node.done:
+            node.quit_requested = True
+            node.stop("Exiting")
+            budget = (
+                node.straight.config["recovery_timeout_s"] + 1 if node.straight else 1
+            )
+            deadline = time.monotonic() + budget
+            previous_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            try:
+                while rclpy.ok() and not node.done and time.monotonic() < deadline:
+                    rclpy.spin_once(node, timeout_sec=0.02)
+            except Exception as exc:
+                node.failed = True
+                node.get_logger().error(f"Shutdown executor failed: {exc}")
+            finally:
+                signal.signal(signal.SIGINT, previous_int)
+            if not node.done:
+                node.failed = True
+                node.get_logger().error(
+                    "Shutdown recovery unconfirmed; operator intervention required"
+                )
         # Repeated disable on interrupt and exceptions; never depend on delivery alone.
         for _ in range(5):
             try:
@@ -314,6 +467,9 @@ def main(hitl: bool = False) -> int:
             except Exception:
                 pass
             time.sleep(0.02)
+        signal.signal(signal.SIGTERM, previous_term)
+        if node.straight:
+            node.straight.event_file.close()
         node.logfile.close()
         node.destroy_node()
         rclpy.shutdown()
