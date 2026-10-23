@@ -1,399 +1,685 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from pathlib import Path
 import re
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Dict
 
 import numpy as np
-import pandas as pd
 import matplotlib
 matplotlib.use("TkAgg")  # or "Qt5Agg", "GTK3Agg", depending on your system
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-from matplotlib.ticker import ScalarFormatter
+from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from scipy.stats import gaussian_kde
 
 from ros2_sid.plotter_class import PlotFigure
-from ros2_sid.model_processing_utils import (extract_model, process_models,
-    sliding_adjusted_cod, sliding_vif_cod, sliding_svd_cond, sliding_correlation_matrix)
+from ros2_sid.post_process.perform_result_analysis import (
+    load_model_topic, OLSResult
+)
+from ros2_sid.realtime_ols_utils import (
+    ordinary_least_squares,
+    coefficient_of_determination,
+    variance_inflation_factors,
+    singular_value_decomposition,
+    matrix_correlation,
+)
 
-ArrayLike = Union[float, Sequence[Any], np.ndarray, pd.Series, pd.DataFrame]
+
+POST_PROCESS_DIR = Path(__file__).resolve().parent
+DATA_FILE_DIR = POST_PROCESS_DIR / "topic_data_files"
+SAVE_PLOT_DIR = POST_PROCESS_DIR / "model_plots"
 
 
-# __all__ = ['']
+__all__ = ['generate_plots']
 __author__ = "Xander D Mosley"
 __email__ = "XanderDMosley.Engineer@gmail.com"
 
 
-def _extract_model_prefix(df: pd.DataFrame) -> str:
-    prefix = next(
-        (match.group(1)
-         for col in df.columns
-         if (match := re.fullmatch(r"(.*)measured_output", col))),
-        None
-    )
-    if prefix is None:
-        raise ValueError("Missing '<prefix>measured_output' column.")
-    return prefix
-
-def _extract_param_number(col: str) -> Union[int, float]:
-    match = re.search(r'parameter_(\d+)', col)
-    return int(match.group(1)) if match else float('inf')
-
-def _get_indexed_columns(
-        df: pd.DataFrame,
-        prefix: str,
-        pattern: str
-        ) -> list[str]:
-    regex = rf"{prefix}{pattern}"
-    return sorted(
-        (col for col in df.columns if re.match(regex, col)),
-        key=_extract_param_number
+def _convert_to_filename(name: str) -> str:
+    """Convert a name into a filesystem-friendly filename."""
+    return "_".join(
+        "".join(
+            char.lower() if char.isalnum() else "_"
+            for char in name
+        ).strip("_").split("_")
     )
 
-def _get_max_num_terms(dataframes: dict[str, pd.DataFrame]) -> int:
+def _get_next_combined_folder() -> str:
+    """Return the next available Combined_N folder name."""
+    pattern = re.compile(r"^Combined_(\d+)$", re.IGNORECASE)
+    largest_number = 0
+
+    if SAVE_PLOT_DIR.exists():
+        for folder in SAVE_PLOT_DIR.iterdir():
+            if not folder.is_dir():
+                continue
+
+            match = pattern.match(folder.name)
+            if match:
+                largest_number = max(
+                    largest_number,
+                    int(match.group(1)),
+                )
+
+    return f"combined_{largest_number + 1}"
+
+
+def _get_max_num_terms(models: dict[str, OLSResult]) -> int:
     max_num_terms = 0
-    for name, df in dataframes.items():
-        param_cols = _get_indexed_columns(df, _extract_model_prefix(df), r"parameter_\d+$")
-        max_num_terms = max(max_num_terms, len(param_cols))
+    for _, model in models.items():
+        max_num_terms = max(max_num_terms, model.regressors.shape[1])
     return max_num_terms
 
+def _validate_model_data(
+        model: OLSResult,
+        model_name: str = "Model"
+        ) -> bool:
+    required_fields = {
+        "timestamp": "timestamps",
+        "measured_output": "measured output",
+        "regressors": "regressors",
+        "parameters": "parameters",
+        "modeled_output": "modeled output",
+        "residual": "residual",
+        "mse": "mse (mean squared error)",
+        "cod": "cod (coefficient of determination)",
+        "modeled_output_ci": "modeled output confidence intervals",
+        "modeled_output_cip": "modeled output confidence interval percentages",
+        "parameter_cis": "parameter confidence intervals",
+        "parameter_cips": "parameter confidence interval percentages",
+        "regressor_cods": (
+            "regressor cods (coefficient of determinations) "
+            "from vifs (variance inflation factors)"
+        ),
+        "regressor_conds": (
+            "regressor conds (condition numbers) "
+            "from svd (singular value decomposition)"
+        ),
+        "correlation_matrix": "correlation matrix",
+    }
 
-def plot_parameter_data(
-        dataframes: Dict[str, pd.DataFrame],
+    for field, description in required_fields.items():
+        if getattr(model, field).size == 0:
+            print(f"Skipping {model_name}: missing {description}.")
+            return False
+
+    num_samples = model.timestamp.shape[0]
+    sample_fields = tuple(required_fields)
+    if any(
+        getattr(model, field).shape[0] != num_samples
+        for field in sample_fields
+        if field != "timestamp"
+        ):
+        print(f"Skipping {model_name}: mismatched array lengths.")
+        return False
+
+    num_predictors = model.regressors.shape[1]
+    predictor_fields = (
+        "parameters",
+        "parameter_cis",
+        "parameter_cips",
+        "regressor_cods",
+        "regressor_conds",
+    )
+    if any(
+        getattr(model, field).shape[1] != num_predictors
+        for field in predictor_fields
+        ):
+        print(f"Skipping {model_name}: mismatched predictor dimensions.")
+        return False
+
+    if model.correlation_matrix.shape[1:] != (
+        num_predictors,
+        num_predictors,
+        ):
+        print(f"Skipping {model_name}: mismatched correlation matrix dimensions.")
+        return False
+
+    return True
+
+def _get_time_mask(
+        time: np.ndarray,
+        start_time: float | None = None,
+        end_time: float | None = None,
+    ) -> np.ndarray:
+    mask = np.ones(time.shape, dtype=bool)
+    if start_time is not None:
+        mask &= time >= start_time
+    if end_time is not None:
+        mask &= time <= end_time
+    return mask
+
+
+def plot_regressor_data(
+        models: Dict[str, OLSResult],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
         ) -> PlotFigure:
-    
-    if not dataframes:
+    if not models:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
         
-    max_num_terms = _get_max_num_terms(dataframes)
-    terms = plot_labels.get("terms", {})
+    max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1+max_num_terms, ncols=1, figsize=(12, (2 + 2*max_num_terms)), sharex=True)
-    base_title = "Model Performance - Parameters"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
+    base_title = "Model Performance - Regressors"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
 
+    terms = plot_labels.get("terms", {})
     term_info = terms.get(0, {})
     term_name = term_info.get("term", "Output")
-    units = term_info.get("units", "")
-    fig.define_subplot(0, title=f"Measured vs Modeled {term_name}", ylabel=f"{term_name}'s\nAmplitude\n{units}")
+    term_units = term_info.get("units", "")
+    if term_units != "":
+        term_units = f"\n[{term_units}]"
+    fig.define_subplot(0, title=f"Measured {term_name}", ylabel=f"Output\nAmplitude{term_units}", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
-        term_info = terms.get(1+i, {})
+        term_info = terms.get(1 + i, {})
         term_name = term_info.get("term")
-        param_units = term_info.get("param_units", "")
-        if term_name:
-            title = f"{term_name}'s Parameter Over Time"
-            ylabel = f"{term_name}'s\nParameter Amplitude\n{param_units}"
-        else:
-            term_name = f"Parameter {chr(65+i)}"
-            title = f"{term_name} Over Time"
-            ylabel = f"{term_name}'s\nAmplitude\n{param_units}"
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=plot_labels.get(f"time", "Time [s]") if i == max_num_terms - 1 else None)
+        if not term_name:
+            term_name = f"Regressor {chr(65+i)}"
+        term_units = term_info.get("units", "")
+        if term_units != "":
+            term_units = f"\n[{term_units}]"
+        title = f"{term_name} Over Time"
+        ylabel = f"Regressor $X_{{{i+1}}}$'s\nAmplitude{term_units}"
+        xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
             
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
 
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
+    measured_output_plotted = False
+
+    for name, model in models.items():
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
             continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
-            continue
+
+        time = model.timestamp[mask]
+        regressors = model.regressors[mask]
+
+        if not measured_output_plotted:
+            measured_output = model.measured_output[mask]
+            fig.add_data(0, time, measured_output, label='Measured', color='black', marker='.', alpha=0.7)
+            measured_output_plotted = True
         
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
+        for j in range(regressors.shape[1]):
+            fig.add_data(1 + j, time, regressors[:, j], label=name, color=model_colors[name], marker='.')
 
-        prefix = _extract_model_prefix(df)
-        parameter_cols = _get_indexed_columns(df, prefix, r"parameter_\d+$")
-
-        time = df["timestamp"]
-        modeled_output = df[f"{prefix}modeled_output"]
-        parameters = df[parameter_cols].to_numpy()
-        num_terms = len(parameter_cols)
-
-        if i == 0:
-            measured_output = df[f"{prefix}measured_output"]
-            fig.add_data(0, time, measured_output, label='Measured', color='black', linestyle='--')
-        fig.add_data(0, time, modeled_output, label=name, color=model_colors[name])
-        
-        for j in range(num_terms):
-            fig.add_data(1+j, time, parameters[:, j], label=name, color=model_colors[name], linestyle='-', marker='.')
-
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+    fig.set_all_legends(
+        loc="upper right",
+        fontsize=9,
+        borderpad=0.3,
+        labelspacing=0.25,
+        handlelength=1.5,
+    )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
-def plot_regressor_data(
-        dataframes: Dict[str, pd.DataFrame],
+def plot_parameter_data(
+        models: Dict[str, OLSResult],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
         ) -> PlotFigure:
-    
-    if not dataframes:
+    if not models:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
         
-    max_num_terms = _get_max_num_terms(dataframes)
-    terms = plot_labels.get("terms", {})
+    max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1+max_num_terms, ncols=1, figsize=(12, (2 + 2*max_num_terms)), sharex=True)
-    base_title = "Model Performance - Regressors"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
+    base_title = "Model Performance - Parameters"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
 
+    terms = plot_labels.get("terms", {})
     term_info = terms.get(0, {})
-    term = term_info.get("term", "Output")
-    units = term_info.get("units", "")
-    fig.define_subplot(0, title=f"Measured vs Modeled {term}", ylabel=f"{term}'s\nAmplitude\n{units}")
+    term_name = term_info.get("term", "Output")
+    term_units = term_info.get("units", "")
+    if term_units != "":
+        term_units = f"\n[{term_units}]"
+    fig.define_subplot(0, title=f"Measured vs Modeled {term_name}", ylabel=f"Output\nAmplitude{term_units}", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
-        term_info = terms.get(1+i, {})
-        term = term_info.get("term", f"Regressor {chr(65+i)}")
-        units = term_info.get("units", "")
-        fig.define_subplot(1 + i,
-                        title=f"{term} Over Time",
-                        ylabel=f"{term}'s\n Amplitude\n{units}",
-                        xlabel=plot_labels.get(f"time", "Time [s]") if i == max_num_terms - 1 else None
-                        )
+        term_info = terms.get(1 + i, {})
+        term_name = term_info.get("term")
+        if term_name:
+            title = f"{term_name}'s Parameter Over Time"
+        else:
+            term_name = f"Parameter {chr(65+i)}"
+            title = f"{term_name} Over Time"
+        term_units = term_info.get("param_units", "")
+        if term_units != "":
+            term_units = f"\n[{term_units}]"
+        ylabel = f"Param {chr(65+i)}'s\nAmplitude{term_units}"
+        xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
+
+    real_labels = {i: [] for i in range(1 + max_num_terms)}
+    real_handles = {i: [] for i in range(1 + max_num_terms)}
+    batch_labels = {i: [] for i in range(1 + max_num_terms)}
+    batch_handles = {i: [] for i in range(1 + max_num_terms)}
             
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
 
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
-            continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
+    references_plotted = False
+
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
             continue
         
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
 
-        prefix = _extract_model_prefix(df)
-        regressor_cols = _get_indexed_columns(df, prefix, r"regressor_\d+$")
+        time = model.timestamp[mask]
+        parameters = model.parameters[mask]
+        modeled_output = model.modeled_output[mask]
 
-        time = df["timestamp"]
-        modeled_output = df[f"{prefix}modeled_output"]
-        regressors = df[regressor_cols].to_numpy()
-        num_terms = len(regressor_cols)
+        measured_output = model.measured_output[mask]
+        regressors = model.regressors[mask]
+        batch_parameters = ordinary_least_squares(measured_output, regressors)
 
-        if i == 0:
-            measured_output = df[f"{prefix}measured_output"]
-            fig.add_data(0, time, measured_output, label='Measured', color='black', linestyle='--')
-        fig.add_data(0, time, modeled_output, label=name, color=model_colors[name])
+        if not references_plotted:
+            real_labels[0].append('Measured')
+            real_handles[0].append(
+                fig.add_data(0, time, measured_output, color='black', linestyle='--', alpha=0.7)
+            )
+            references_plotted = True
+
+        real_labels[0].append(name)
+        real_handles[0].append(
+            fig.add_data(0, time, modeled_output, color=model_colors[name])
+        )
         
-        for j in range(num_terms):
-            fig.add_data(1+j, time, regressors[:, j], label=name, color=model_colors[name], linestyle='-', marker='.')
+        for j in range(parameters.shape[1]):
+            index = 1 + j
+            real_labels[index].append(name)
+            real_handles[index].append(
+                fig.add_data(index, time, parameters[:, j], color=model_colors[name], marker='.')
+            )
+            batch_labels[index].append(f"{batch_parameters[j]:.2e}")
+            batch_handles[index].append(
+                fig.add_line(index, batch_parameters[j], 'h', color=model_colors[name], linestyle='--', alpha=0.7)
+            )
 
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+    for i, ax in enumerate(fig.all_axes):
+        if batch_handles[i]:
+            batch_legend = ax.legend(
+                batch_handles[i],
+                batch_labels[i],
+                title="Batch",
+                loc="upper left",
+                bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+            ax.add_artist(batch_legend)
+        if real_handles[i]:
+            if i == 0:
+                ax.legend(
+                    real_handles[i],
+                    real_labels[i],
+                    loc="upper right",
+                    fontsize=9,
+                    borderpad=0.3,
+                    labelspacing=0.25,
+                    handlelength=1.5,
+                )
+                continue
+            ax.legend(
+                real_handles[i],
+                real_labels[i],
+                title="Live",
+                loc="upper right",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
 def plot_confidence(
-        dataframes: Dict[str, pd.DataFrame],
+        models: Dict[str, OLSResult],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
         ) -> PlotFigure:
-    
-    if not dataframes:
+    if not models:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
         
-    max_num_terms = _get_max_num_terms(dataframes)
+    max_num_terms = _get_max_num_terms(models)
+
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
+    base_title = "Model Performance - Confidence Intervals (CIs)"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
+    fig.set_figure_title(f"{base_title}\n{subtitle}")
+
     terms = plot_labels.get("terms", {})
-
-    fig = PlotFigure(nrows=1+max_num_terms, ncols=1, figsize=(12, (2 + 2*max_num_terms)), sharex=True)
-    title = plot_labels["title"] if plot_labels.get("title") else "Model Performance - Confidence Intervals (CIs)"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
-    fig.set_figure_title(f"{title}\n{subtitle}")
-
     term_info = terms.get(0, {})
     term_name = term_info.get("term", "Output")
-    units = term_info.get("units", "")
-    fig.define_subplot(0, title=f"Measured vs Modeled {term_name}", ylabel=f"{term_name}'s\nAmplitude\n{units}")
+    term_units = term_info.get("units", "")
+    if term_units != "":
+        term_units = f"\n[{term_units}]"
+    fig.define_subplot(0, title=f"Measured vs Modeled {term_name}", ylabel=f"Output\nAmplitude{term_units}", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
-        term_info = terms.get(1+i, {})
+        term_info = terms.get(1 + i, {})
         term_name = term_info.get("term")
-        param_units = term_info.get("param_units", "")
         if term_name:
             title = f"{term_name}'s Parameter Over Time"
-            ylabel = f"{term_name}'s\nParameter\nAmplitude\n{param_units}"
         else:
             term_name = f"Parameter {chr(65+i)}"
             title = f"{term_name} Over Time"
-            ylabel = f"{term_name}'s\nAmplitude\n{param_units}"
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=plot_labels.get(f"time", "Time [s]") if i == max_num_terms - 1 else None)
+        term_units = term_info.get("param_units", "")
+        if term_units != "":
+            term_units = f"\n[{term_units}]"
+        ylabel = f"Param {chr(65+i)}'s\nAmplitude{term_units}"
+        xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
+
+    real_labels = {i: [] for i in range(1 + max_num_terms)}
+    real_handles = {i: [] for i in range(1 + max_num_terms)}
+    batch_labels = {i: [] for i in range(1 + max_num_terms)}
+    batch_handles = {i: [] for i in range(1 + max_num_terms)}
             
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
-    
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
-            continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
+
+    references_plotted = False
+
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
             continue
         
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
 
-        prefix = _extract_model_prefix(df)
-        parameter_cols = _get_indexed_columns(df, prefix, r"parameter_\d+$")
-        parameter_cis_cols = _get_indexed_columns(df, prefix, r"parameter_\d+_cis")
+        time = model.timestamp[mask]
+        parameters = model.parameters[mask]
+        parameters_cis = model.parameter_cis[mask]
+        modeled_output = model.modeled_output[mask]
+        modeled_output_ci = model.modeled_output_ci[mask]
 
-        time = df["timestamp"]
-        modeled_output = df[f"{prefix}modeled_output"]
-        modeled_output_cis = df[f"{prefix}modeled_output_cis"]
-        parameters = df[parameter_cols].to_numpy()
-        parameters_cis = df[parameter_cis_cols].to_numpy()
-        num_params = len(parameter_cols)
+        measured_output = model.measured_output[mask]
+        regressors = model.regressors[mask]
+        batch_parameters = ordinary_least_squares(measured_output, regressors)
+
+        if not references_plotted:
+            real_labels[0].append('Measured')
+            real_handles[0].append(
+                fig.add_data(0, time, measured_output, color='black', linestyle='--', alpha=0.7)
+            )
+            references_plotted = True
+
+        real_labels[0].append(f"{name} ± 2σ")
+        real_handles[0].append((
+            fig.add_data(0, time, modeled_output, color=model_colors[name]),
+            fig.add_fill_between(0,
+                                 time,
+                                 modeled_output - modeled_output_ci,
+                                 modeled_output + modeled_output_ci,
+                                 color=model_colors[name],
+                                 alpha=0.3)
+        ))
+        fig.autoscale_from_lines(0)
+                
+        for j in range(parameters.shape[1]):
+            index = 1 + j
+            real_labels[index].append(f"{name} ± 2σ")
+            real_handles[index].append((
+                fig.add_data(index, time, parameters[:, j], color=model_colors[name], marker='.'),
+                fig.add_fill_between(index, 
+                                     time,
+                                     parameters[:, j] - parameters_cis[:, j],
+                                     parameters[:, j] + parameters_cis[:, j],
+                                     color=model_colors[name],
+                                     alpha=0.3)
+            ))
+
+            batch_labels[index].append(f"{batch_parameters[j]:.2e}")
+            batch_handles[index].append(
+                fig.add_line(index, batch_parameters[j], 'h', color=model_colors[name], linestyle='--', alpha=0.6)
+            )
+            fig.autoscale_from_lines(1 + j)
+
+    for i, ax in enumerate(fig.all_axes):
+        if batch_handles[i]:
+            batch_legend = ax.legend(
+                batch_handles[i],
+                batch_labels[i],
+                title="Batch",
+                loc="upper left",
+                bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+            ax.add_artist(batch_legend)
+        if real_handles[i]:
+            if i == 0:
+                ax.legend(
+                    real_handles[i],
+                    real_labels[i],
+                    loc="upper right",
+                    fontsize=9,
+                    borderpad=0.3,
+                    labelspacing=0.25,
+                    handlelength=1.5,
+                )
+                continue
+            ax.legend(
+                real_handles[i],
+                real_labels[i],
+                title="Live",
+                loc="upper right",
+                handler_map={tuple: HandlerTuple(ndivide=1)},
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+    fig.set_all_grids(True, alpha=0.5)
+    return fig
+
+def plot_batch_output(
+        models: Dict[str, OLSResult],
+        *,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        plot_labels: dict | None = None
+        ) -> PlotFigure:
+    if not models:
+        raise ValueError("No models provided.")
+    if plot_labels is None:
+        plot_labels = {}
         
-        if i == 0:
-            measured_output = df[f"{prefix}measured_output"]
-            fig.add_data(0, time, measured_output, label='Measured', color='black', linestyle='--')
-        fig.add_data(0, time, modeled_output, color=model_colors[name])
-        fig.add_fill_between(0, time, modeled_output - modeled_output_cis, modeled_output + modeled_output_cis, label=f"{name} ± 2σ", color=model_colors[name], alpha=0.3)
+    max_num_terms = _get_max_num_terms(models)
+
+    fig = PlotFigure(nrows=1, ncols=1, figsize=(12, 6.5), sharex=True)
+    base_title = "Model Performance - Batch Comparison"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
+    fig.set_figure_title(f"{base_title}\n{subtitle}")
+
+    terms = plot_labels.get("terms", {})
+    term_info = terms.get(0, {})
+    term_name = term_info.get("term", "Output")
+    term_units = term_info.get("units", "")
+    if term_units != "":
+        term_units = f"\n[{term_units}]"
+    fig.define_subplot(
+        0,
+        title=f"Measured vs Modeled {term_name}",
+        ylabel=f"Output Amplitude{term_units}",
+        xlabel=plot_labels.get("time", "Time [s]"),
+        title_kwargs={"pad": 5}
+    )
+
+    real_labels = {i: [] for i in range(1 + max_num_terms)}
+    real_handles = {i: [] for i in range(1 + max_num_terms)}
+    batch_labels = {i: [] for i in range(1 + max_num_terms)}
+    batch_handles = {i: [] for i in range(1 + max_num_terms)}
+            
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
+
+    references_plotted = False
+
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
+            continue
+        
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
+
+        time = model.timestamp[mask]
+        modeled_output = model.modeled_output[mask]
+
+        measured_output = model.measured_output[mask]
+        regressors = model.regressors[mask]
+        batch_parameters = ordinary_least_squares(measured_output, regressors)
+        batch_modeled_output = regressors @ batch_parameters
+
+        if not references_plotted:
+            real_labels[0].append('Measured')
+            real_handles[0].append(
+                fig.add_data(0, time, measured_output, color='black', linestyle='--', alpha=0.7)
+            )
+            references_plotted = True
+
+        real_labels[0].append(f"{name}")
+        real_handles[0].append(
+            fig.add_data(0, time, modeled_output, color=model_colors[name])
+        )
+        batch_labels[0].append(f"{name}")
+        batch_handles[0].append(
+            fig.add_data(0, time, batch_modeled_output, color=model_colors[name], linestyle='-.')
+        )
         fig.autoscale_from_lines(0)
 
-        for j in range(num_params):
-            fig.add_data(1+j, time, parameters[:, j], color=model_colors[name], linestyle='-', marker='.')
-            fig.add_fill_between(1+j, time, parameters[:, j] - parameters_cis[:, j], parameters[:, j] + parameters_cis[:, j], label=f"{name} ± 2σ", color=model_colors[name], alpha=0.3)
-            fig.autoscale_from_lines(1+j)
-        
-    ax1 = fig._get_ax(0)
-    ax1.title.set_fontsize('xx-large')
-    ax1.yaxis.label.set_fontsize('xx-large')
-    ax1.tick_params(axis='y', labelsize='x-large')
-
-    ax2 = fig._get_ax(1)
-    ax2.title.set_fontsize('xx-large')
-    ax2.yaxis.label.set_fontsize('xx-large')
-    ax2.tick_params(axis='y', labelsize='x-large')
-
-    ax3 = fig._get_ax(2)
-    ax3.title.set_fontsize('xx-large')
-    ax3.yaxis.label.set_fontsize('xx-large')
-    ax3.xaxis.label.set_fontsize('xx-large')
-    ax3.tick_params(axis='y', labelsize='x-large')
-    ax3.tick_params(axis='x', labelsize='x-large')
-
-    fig.set_all_legends(loc='upper right', fontsize='large')
+    for i, ax in enumerate(fig.all_axes):
+        if batch_handles[i]:
+            batch_legend = ax.legend(
+                batch_handles[i],
+                batch_labels[i],
+                title="Batch",
+                loc="upper left",
+                bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+            ax.add_artist(batch_legend)
+        if real_handles[i]:
+            ax.legend(
+                real_handles[i],
+                real_labels[i],
+                loc="upper right",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
 def plot_percent_confidence(
-        dataframes: Dict[str, pd.DataFrame],
-        *,
-        start_time: float | None = None,
-        end_time: float | None = None,
-        plot_labels: dict | None = None
-        ):
-    
-    if not dataframes:
-        raise ValueError("No models provided.")
-    if plot_labels is None:
-        plot_labels = {}
-        
-    max_num_terms = _get_max_num_terms(dataframes)
-    terms = plot_labels.get("terms", {})
-
-    fig = PlotFigure(nrows=1+max_num_terms, ncols=1, figsize=(12, (2 + 2*max_num_terms)), sharex=True)
-    base_title = "Model Performance - Percent Confidence"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
-    fig.set_figure_title(f"{base_title}\n{subtitle}")
-
-    term_info = terms.get(0, {})
-    term_name = term_info.get("term", "Output")
-    fig.define_subplot(0, title=f"Percent Confidence of Modeled {term_name} Over Time", ylabel=f"{term_name}'s\nPercent Confidence\n[%]")
-    for i in range(max_num_terms):
-        term_info = terms.get(1+i, {})
-        term_name = term_info.get("term")
-        if term_name:
-            title = f"Percent Confidence of {term_name}'s Parameter Over Time"
-            ylabel = f"{term_name}'s\nPercent Confidence\n[%]"
-        else:
-            term_name = f"Parameter {chr(65+i)}"
-            title = f"Percent Confidence of {term_name} Over Time"
-            ylabel = f"{term_name}'s\nPercent Confidence\n[%]"
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=plot_labels.get(f"time", "Time [s]") if i == max_num_terms - 1 else None)
-            
-    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
-    
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
-            continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
-            continue
-        
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
-
-        prefix = _extract_model_prefix(df)
-        parameter_cips_cols = _get_indexed_columns(df, prefix, r"parameter_\d+_cips")
-
-        time = df["timestamp"]
-        modeled_output_cips = df[f"{prefix}modeled_output_cips"]
-        parameters_cips = df[parameter_cips_cols].to_numpy()
-        num_params = len(parameter_cips_cols)
-        
-        fig.add_data(0, time, modeled_output_cips, label=name, color=model_colors[name])
-
-        for j in range(num_params):
-            fig.add_data(1+j, time, parameters_cips[:, j], label=name, color=model_colors[name])
-
-    fig.set_all_legends(loc='upper right', fontsize='medium')
-    fig.set_all_grids(True, alpha=0.5)
-    return fig
-
-def plot_error(
-        dataframes: dict[str, pd.DataFrame],
+        models: Dict[str, OLSResult],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
         ) -> PlotFigure:
+    if not models:
+        raise ValueError("No models provided.")
+    if plot_labels is None:
+        plot_labels = {}
+        
+    max_num_terms = _get_max_num_terms(models)
+
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
+    base_title = "Model Performance - Percent Confidence"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
+    fig.set_figure_title(f"{base_title}\n{subtitle}")
+
+    terms = plot_labels.get("terms", {})
+    term_info = terms.get(0, {})
+    term_name = term_info.get("term", "Output")
+    fig.define_subplot(0, title=f"Percent Confidence of Modeled {term_name} Over Time", ylabel=f"Output's Percent\nConfidence [%]", title_kwargs={"pad": 5})
+    for i in range(max_num_terms):
+        term_info = terms.get(1 + i, {})
+        term_name = term_info.get("term")
+        if term_name:
+            title = f"Percent Confidence of {term_name}'s Parameter Over Time"
+        else:
+            term_name = f"Parameter {chr(65+i)}"
+            title = f"Percent Confidence of {term_name} Over Time"
+        ylabel = f"Param {chr(65+i)}'s Percent\nConfidence [%]"
+        xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
+            
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
     
-    if not dataframes:
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
+            continue
+        
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
+
+        time = model.timestamp[mask]
+        modeled_output_cip = model.modeled_output_cip[mask]
+        parameters_cips = model.parameter_cips[mask]
+        
+        fig.add_data(0, time, modeled_output_cip, label=name, color=model_colors[name])
+
+        for j in range(parameters_cips.shape[1]):
+            fig.add_data(1+j, time, parameters_cips[:, j], label=name, color=model_colors[name])
+
+    for i in fig.axes:
+        fig.set_log_scale(i, 'y')
+    fig.set_all_legends(
+        fontsize=9,
+        borderpad=0.3,
+        labelspacing=0.25,
+        handlelength=1.5,
+    )
+    fig.set_all_grids(True, alpha=0.5)
+    return fig
+
+def plot_error(
+        models: Dict[str, OLSResult],
+        *,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        plot_labels: dict | None = None
+        ) -> PlotFigure:
+    if not models:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
@@ -403,21 +689,24 @@ def plot_error(
         1: (slice(1, 2), slice(0, 1)),   # lower-left
         2: (slice(0, 2), slice(1, 2)),   # right (spans rows)
     }
-    fig = PlotFigure(nrows=2, ncols=2, figsize=(12, 6), gridspec=True, layout=layout)
-    title = plot_labels["title"] if plot_labels.get("title") else "Model Performance - Error"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
-    error_plot = fig.set_figure_title(f"{title}\n{subtitle}")
+    fig = PlotFigure(nrows=2, ncols=2, figsize=(12, 6.5), gridspec=True, layout=layout)
+    base_title = "Model Performance - Error"
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
+    fig.set_figure_title(f"{base_title}\n{subtitle}")
 
     terms = plot_labels.get("terms", {})
     term_info = terms.get(0, {})
-    units = term_info.get("units", "")
-    
+    term_name = term_info.get("term", "Output")
+    term_units = term_info.get("units", "")
+    if term_units != "":
+        term_units = f"\n[{term_units}]"
     fig.define_subplot(
         0,
         title="Residuals Over Time",
-        ylabel=f"Residuals {units}",
+        ylabel=f"Residual {term_name}{term_units}",
         # xlabel=plot_labels.get("time", "Time [s]"),
         grid=True,
+        title_kwargs={"pad": 5},
     )
     fig.define_subplot(
         1,
@@ -425,85 +714,66 @@ def plot_error(
         ylabel="MSE",
         xlabel=plot_labels.get("time", "Time [s]"),
         grid=True,
+        title_kwargs={"pad": 5},
     )
     fig.define_subplot(
         2,
-        title="Residuals vs Modeled Output",
-        ylabel=f"Residuals {units}",
-        xlabel=f"Modeled Output {units}",
+        title=f"Residuals vs Modeled {term_name}",
+        ylabel=f"Residual {term_name}{term_units}",
+        xlabel=f"Modeled {term_name}{term_units}",
         grid=True,
+        title_kwargs={"pad": 5},
     )
 
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
-    
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
-            continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
+
+    real_labels = [[] for _ in range(3)]
+    real_handles = [[] for _ in range(3)]
+    batch_labels = [[] for _ in range(3)]
+    batch_handles = [[] for _ in range(3)]
+
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
             continue
         
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
 
-        prefix = _extract_model_prefix(df)
+        time = model.timestamp[mask]
+        modeled_output = model.modeled_output[mask]
+        residual = model.residual[mask]
+        mse = model.mse[mask]
 
-        time = df["timestamp"]
-        modeled_output = df[f"{prefix}modeled_output"]
-        residuals = df[f"{prefix}residuals"]
-        mse = df[f"{prefix}mse"]
-
-        total_mse: float = float(np.nanmean(residuals ** 2))
-        # print(total_mse)
-        # var_y: float = float(np.var(df[f"{prefix}modeled_output"]))
-        # print(total_mse/var_y)
+        total_mse = float(np.nanmean(residual ** 2))
         
         # --- Subplot 1 (upper left) ---
-        fig.add_scatter(0, time, residuals, label=name, color=model_colors[name], s=10, alpha=0.7)
-        fig.add_data(0, time, residuals, color=model_colors[name], alpha=0.3, linewidth=1)
+        real_labels[0].append(name)
+        real_handles[0].append((
+            fig.add_scatter(0, time, residual, color=model_colors[name], s=10, alpha=0.7),
+            fig.add_data(0, time, residual, color=model_colors[name], alpha=0.3, linewidth=1)
+        ))
         
         # --- Subplot 2 (lower left) ---
-        fig.add_scatter(1, time, mse, label=f"{name} (MSE Over Time)", color=model_colors[name], s=10, alpha=0.7)
-        fig.add_data(1, time, mse, color=model_colors[name], alpha=0.3, linewidth=1)
-        fig.add_line(1, total_mse, 'h', label=f"{name} (MSE of Window)", color=model_colors[name], linestyle=':', alpha=0.7)
-        fig.annotate(1, f"{total_mse:.2e}", xy=(start_time, total_mse),
-                     xycoords="data", textcoords="offset points",
-                     xytext=(-10, 5), ha="left", va="top",
-                     fontsize="large", fontweight="bold", color=model_colors[name],
-                     bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, boxstyle="round,pad=0.3"))
+        real_labels[1].append(name)
+        real_handles[1].append((
+            fig.add_scatter(1, time, mse, color=model_colors[name], s=10, alpha=0.7),
+            fig.add_data(1, time, mse, color=model_colors[name], alpha=0.3, linewidth=1)
+        ))
+        batch_labels[1].append(f"{total_mse:.2e}")
+        batch_handles[1].append(
+            fig.add_line(1, total_mse, 'h', color=model_colors[name], linestyle='--', alpha=0.7)
+        )
         
         # --- Subplot 3 (right) ---
-        fig.add_scatter(2, modeled_output, residuals, label=name, color=model_colors[name], s=10, alpha=0.7)
+        real_labels[2].append(name)
+        real_handles[2].append(
+            fig.add_scatter(2, modeled_output, residual, color=model_colors[name], s=10, alpha=0.7)
+        )
         
-    ax1 = fig._get_ax(0)
-    ax1.title.set_fontsize('xx-large')
-    ax1.yaxis.label.set_fontsize('xx-large')
-    # ax1.xaxis.label.set_fontsize('xx-large')
-    ax1.tick_params(axis='y', labelsize='x-large')
-    ax1.tick_params(axis='x', labelbottom=False)
-    # ax1.set_xticklabels([])   # Does not work with sharex()
-
-    ax2 = fig._get_ax(1)
-    ax2.title.set_fontsize('xx-large')
-    ax2.yaxis.label.set_fontsize('xx-large')
-    ax2.xaxis.label.set_fontsize('xx-large')
-    ax2.tick_params(axis='y', labelsize='x-large')
-    ax2.tick_params(axis='x', labelsize='x-large')
-    ax2.sharex(ax1)
-
     ax3 = fig._get_ax(2)
-    ax3.title.set_fontsize('xx-large')
-    ax3.yaxis.label.set_fontsize('xx-large')
-    ax3.xaxis.label.set_fontsize('xx-large')
-    ax3.tick_params(axis='y', labelsize='x-large')
-    ax3.tick_params(axis='x', labelsize='x-large')
     lims = (
         min(ax3.get_xlim()[0], ax3.get_ylim()[0]),
         max(ax3.get_xlim()[1], ax3.get_ylim()[1]),
@@ -512,64 +782,81 @@ def plot_error(
     ax3.set_ylim(lims)
     ax3.set_aspect("equal")
 
-    fig.set_all_legends(loc='upper right', fontsize='large')
+    for i, ax in enumerate(fig.all_axes):
+        if batch_handles[i]:
+            batch_legend = ax.legend(
+                batch_handles[i],
+                batch_labels[i],
+                title="Batch",
+                loc="upper left",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+            ax.add_artist(batch_legend)
+        if real_handles[i]:
+            ax.legend(
+                real_handles[i],
+                real_labels[i],
+                loc="upper right",
+                handler_map={tuple: HandlerTuple(ndivide=1)},
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
 def plot_error_kde(
-        dataframes: dict[str, pd.DataFrame],
+        models: Dict[str, OLSResult],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
         ) -> PlotFigure:
-    
-    if not dataframes:
+    if not models:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
-
-    fig = PlotFigure(figsize=(12, 6))
+        
+    fig = PlotFigure(figsize=(12, 6.5))
     base_title = "Model Performance - Error KDE"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
 
     terms = plot_labels.get("terms", {})
     term_info = terms.get(0, {})
-    units = term_info.get("units", "")
+    term_name = term_info.get("term", "Output")
+    term_units = term_info.get("units", "")
+    if term_units != "":
+        term_units = f"\n[{term_units}]"
     
     fig.define_subplot(
         0,
         title="Kernel Density Plot (KDE) of Residuals",
         ylabel=f"Density",
-        xlabel=f"Residuals {units}",
+        xlabel=f"Residuals{term_units}",
         grid=True,
+        title_kwargs={"pad": 5},
     )
-
+            
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
-    
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
-            continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
+
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
             continue
         
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
 
-        prefix = _extract_model_prefix(df)
+        residual = model.residual[mask]
 
-        residuals = df[f"{prefix}residuals"]
-
-        x = np.asarray(residuals)
+        x = np.asarray(residual)
         kde = gaussian_kde(x, bw_method='scott')
         x_grid = np.linspace(x.min(), x.max(), int(np.ceil(0.4 * x.size)))
         kde_vals = kde(x_grid)
@@ -584,226 +871,299 @@ def plot_error_kde(
         fig.add_line(0, mean, 'v', min_val=0, max_val=kde_at_max, color=model_colors[name], linestyle="--")
         
     subplot = fig._get_ax(0)
-    legend1 = subplot.legend(loc="upper right", fontsize='medium')
+    legend1 = subplot.legend(
+        loc="upper right",
+        fontsize=9,
+        borderpad=0.3,
+        labelspacing=0.25,
+        handlelength=1.5,
+    )
     subplot.add_artist(legend1)
     mean_proxy = Line2D([0], [0], color="grey", linestyle="--", linewidth=2)
     sigma_proxy = Patch(facecolor="grey", alpha=0.25)
-    subplot.legend(handles=[mean_proxy, sigma_proxy], labels=["Mean", "±2σ Region"], loc="upper left", frameon=True)
+    subplot.legend(
+        handles=[mean_proxy, sigma_proxy],
+        labels=["Mean", "±2σ Region"],
+        loc="upper left",
+        frameon=True,
+        fontsize=9,
+        borderpad=0.3,
+        labelspacing=0.25,
+        handlelength=1.5,
+    )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
 def plot_fit(
-        dataframes: Dict[str, pd.DataFrame],
+        models: Dict[str, OLSResult],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
         ) -> PlotFigure:
-    
-    if not dataframes:
+    if not models:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
         
-    max_num_terms = _get_max_num_terms(dataframes)
-    terms = plot_labels.get("terms", {})
+    max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1+max_num_terms, ncols=1, figsize=(12, (2 + 2*max_num_terms)), sharex=True)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
     base_title = "Model Performance - Model Fit"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
 
+    terms = plot_labels.get("terms", {})
     term_info = terms.get(0, {})
-    fig.define_subplot(0, title="Coefficient of Determination (R²) Over Time", ylabel="R² [%]")
-    fig.shade_subplot(0, y_range=(0.75, 1.00), color='#A8D5BA', alpha=0.3)  # green
-    fig.shade_subplot(0, y_range=(0.50, 0.75), color='#FFF3B0', alpha=0.3)  # yellow
-    fig.shade_subplot(0, y_range=(0.00, 0.50), color='#F4CCCC', alpha=0.3)  # red
+    fig.define_subplot(0, title="Coefficient of Determination (R²) Over Time", ylabel="R² [%]", title_kwargs={"pad": 5})
+    fig.shade_subplot(0, y_range=(75, 100), color='#A8D5BA', alpha=0.3)  # green
+    fig.shade_subplot(0, y_range=(50, 75), color='#FFF3B0', alpha=0.3)  # yellow
+    fig.shade_subplot(0, y_range=(00, 50), color='#F4CCCC', alpha=0.3)  # red
     for i in range(max_num_terms):
         term_info = terms.get(1+i, {})
         term_name = term_info.get("term")
         if term_name:
             title = f"{term_name}'s Parameter Fit (r²) Over Time"
-            ylabel = f"{term_name}'s\nParameter r² [%]"
         else:
-            term_name = f"Parameter {chr(65+i)}'s Fit (r²) Over Time"
-            title = f"{term_name} Over Time"
-            ylabel = f"{term_name}'s\nr² [%]"
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=plot_labels.get(f"time", "Time [s]") if i == max_num_terms - 1 else None)
-        fig.shade_subplot(1 + i, y_range=(0.75, 1.00), color='#F4CCCC', alpha=0.3)  # red
-        fig.shade_subplot(1 + i, y_range=(0.50, 0.75), color='#FFF3B0', alpha=0.3)  # yellow
-        fig.shade_subplot(1 + i, y_range=(0.00, 0.50), color='#A8D5BA', alpha=0.3)  # green
+            title = f"Parameter {chr(65+i)}'s Fit (r²) Over Time"
+        ylabel = f"Param {chr(65+i)}'s\nr² [%]"
+        xlabel = plot_labels.get("time", "Time [s]") if i == max_num_terms - 1 else None
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
+        fig.shade_subplot(1 + i, y_range=(75, 100), color='#F4CCCC', alpha=0.3)  # red
+        fig.shade_subplot(1 + i, y_range=(50, 75), color='#FFF3B0', alpha=0.3)  # yellow
+        fig.shade_subplot(1 + i, y_range=(00, 50), color='#A8D5BA', alpha=0.3)  # green
+
+    real_labels = {i: [] for i in range(1 + max_num_terms)}
+    real_handles = {i: [] for i in range(1 + max_num_terms)}
+    batch_labels = {i: [] for i in range(1 + max_num_terms)}
+    batch_handles = {i: [] for i in range(1 + max_num_terms)}
             
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
 
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
-            continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
             continue
         
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
 
-        prefix = _extract_model_prefix(df)
-        regressor_cols = _get_indexed_columns(df, prefix, r"regressor_\d+$")
-        regressor_cod_cols = _get_indexed_columns(df, prefix, r"regressor_\d+_cod")
+        time = model.timestamp[mask]
+        cod = model.cod[mask] * 100
+        regressor_cods = model.regressor_cods[mask] * 100
 
-        time = df["timestamp"]
-        cod = df[f"{prefix}cod"]
-        regressors_cod = df[regressor_cod_cols].to_numpy()
-        num_params = len(regressor_cod_cols)
+        measured_output = model.measured_output[mask]
+        regressors = model.regressors[mask]
+        batch_parameters = ordinary_least_squares(measured_output, regressors)
+        batch_cod = coefficient_of_determination(measured_output, regressors, batch_parameters, adjusted=True)
+        batch_cod = np.clip(batch_cod * 100, 0, 100)
+        batch_regressor_cods = variance_inflation_factors(regressors, return_cod=True)
+        batch_regressor_cods = np.clip(batch_regressor_cods * 100, 0, 100)
+
+        real_labels[0].append(name)
+        real_handles[0].append(
+            fig.add_data(0, time, cod, color=model_colors[name], marker='.')
+        )
+        batch_labels[0].append(f"{batch_cod:.1f}%")
+        batch_handles[0].append(
+            fig.add_line(0, batch_cod, 'h', color=model_colors[name], linestyle='--', alpha=0.7)
+        )
         
-        measured_output = df[f"{prefix}measured_output"]
-        modeled_output = df[f"{prefix}modeled_output"]
-        regressors = df[regressor_cols].to_numpy()
-        cod_batch = sliding_adjusted_cod(measured_output, modeled_output, num_params, len(measured_output))[-1]
-        regressors_cod_batch = sliding_vif_cod(regressors, len(regressors))[-1]
-        
-        fig.add_data(0, time, cod, label=name, color=model_colors[name], marker='.')
-        fig.add_line(0, cod_batch, 'h', label=f"Batched {name}", color=model_colors[name], linestyle=':', alpha=0.7)
+        for j in range(regressor_cods.shape[1]):
+            index = 1 + j
+            real_labels[index].append(name)
+            real_handles[index].append(
+                fig.add_data(index, time, regressor_cods[:, j], color=model_colors[name], marker='.')
+            )
+            batch_labels[index].append(f"{batch_regressor_cods[j]:.1f}%")
+            batch_handles[index].append(
+                fig.add_line(index, batch_regressor_cods[j], 'h', color=model_colors[name], linestyle='--', alpha=0.7)
+            )
 
-        for j in range(num_params):
-            fig.add_data(1+j, time, regressors_cod[:, j], label=name, color=model_colors[name], marker='.')
-            fig.add_line(1+j, regressors_cod_batch[j], 'h', label=f"Batched {name}", color=model_colors[name], linestyle=':', alpha=0.7)
-
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+    for i, ax in enumerate(fig.all_axes):
+        if batch_handles[i]:
+            batch_legend = ax.legend(
+                batch_handles[i],
+                batch_labels[i],
+                title="Batch",
+                loc="upper left",
+                bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+            ax.add_artist(batch_legend)
+        if real_handles[i]:
+            ax.legend(
+                real_handles[i],
+                real_labels[i],
+                title="Live",
+                loc="upper right",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
     fig.set_all_grids(True, alpha=0.5)
-    fig.apply_to_all_axes('set_ylim', [0, 1])
+    fig.apply_to_all_axes('set_ylim', [0, 100])
     return fig
 
 def plot_conditioning(
-        dataframes: Dict[str, pd.DataFrame],
+        models: Dict[str, OLSResult],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
         ) -> PlotFigure:
-    
-    if not dataframes:
+    if not models:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
         
-    max_num_terms = _get_max_num_terms(dataframes)
-    terms = plot_labels.get("terms", {})
+    max_num_terms = _get_max_num_terms(models)
 
-    fig = PlotFigure(nrows=1+max_num_terms, ncols=1, figsize=(12, (2 + 2*max_num_terms)), sharex=True)
+    fig = PlotFigure(nrows=1 + max_num_terms, ncols=1, figsize=(12, 2.25 + 2.25 * max_num_terms), sharex=True)
     base_title = "Model Performance - Conditioning"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
     fig.set_figure_title(f"{base_title}\n{subtitle}")
 
-    fig.define_subplot(0, title="Max Condition Number Over Time", ylabel="Amplitude")
+    terms = plot_labels.get("terms", {})
+    fig.define_subplot(0, title="Max Condition Number Over Time", ylabel="Max Condition\nNumber", title_kwargs={"pad": 5})
     for i in range(max_num_terms):
         term_info = terms.get(1+i, {})
         term_name = term_info.get("term")
         if term_name:
             title = f"{term_name}'s Parameter Conditioning Over Time"
-            ylabel = "Amplitude"
         else:
             term_name = f"Parameter {chr(65+i)}"
             title = f"{term_name}'s Conditioning Over Time"
-            ylabel = "Amplitude"
-        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=plot_labels.get(f"time", "Time [s]") if i == max_num_terms - 1 else None)
+        ylabel = f"Param {chr(65+i)}'s\nConditioning"
+        xlabel = plot_labels.get(f"time", "Time [s]") if i == max_num_terms - 1 else None
+        fig.define_subplot(1 + i, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
+
+    real_labels = {i: [] for i in range(1 + max_num_terms)}
+    real_handles = {i: [] for i in range(1 + max_num_terms)}
+    batch_labels = {i: [] for i in range(1 + max_num_terms)}
+    batch_handles = {i: [] for i in range(1 + max_num_terms)}
             
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
+    model_colors = {name: color_cycle[i % len(color_cycle)] for i, name in enumerate(models)}
 
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
-            continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
             continue
         
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
 
-        prefix = _extract_model_prefix(df)
-        regressor_cols = _get_indexed_columns(df, prefix, r"regressor_\d+$")
-        regressor_cond_cols = _get_indexed_columns(df, prefix, r"regressor_\d+_cond")
+        time = model.timestamp[mask]
+        regressor_conds = model.regressor_conds[mask]
+        max_cond = regressor_conds.max(axis=1)
 
-        time = df["timestamp"]
-        regressors_cond = df[regressor_cond_cols].to_numpy()
-        num_params = len(regressor_cond_cols)
-        max_cond = df[regressor_cond_cols].max(axis=1).to_numpy()
- 
-        regressors = df[regressor_cols].to_numpy()
-        regressors_cond_batch = sliding_svd_cond(regressors, len(regressors))[-1]
-        max_cond_batch = max(regressors_cond_batch)
-        
-        fig.add_data(0, time, max_cond, label=name, color=model_colors[name])
-        fig.add_line(0, max_cond_batch, 'h', label=f"Batched {name}", color=model_colors[name], linestyle=':', alpha=0.7)
+        regressors = model.regressors[mask]
+        batch_regressor_conds = singular_value_decomposition(regressors, return_cond_nums=True)
+        batch_max_cond = max(batch_regressor_conds)
 
-        for j in range(num_params):
-            fig.add_data(1+j, time, regressors_cond[:, j], label=name, color=model_colors[name])
-            fig.add_line(1+j, regressors_cond_batch[j], 'h', label=f"Batched {name}", color=model_colors[name], linestyle=':', alpha=0.7)
+        real_labels[0].append(name)
+        real_handles[0].append(
+            fig.add_data(0, time, max_cond, color=model_colors[name], marker='.')
+        )
+        batch_labels[0].append(f"{batch_max_cond:.2f}")
+        batch_handles[0].append(
+            fig.add_line(0, batch_max_cond, 'h', color=model_colors[name], linestyle='--')
+        )
 
-    fig.set_all_legends(loc='upper right', fontsize='medium')
+        for j in range(regressor_conds.shape[1]):
+            index = 1 + j
+            real_labels[index].append(name)
+            real_handles[index].append(
+                fig.add_data(index, time, regressor_conds[:, j], color=model_colors[name], marker='.')
+            )
+            batch_labels[index].append(f"{batch_regressor_conds[j]:.2f}")
+            batch_handles[index].append(
+                fig.add_line(index, batch_regressor_conds[j], 'h', color=model_colors[name], linestyle='--', alpha=0.7)
+            )
+
+    for i, ax in enumerate(fig.all_axes):
+        if batch_handles[i]:
+            batch_legend = ax.legend(
+                batch_handles[i],
+                batch_labels[i],
+                title="Batch",
+                loc="upper left",
+                bbox_to_anchor=(1.0, 1.0),
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
+            ax.add_artist(batch_legend)
+        if real_handles[i]:
+            ax.legend(
+                real_handles[i],
+                real_labels[i],
+                title="Live",
+                loc="upper right",
+                fontsize=9,
+                borderpad=0.3,
+                labelspacing=0.25,
+                handlelength=1.5,
+            )
     fig.set_all_grids(True, alpha=0.5)
     return fig
 
 def plot_correlation(
-        dataframes: Dict[str, pd.DataFrame],
+        models: Dict[str, OLSResult],
         *,
         start_time: float | None = None,
         end_time: float | None = None,
         plot_labels: dict | None = None
         ) -> list[PlotFigure]:
-    
-    if not dataframes:
+    if not models:
         raise ValueError("No models provided.")
     if plot_labels is None:
         plot_labels = {}
 
     figures: list[PlotFigure] = []
-    
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
+    for name, model in models.items():
+        if not _validate_model_data(model, name):
             continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
-            continue
-        
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
-        
-        prefix = _extract_model_prefix(df)
-        parameter_cols =_get_indexed_columns(df, prefix, r"parameter_\d+$")
-        max_num_terms = len(parameter_cols)
 
-        fig = PlotFigure(nrows=max_num_terms, ncols=1, figsize=(12, (2*max_num_terms)), sharex=True)
+        mask = _get_time_mask(model.timestamp, start_time, end_time)
+        if not np.any(mask):
+            print(f"Skipping {name}: no data in the specified time range.")
+            continue
+
+        time = model.timestamp[mask]
+        correlation_matrix = model.correlation_matrix[mask]
+
+        regressors = model.regressors[mask]
+        batch_correlation_matrix = matrix_correlation(regressors)
+        
+        max_num_terms = regressors.shape[1]
+
+        fig = PlotFigure(nrows=max_num_terms, ncols=1, figsize=(12, 2.25 * max_num_terms), sharex=True)
         base_title = "Model Performance - Regressor Correlations"
-        subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
+        subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(models)
         fig.set_figure_title(f"{base_title}\n{subtitle}")
 
+        real_labels = {i: [] for i in range(1 + max_num_terms)}
+        real_handles = {i: [] for i in range(1 + max_num_terms)}
+        batch_labels = {i: [] for i in range(1 + max_num_terms)}
+        batch_handles = {i: [] for i in range(1 + max_num_terms)}
+                
         color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-        time = df["timestamp"]
-        
-        regressors = df[_get_indexed_columns(df, prefix, r"regressor_\d+$")].to_numpy()
-        correlation_matrix_batch = sliding_correlation_matrix(regressors, len(regressors))[-1]
-        
         for j in range(max_num_terms):
             title = f"Parameter {chr(65 + j)}'s Correlation Over Time"
             ylabel = f"Param {chr(65 + j)}\nCorrelation"
-            fig.define_subplot(j, title=title, ylabel=ylabel, xlabel=plot_labels.get(f"time", "Time [s]") if j == max_num_terms - 1 else None)
+            xlabel = plot_labels.get(f"time", "Time [s]") if j == max_num_terms - 1 else None
+            fig.define_subplot(j, title=title, ylabel=ylabel, xlabel=xlabel, title_kwargs={"pad": 5})
             fig.shade_subplot(j, y_range=( 0.90,  1.00), color='#F4CCCC', alpha=0.3)  # red
             fig.shade_subplot(j, y_range=( 0.75,  0.90), color='#FFF3B0', alpha=0.3)  # yellow
             fig.shade_subplot(j, y_range=(-0.75,  0.75), color='#A8D5BA', alpha=0.3)  # green
@@ -813,213 +1173,162 @@ def plot_correlation(
             for k in range(max_num_terms):
                 if j == k:
                     continue
-                
                 param_color = color_cycle[k % len(color_cycle)]
-                
-                col_name = f"{prefix}correlation_{j}_to_{k}"
-                if col_name in df.columns:
-                    fig.add_data(j, time, df[col_name], label=f"corr({chr(65+j)}, {chr(65+k)})", color=param_color)
-                    
-                fig.add_line(j, correlation_matrix_batch[j, k], 'h', color=param_color, linestyle=':', alpha=0.7)
 
-        fig.set_all_legends(loc='upper right', fontsize='medium')
+                real_labels[j].append(f"corr({chr(65+j)}, {chr(65+k)})")
+                real_handles[j].append(
+                    fig.add_data(j, time, correlation_matrix[:, j, k], color=param_color)
+                )
+                batch_labels[j].append(f"{batch_correlation_matrix[j, k]:.2f}")
+                batch_handles[j].append(
+                    fig.add_line(j, batch_correlation_matrix[j, k], 'h', color=param_color, linestyle='--', alpha=0.7)
+                )
+
+        for i, ax in enumerate(fig.all_axes):
+            if batch_handles[i]:
+                batch_legend = ax.legend(
+                    batch_handles[i],
+                    batch_labels[i],
+                    title="Batch",
+                    loc="upper left",
+                    bbox_to_anchor=(1.0, 1.0),
+                    fontsize=9,
+                    borderpad=0.3,
+                    labelspacing=0.25,
+                    handlelength=1.5,
+                )
+                ax.add_artist(batch_legend)
+            if real_handles[i]:
+                ax.legend(
+                    real_handles[i],
+                    real_labels[i],
+                    title="Live",
+                    loc="upper right",
+                    fontsize=9,
+                    borderpad=0.3,
+                    labelspacing=0.25,
+                    handlelength=1.5,
+                )
         fig.set_all_grids(True, alpha=0.5)
         fig.apply_to_all_axes('set_ylim', [-1, 1])
-
         figures.append(fig)
-
     return figures
 
 
-def plot_filter_duration(
-        dataframe: pd.DataFrame,
-        start_time: Optional[float] = None,
-        end_time: Optional[float] = None,
-        plot_labels: Optional[dict] = None
-        ) -> PlotFigure:
+def generate_plots(
+    models: dict[str, OLSResult],
+    *,
+    combine_models: bool = True,
+    start_time: float | None = None,
+    end_time: float | None = None,
+    plot_labels: dict | None = None,
+    plot_figures: bool = True,
+    save_figures: bool = False,
+    group_name: str | None = None,
+    ) -> None:
+    if not combine_models:
+        for name, model in models.items():
+            generate_plots(
+                models={name: model},
+                combine_models=True,
+                start_time=start_time,
+                end_time=end_time,
+                plot_labels=plot_labels,
+                save_figures=save_figures,
+                group_name=name
+            )
+        return
 
-    if dataframe is None or dataframe.empty or 'timestamp' not in dataframe.columns:
-        raise ValueError("Invalid DataFrame provided.")
-    if plot_labels is None:
-        plot_labels = {}
-        
-    if start_time is not None:
-        dataframe = dataframe[dataframe["timestamp"] >= start_time]
-    if end_time is not None:
-        dataframe = dataframe[dataframe["timestamp"] <= end_time]
-
-    time = dataframe["timestamp"]
-    elapsed = dataframe["elapsed"] * 1000
-    ema_elapsed = dataframe["ema_elapsed"] * 1000
-    max_elapsed = dataframe["max_elapsed"] * 1000
-    min_elapsed = dataframe["min_elapsed"] * 1000
-
-    fig = PlotFigure(nrows=1, ncols=1, figsize=(12, 6), sharex=True)
-    base_title = "Filter Performance - Duration"
-    subtitle = plot_labels.get("subtitle", "Last Test")
-    fig.set_figure_title(f"{base_title}\n{subtitle}" if subtitle else base_title)
-
-    fig.define_subplot(0, title="Filter Duration Over Time", ylabel="Time\n[ms]", xlabel="Time [s]")
-    fig.add_scatter(0, time, elapsed, color='tab:blue')
-    fig.add_data(0, time, ema_elapsed, color='black')
-    fig.add_fill_between(0, time, max_elapsed, min_elapsed, "Bounds", color="tab:blue")
-
-    fig.set_all_legends(loc='upper right', fontsize='medium')
-    fig.set_all_grids(True, alpha=0.5)
-    return fig
-
-
-def polor_plot(
-        dataframes: dict[str, pd.DataFrame],
-        *,
-        start_time: float | None = None,
-        end_time: float | None = None,
-        plot_labels: dict | None = None
-        ) -> PlotFigure:
-    
-    if not dataframes:
-        raise ValueError("No models provided.")
-    if plot_labels is None:
-        plot_labels = {}
-
-    fig = PlotFigure(figsize=(12, 6))
-    base_title = "Polar Plot"
-    subtitle = plot_labels["subtitle"] if plot_labels.get("subtitle") else "Model(s): " + ", ".join(dataframes)
-    fig.set_figure_title(f"{base_title}\n{subtitle}")
-
-    terms = plot_labels.get("terms", {})
-    term_info = terms.get(0, {})
-    units = term_info.get("units", "")
-    
-    fig.define_subplot(
-        0,
-        title="Cl-Alpha Polar",
-        ylabel=f"Cl",
-        xlabel=f"Alpha",
-        grid=True,
-    )
-
-    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    model_colors = {
-        name: color_cycle[i % len(color_cycle)]
-        for i, name in enumerate(dataframes.keys())
-    }
-    
-    for i, (name, df) in enumerate(dataframes.items()):
-        if df.empty:
-            print(f"Skipping empty DataFrame named {name}.")
-            continue
-        if 'timestamp' not in df.columns:
-            print(f"Skipping DataFrame named {name} due to missing 'timestamp'.")
-            continue
-        
-        if start_time is not None:
-            df = df[df["timestamp"] >= start_time]
-        if end_time is not None:
-            df = df[df["timestamp"] <= end_time]
-
-        prefix = _extract_model_prefix(df)
-
-        cl_param = df[f"{prefix}parameter_3"]
-        alpha = df[f"{prefix}regressor_3"]
-
-        fig.add_scatter(0, alpha, cl_param, label=name, color=model_colors[name])
-        
-    fig.set_all_grids(True, alpha=0.5)
-    return fig
-
-
-def plot_models(csv_files, start_time, end_time, plot_labels, separate = False):
-    model_dataframes: Dict[str, pd.DataFrame] = {}
-    for name, info in csv_files.items():
-        try:
-            df = pd.read_csv(info["path"])
-            model_dataframes[name] = extract_model(df, info["prefix"])
-        except Exception as error:
-            raise RuntimeError(f"Failed processing '{name}'") from error
-    processed_models = process_models(model_dataframes)
-
-    if not separate:
-        # plot_parameter_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-        plot_regressor_data(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        # plot_percent_confidence(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Add batch results.
-        plot_error(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_error_kde(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_fit(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)  # TODO: Review the R² method.
-        plot_conditioning(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        plot_correlation(processed_models, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-        # TODO: Add FFT plotter, Bode plots, and 3D RFT progressions
+    if group_name is not None:
+        folder_name = group_name
+    elif len(models) == 1:
+        folder_name = next(iter(models))
     else:
-        for i, (name, df) in enumerate(processed_models.items()):
-            # plot_parameter_data({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_regressor_data({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            plot_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_percent_confidence({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            plot_error({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_error_kde({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_fit({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_conditioning({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # plot_correlation({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
-            # polor_plot({name: df}, start_time=start_time, end_time=end_time, plot_labels=plot_labels)
+        folder_name = _get_next_combined_folder()
+
+    if len(models) == 1:
+        filename_suffix = _convert_to_filename(next(iter(models)))
+    else:
+        filename_suffix = _get_next_combined_folder()
+
+    save_dir: Path | None = None
+    if save_figures:
+        save_dir = SAVE_PLOT_DIR / _convert_to_filename(folder_name)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+    plot_functions = [
+        ("regs", plot_regressor_data),
+        ("params", plot_parameter_data),
+        ("conf", plot_confidence),
+        ("batch", plot_batch_output),
+        ("per_conf", plot_percent_confidence),
+        ("err", plot_error),
+        ("kde", plot_error_kde),
+        ("fit", plot_fit),
+        ("cond", plot_conditioning),
+        ("corr", plot_correlation),
+    ]
+
+    for plot_name, plot_function in plot_functions:
+        result = plot_function(
+            models,
+            start_time=start_time,
+            end_time=end_time,
+            plot_labels=plot_labels,
+        )
+
+        if not save_figures or save_dir is None:
+            continue
+
+        figures = result if isinstance(result, list) else [result]
+        for i, fig in enumerate(figures, start=1):
+            if fig is None:
+                continue
+            index_suffix = f"_{i}" if len(figures) > 1 else ""
+            filename = (
+                f"{plot_name}_{filename_suffix}"
+                f"{index_suffix}.svg"
+            )
+
+            fig.savefig(
+                save_dir / filename,
+                format="svg",
+            )
+
+    if plot_figures:
+        plt.show()
+
+
+def main() -> None:
+    rol = load_model_topic("rol")
+    rol2 = load_model_topic("rol_2")
+    rol_fixed = load_model_topic("rol_fixed")
+    rol_nd = load_model_topic("nondim_2")
     
-    plt.show()
-
-def main():
-    csv_files = {
-        "Model": {"prefix": "ols_rol_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_rol_data.csv"},
-        # "Small Roll Nondim": {"prefix": "ols_rol_nondim_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_data.csv"},
-        # "Small SSA Roll": {"prefix": "ols_rol_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_ssa_data.csv"},
-        # "Large Roll": {"prefix": "ols_rol_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_data.csv"},
-        # "Large SSA Roll": {"prefix": "ols_rol_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_large_ssa_data.csv"},
-        # "Pitch": {"prefix": "ols_pit_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_data.csv"},
-        # "AOA Pitch": {"prefix": "ols_pit_aoa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files/ols_pit_aoa_data.csv"},
-        # "Small Yaw": {"prefix": "ols_yaw_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_data.csv"},
-        # "Small SSA Yaw": {"prefix": "ols_yaw_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_ssa_data.csv"},
-        # "Large Yaw": {"prefix": "ols_yaw_large_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_data.csv"},
-        # "Large SSA Yaw": {"prefix": "ols_yaw_large_ssa_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_yaw_large_ssa_data.csv"},
-
-        # "Old Small Roll Nondim": {"prefix": "ols_rol_nondim_old_", "path": "/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/ols_rol_nondim_old_data.csv"},
-    }
-
-    start_time = 0
-    end_time = 9999
-
-    plot_labels = {
-        "title": " ",
-        "subtitle": " ",
-        # "time": "Time [s]",
-
-        # "terms":{
-        #     0: {"term": "Roll Acceleration", "units": "[rad/s²]"},
-        #     1: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     2: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        #     # 3: {"term": "Side Slip Angle", "units": "[deg]", "param_units": "[rad/s²-deg]"},
-        #     # 4: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     # 5: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        # },
-        # "terms":{
-        #     0: {"term": "Pitch Acceleration", "units": "[rad/s²]"},
-        #     1: {"term": "Pitch Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     2: {"term": "Elevator Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        #     3: {"term": "Angle of Attack", "units": "[deg]", "param_units": "[rad/s²-deg]"},
-        # },
-        # "terms":{
-        #     0: {"term": "Yaw Acceleration", "units": "[rad/s²]"},
-        #     1: {"term": "Yaw Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     2: {"term": "Rudder Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        #     # 3: {"term": "Side Slip Angle", "units": "[deg]", "param_units": "[rad/s²-deg]"},
-        #     # 4: {"term": "Roll Rate", "units": "[rad/s]", "param_units": "[1/s]"},
-        #     # 5: {"term": "Aileron Command", "units": "[PWM]", "param_units": "[rad/s²-PWM]"},
-        # },
-    }
-
-    plot_models(csv_files, start_time, end_time, plot_labels, separate=False)
-
-    # TODO: Move filter duration to signal_analysis
-    # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/filt_duration_data.csv"))
-    # plot_filter_duration(pd.read_csv("/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/topic_data_files/diff_duration_data.csv"))
-    # plt.show()
+    generate_plots(
+        models={
+            # "Roll": rol,
+            "Small Roll": rol2,
+            # "Roll Fixed": rol_fixed,
+            # "Small Roll": rol_time,
+            # "Nondim Roll": rol_nd,
+            },
+        # combine_models=False,
+         start_time=368,
+        end_time=16+368,
+        plot_labels={
+            # "title": "",
+            # "subtitle": "",
+            # "time": "Time [s]",
+            "terms":{
+                0: {"term": "Roll Acceleration", "units": "rad/s²"},
+                1: {"term": "Roll Rate", "units": "rad/s", "param_units": "1/s"},
+                2: {"term": "Aileron Command", "units": "PWM", "param_units": "rad/s²-PWM"},
+            }
+        },
+        plot_figures=False,
+        save_figures=True,
+    )
 
 if __name__ == "__main__":
     main()

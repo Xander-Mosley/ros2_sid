@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 
+import argparse
 import array
+import csv
+from typing import Any
 import math
 import os
+from pathlib import Path
 import sqlite3
 
 import numpy as np
-import pandas as pd
 
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
 from ros2_sid.rotation_utils import euler_from_quaternion
+
+
+POST_PROCESS_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = POST_PROCESS_DIR / "topic_data_files"
 
 
 # --- Connection Management ---
@@ -120,39 +127,6 @@ def getAllMessagesInTopic(cursor, topic_name, print_out=False):
 
 # ————————————————————————————————————————————————————————————
 
-def parse_ols(label, msg, relative_time):
-    data = msg.data
-
-    if not isinstance(data, (list, tuple, np.ndarray, array.array)):
-        raise ValueError(f"{label} message data must be a sequence, got {type(data)}")
-    if len(data) < 3 or (len(data) - 1) % 2 != 0:
-        raise ValueError(f"{label} message data must follow the format: [output, regressors..., parameters...] with equal number of regressors and parameters.")
-
-    num_regressors = (len(data) - 1) // 2
-
-    result = {
-        'timestamp': relative_time,
-        f'{label}_measured_output': data[0]
-    }
-    for i in range(num_regressors):
-        result[f'{label}_regressor_{i+1}'] = data[1 + i]
-    for i in range(num_regressors):
-        result[f'{label}_parameter_{i+1}'] = data[1 + num_regressors + i]
-
-    return result
-
-def parse_telem(msg, relative_time):
-    return {
-        'timestamp': relative_time,
-        'ax': msg.accel_x,
-        'ay': msg.accel_y,
-        'az': msg.accel_z,
-        'gx': msg.gyro_x,
-        'gy': msg.gyro_y,
-        'gz': msg.gyro_z
-    }
-
-
 def parse_imu(msg, relative_time):
     return {
         'timestamp': relative_time,
@@ -175,57 +149,22 @@ def parse_imu_raw(msg, relative_time):
         'gz_raw': msg.angular_velocity.z
     }
 
-def parse_filt_duration(msg, relative_time):
+def parse_diff_pressure(msg, relative_time):
     return {
         'timestamp': relative_time,
-        'elapsed': msg.data[0],
-        'ema_elapsed': msg.data[1],
-        'max_elapsed': msg.data[2],
-        'min_elapsed': msg.data[3]
-    }
-    
-def parse_imu_diff(msg, relative_time):
-    return {
-        'timestamp': relative_time,
-        # 'gax': msg.data[0],
-        # 'gay': msg.data[1],
-        # 'gaz': msg.data[2]
-        'gax': msg.angular_velocity.x,
-        'gay': msg.angular_velocity.y,
-        'gaz': msg.angular_velocity.z
+        'diff_pressure': msg.fluid_pressure
     }
 
-def parse_diff_duration(msg, relative_time):
+def parse_static_pressure(msg, relative_time):
     return {
         'timestamp': relative_time,
-        'elapsed': msg.data[0],
-        'ema_elapsed': msg.data[1],
-        'max_elapsed': msg.data[2],
-        'min_elapsed': msg.data[3]
-    }
-    
-def parse_rcout(msg, relative_time):
-    return {
-        'timestamp': relative_time,
-        **{f'rcout_ch{i+1}': ch for i, ch in enumerate(msg.channels)}
+        'static_pressure': msg.fluid_pressure
     }
 
-def parse_rcin(msg, relative_time):
+def parse_temperature_baro(msg, relative_time):
     return {
         'timestamp': relative_time,
-        **{f'rcin_ch{i+1}': ch for i, ch in enumerate(msg.channels)}
-    }
-    
-def parse_dds_rcout(msg, relative_time):
-    return {
-        'timestamp': relative_time,
-        **{f'rcout_ch{i+1}': ch for i, ch in enumerate(msg.values)}
-    }
-
-def parse_dds_rcin(msg, relative_time):
-    return {
-        'timestamp': relative_time,
-        **{f'rcin_ch{i+1}': ch for i, ch in enumerate(msg.values)}
+        'temperature_baro': msg.temperature
     }
 
 def parse_odometry(msg, relative_time):
@@ -268,12 +207,29 @@ def parse_altitude(msg, relative_time):
         'altitude': msg.data
     }
 
-def parse_diff_pressure(msg, relative_time):
+def parse_rcin(msg, relative_time):
     return {
         'timestamp': relative_time,
-        'diff_pressure': msg.fluid_pressure
+        **{f'rcin_ch{i+1}': ch for i, ch in enumerate(msg.channels)}
+    }
+    
+def parse_rcout(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        **{f'rcout_ch{i+1}': ch for i, ch in enumerate(msg.channels)}
     }
 
+
+def parse_telem(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'ax': msg.accel_x,
+        'ay': msg.accel_y,
+        'az': msg.accel_z,
+        'gx': msg.gyro_x,
+        'gy': msg.gyro_y,
+        'gz': msg.gyro_z
+    }
 
 def parse_trajectory(msg, relative_time):
     idx = msg.idx
@@ -285,42 +241,162 @@ def parse_trajectory(msg, relative_time):
     }
 
 
-def parse_ros_message(label, msg, relative_time):
-    if label.startswith('ols'):
-        return parse_ols(label, msg, relative_time)
-    match label:
-        case 'imu':
+def parse_dds_pitot(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'diff_pres': msg.differential_pressure,
+        'dyn_pres': msg.dynamic_pressure,
+        'cas': msg.calibrated_airspeed,
+        'tas': msg.true_airspeed,
+        'air_temp': msg.temperature,
+        'air_density': msg.air_density,
+    }
+
+def parse_dds_propulsion(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        'prop_speed': msg.rpm,
+        'voltage': msg.voltage,
+        'current': msg.current,
+        'esc_temp': msg.temperature
+    }
+
+def parse_dds_rcout(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        **{f'rcout_ch{i+1}': ch for i, ch in enumerate(msg.values)}
+    }
+
+def parse_dds_rcin(msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        **{f'rcin_ch{i+1}': ch for i, ch in enumerate(msg.values)}
+    }
+
+
+def parse_ols(label, msg, relative_time):
+    data = msg.data
+
+    if not isinstance(data, (list, tuple, np.ndarray, array.array)):
+        raise ValueError(f"{label} message data must be a sequence, got {type(data)}")
+    if len(data) < 3 or (len(data) - 1) % 2 != 0:
+        raise ValueError(f"{label} message data must follow the format: [output, regressors..., parameters...] with equal number of regressors and parameters.")
+
+    num_regressors = (len(data) - 1) // 2
+
+    result = {
+        'timestamp': relative_time,
+        f'{label}_measured_output': data[0]
+    }
+    for i in range(num_regressors):
+        result[f'{label}_regressor_{i+1}'] = data[1 + i]
+    for i in range(num_regressors):
+        result[f'{label}_parameter_{i+1}'] = data[1 + num_regressors + i]
+
+    return result
+
+def parse_sid_ols(label, msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        f'{label}_measured_output': msg.measured_output,
+        **{f'{label}_regressor_{i+1}': r for i, r in enumerate(msg.regressor)},
+        **{f'{label}_parameter_{i+1}': p for i, p in enumerate(msg.parameter)},
+    }
+
+def parse_sid_filter(label, msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        f'{label}_timestep': msg.dt,
+        f'{label}_trend': msg.trend,
+        f'{label}_value': msg.value,
+    }
+
+def parse_sid_fourier(label, msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        f'{label}_timestep': msg.dt,
+        f'{label}_trend': msg.trend,
+        f'{label}_value': msg.value,
+        **{f'{label}_frequency_{i+1}': f for i, f in enumerate(msg.frequencies_hz)},
+        **{f'{label}_spec_real_{i+1}': f for i, f in enumerate(msg.spectrum_real)},
+        **{f'{label}_spec_imag_{i+1}': f for i, f in enumerate(msg.spectrum_imag)},
+    }
+
+def parse_sid_differ(label, msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        f'{label}_timestep': msg.dt,
+        f'{label}_trend': msg.trend,
+        f'{label}_value': msg.value,
+        **{f'{label}_frequency_{i+1}': f for i, f in enumerate(msg.frequencies_hz)},
+        **{f'{label}_spec_real_{i+1}': f for i, f in enumerate(msg.spectrum_real)},
+        **{f'{label}_spec_imag_{i+1}': f for i, f in enumerate(msg.spectrum_imag)},
+    }
+
+def parse_sid_terms(label, msg, relative_time):
+    return {
+        'timestamp': relative_time,
+        f'{label}_timestep': msg.dt,
+        f'{label}_trend': msg.trend,
+        f'{label}_value': msg.value,
+    }
+
+
+def parse_ros_message(topic_path, label, msg, relative_time):
+    if topic_path.startswith('/sid/'):
+        if topic_path.startswith('/sid/ols/'):
+            return parse_sid_ols(label, msg, relative_time)
+        if topic_path.startswith('/sid/filter/'):
+            return parse_sid_filter(label, msg, relative_time)
+        if topic_path.startswith('/sid/fourier/'):
+            return parse_sid_fourier(label, msg, relative_time)
+        if topic_path.startswith('/sid/differ/'):
+            return parse_sid_differ(label, msg, relative_time)
+        if topic_path.startswith('/sid/terms/'):
+            return parse_sid_terms(label, msg, relative_time)
+
+    if topic_path.startswith('/ap/'):
+        match topic_path:
+            case '/ap/imu/experimental/data':
+                return parse_imu(msg, relative_time)
+            case '/ap/pitot':
+                return parse_dds_pitot(msg, relative_time)
+            case '/ap/propulsion':
+                return parse_dds_propulsion(msg, relative_time)
+            case '/ap/rcin':
+                return parse_dds_rcin(msg, relative_time)
+            case '/ap/rcout':
+                return parse_dds_rcout(msg, relative_time)
+
+    match topic_path:
+        case '/mavros/imu/data':
             return parse_imu(msg, relative_time)
-        case 'imu_raw':
+        case '/mavros/imu/data_raw':
             return parse_imu_raw(msg, relative_time)
-        case 'filt_duration':
-            return parse_filt_duration(msg, relative_time)
-        case 'imu_diff':
-            return parse_imu_diff(msg, relative_time)
-        case 'diff_duration':
-            return parse_diff_duration(msg, relative_time)
-        case 'telem':
-            return parse_telem(msg, relative_time)
-        case 'rcout':
-            return parse_rcout(msg, relative_time)
-        case 'rcin':
-            return parse_rcin(msg, relative_time)
-        case 'dds-rcout':
-            return parse_dds_rcout(msg, relative_time)
-        case 'dds-rcin':
-            return parse_dds_rcin(msg, relative_time)
-        case 'odometry':
-            return parse_odometry(msg, relative_time)
-        case 'gps':
-            return parse_gps(msg, relative_time)
-        case 'gps_vel':
-            return parse_gps_vel(msg, relative_time)
-        case 'altitude':
-            return parse_altitude(msg, relative_time)
-        case 'diff_pressure':
+        case '/mavros/imu/diff_pressure':
             return parse_diff_pressure(msg, relative_time)
-        case 'trajectory':
+        case '/mavros/imu/static_pressure':
+            return parse_static_pressure(msg, relative_time)
+        case '/mavros/imu/temperature_baro':
+            return parse_temperature_baro(msg, relative_time)
+        case '/mavros/local_position/odom':
+            return parse_odometry(msg, relative_time)
+        case '/mavros/global_position/global':
+            return parse_gps(msg, relative_time)
+        case '/mavros/global_position/raw/gps_vel':
+            return parse_gps_vel(msg, relative_time)
+        case '/mavros/global_position/rel_alt':
+            return parse_altitude(msg, relative_time)
+        case '/mavros/rc/in':
+            return parse_rcin(msg, relative_time)
+        case '/mavros/rc/out':
+            return parse_rcout(msg, relative_time)
+
+        case '/telem':
+            return parse_telem(msg, relative_time)
+        case '/trajectory':
             return parse_trajectory(msg, relative_time)
+        
         case _:
             base = {'timestamp': relative_time}
             if hasattr(msg, 'data') and isinstance(msg.data, (list, tuple, np.ndarray, array.array)):
@@ -334,11 +410,13 @@ def parse_ros_message(label, msg, relative_time):
 
 # ————————————————————————————————————————————————————————————
 
-def main(bag_file, topics_to_extract, output_directory):
+def topic_extractor(bag_file, topics_to_extract):
+    import pandas as pd
+
     nanoseconds_per_second = 1e9
     tolerance = 0.02
 
-    os.makedirs(output_directory, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     db_connection, db_cursor = connect(bag_file)
     all_topic_names = getAllTopicsNames(db_cursor, print_out=True)
@@ -367,12 +445,17 @@ def main(bag_file, topics_to_extract, output_directory):
 
         for relative_time, serialized_msg in zip(relative_timestamps, msg_raw_blobs):
             deserialized_msg = deserialize_message(serialized_msg, message_type_class)
-            parsed_row = parse_ros_message(label, deserialized_msg, relative_time)
+            parsed_row = parse_ros_message(
+                topic_path,
+                label,
+                deserialized_msg,
+                relative_time,
+            )
             message_data_rows.append(parsed_row)
 
         topic_dataframe = pd.DataFrame(message_data_rows)
         topic_dataframes[label] = topic_dataframe
-        topic_dataframe.to_csv(os.path.join(output_directory, f"{label}_data.csv"), index=False)
+        topic_dataframe.to_csv(os.path.join(OUTPUT_DIR, f"{label}_data.csv"), index=False)
         print(f"Saved {label} data to {label}_data.csv")
 
 
@@ -393,75 +476,142 @@ def main(bag_file, topics_to_extract, output_directory):
                 suffixes=(None, f'_{label}')
             )
 
-        merged_synced_df.to_csv(os.path.join(output_directory, 'synced_all_data.csv'), index=False)
+        merged_synced_df.to_csv(os.path.join(OUTPUT_DIR, 'synced_all_data.csv'), index=False)
         print("\nSaved fully synced data to synced_all_data.csv\n")
 
     close(db_connection)
 
-if __name__ == "__main__":
-    bag_file = '/develop_ws/bag_files/2026-08-19_Preparing-for-Flying/rosbag2_2026_08_19-19_01_07_0.db3'
+SURFACE_TOPICS = {
+    "/ap/sid/control_surface": "surface_commands",
+    "/ap/sid/status": "surface_status",
+    "/ap/sid/output": "surface_output",
+    "/ap/time": "ap_time",
+}
+
+
+def flatten_surface_message(msg: Any, prefix: str = "") -> dict[str, Any]:
+    """Flatten ROS fields without changing units; array indices remain zero-based."""
+    row: dict[str, Any] = {}
+    for field in msg.get_fields_and_field_types():
+        value = getattr(msg, field)
+        name = f"{prefix}{field}"
+        if hasattr(value, "get_fields_and_field_types"):
+            row.update(flatten_surface_message(value, name + "_"))
+        elif isinstance(value, (list, tuple, array.array, np.ndarray)):
+            row.update({f"{name}_{i}": item for i, item in enumerate(value)})
+        else:
+            row[name] = value
+    return row
+
+
+def extract_surface_bag(bag: Path, output: Path) -> dict[str, int]:
+    """Export excitation topics from a rosbag2 directory without replay or time joins.
+
+    Output rows retain bag receipt nanoseconds and original source/firmware clocks.
+    A surface_output row is a coherent firmware snapshot; no nearest-time merge is
+    used to infer which command was applied. Split bags follow rosbag2 metadata.
+    """
+    import rosbag2_py
+    import yaml
+    from contextlib import ExitStack
+
+    metadata = yaml.safe_load((bag / "metadata.yaml").read_text())
+    storage = metadata["rosbag2_bagfile_information"]["storage_identifier"]
+    reader = rosbag2_py.SequentialReader()
+    reader.open(
+        rosbag2_py.StorageOptions(uri=str(bag), storage_id=storage),
+        rosbag2_py.ConverterOptions("", ""),
+    )
+    types = {
+        t.name: get_message(t.type)
+        for t in reader.get_all_topics_and_types()
+        if t.name in SURFACE_TOPICS
+    }
+    if "/ap/sid/output" not in types:
+        raise ValueError("Bag has no /ap/sid/output topic; record the excitation topics first")
+    output.mkdir(parents=True, exist_ok=True)
+    counts = {label: 0 for label in SURFACE_TOPICS.values()}
+    writers: dict[str, Any] = {}
+    with ExitStack() as stack:
+        for label in counts:
+            if (output / f"{label}_data.csv").exists():
+                raise FileExistsError(f"Choose a new output directory: {output}")
+        while reader.has_next():
+            topic, data, recorded_ns = reader.read_next()
+            if topic not in types:
+                continue
+            msg = deserialize_message(data, types[topic])
+            row = {"bag_time_ns": recorded_ns, **flatten_surface_message(msg)}
+            label = SURFACE_TOPICS[topic]
+            if label not in writers:
+                stream = stack.enter_context((output / f"{label}_data.csv").open("w", newline=""))
+                writers[label] = csv.DictWriter(stream, fieldnames=list(row))
+                writers[label].writeheader()
+            writers[label].writerow(row)
+            counts[label] += 1
+    if not counts["surface_output"]:
+        raise ValueError("Bag contains no applied-output samples")
+    return counts
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Export recorded ROS topics to CSV without replay")
+    parser.add_argument("bag", type=Path, help="rosbag2 directory with --surface; SQLite .db3 otherwise")
+    parser.add_argument("--output", type=Path, required=True, help="CSV output directory")
+    parser.add_argument("--surface", action="store_true", help="Export interactive DDS excitation topics")
+    args = parser.parse_args()
+    if args.surface:
+        for label, count in extract_surface_bag(args.bag, args.output).items():
+            print(f"{label}: {count} samples")
+        return
+    global OUTPUT_DIR
+    OUTPUT_DIR = args.output
+    bag_file = str(args.bag)
     
     topics_to_extract = {
         # '/mavros/imu/data': 'imu',
-        # '/mavros/imu/data_raw': 'imu_raw',
-        # '/imu_filt': 'imu',
-        '/ap/imu/experimental/data': 'imu',
-        '/imu_diff': 'imu_diff',
-
-        # '/telem': 'telem',
-
-        # '/mavros/rc/out': 'rcout',
-        # '/mavros/rc/in': 'rcin',
+        '/mavros/imu/data_raw': 'imu_raw',
+        '/mavros/imu/diff_pressure': 'diff_pressure',
+        '/mavros/imu/static_pressure': 'static_pressure',
+        '/mavros/imu/temperature_baro': 'temperature_baro',
         '/mavros/local_position/odom': 'odometry',
-        # '/mavros/global_position/global': 'gps',
-        # '/mavros/global_position/raw/gps_vel': 'gps_vel',
+        '/mavros/global_position/global': 'gps',
+        '/mavros/global_position/raw/gps_vel': 'gps_vel',
         '/mavros/global_position/rel_alt': 'altitude',
-        # '/mavros/imu/diff_pressure': 'diff_pressure',
-        # '/mavros/imu/static_pressure': 'static_pressure',
-        # '/mavros/imu/temperature_baro': 'temperature_baro',
+        # '/mavros/rc/in': 'rcin',
+        # '/mavros/rc/out': 'rcout',
+
         '/trajectory': 'trajectory',
+        # '/telem': 'telem',    # Not working currently.
 
-        '/ap/rcout': 'dds-rcout',
-        '/ap/rcin': 'dds-rcin',
+        '/ap/imu/experimental/data': 'imu',
+        '/ap/rcout': 'rcout',
+        '/ap/rcin': 'rcin',
 
-        '/ols_rol': 'ols_rol',
-        # '/ols_rol_nondim': 'ols_rol_nondim',
-        # '/ols_rol_nondim_inertias': 'ols_rol_nondim_inertias',
-        '/ols_rol_ssa': 'ols_rol_ssa',
-        # '/ols_rol_ssa_nondim': 'ols_rol_ssa_nondim',
-        # '/ols_rol_ssa_nondim_inertias': 'ols_rol_ssa_nondim_inertias',
-        
-        '/ols_rol_large': 'ols_rol_large',
-        # '/ols_rol_large_nondim': 'ols_rol_large_nondim',
-        # '/ols_rol_large_nondim_inertias': 'ols_rol_large_nondim_inertias',
-        '/ols_rol_large_ssa': 'ols_rol_large_ssa',
-        # '/ols_rol_large_ssa_nondim': 'ols_rol_large_ssa_nondim',
-        # '/ols_rol_large_ssa_nondim_inertias': 'ols_rol_large_ssa_nondim_inertias',
+        '/sid/ols/rol': 'rol',
+        '/sid/ols/pit': 'pit',
+        '/sid/ols/yaw': 'yaw',
+        '/sid/ols/nondim/rol': 'rol_nondim',
 
-        '/ols_pit': 'ols_pit',
-        # '/ols_pit_nondim': 'ols_pit_nondim',
-        # '/ols_pit_nondim_inertias': 'ols_pit_nondim_inertias',
-        '/ols_pit_aoa': 'ols_pit_aoa',
-        # '/ols_pit_aoa_nondim': 'ols_pit_aoa_nondim',
-        # '/ols_pit_aoa_nondim_inertias': 'ols_pit_aoa_nondim_inertias',
+        '/sid/differ/imu/gx': 'differ_imu_gx',
+        '/sid/differ/imu/gy': 'differ_imu_gy',
+        '/sid/differ/imu/gz': 'differ_imu_gz',
+        '/sid/fourier/imu/gx': 'fourier_imu_gx',
+        '/sid/fourier/imu/gy': 'fourier_imu_gy',
+        '/sid/fourier/imu/gz': 'fourier_imu_gz',
+        '/sid/fourier/rcout/ail': 'fourier_rcout_ail',
+        '/sid/fourier/rcout/elv': 'fourier_rcout_elv',
+        '/sid/fourier/rcout/rud': 'fourier_rcout_rud',
 
-        '/ols_yaw': 'ols_yaw',
-        # '/ols_yaw_nondim': 'ols_yaw_nondim',
-        # '/ols_yaw_nondim_inertias': 'ols_yaw_nondim_inertias',
-        '/ols_yaw_ssa': 'ols_yaw_ssa',
-        # '/ols_yaw_ssa_nondim': 'ols_yaw_ssa_nondim',
-        # '/ols_yaw_ssa_nondim_inertias': 'ols_yaw_ssa_nondim_inertias',
-        
-        '/ols_yaw_large': 'ols_yaw_large',
-        # '/ols_yaw_large_nondim': 'ols_yaw_large_nondim',
-        # '/ols_yaw_large_nondim_inertias': 'ols_yaw_large_nondim_inertias',
-        '/ols_yaw_large_ssa': 'ols_yaw_large_ssa',
-        # '/ols_yaw_large_ssa_nondim': 'ols_yaw_large_ssa_nondim',
-        # '/ols_yaw_large_ssa_nondim_inertias': 'ols_yaw_large_ssa_nondim_inertias'
-
-        # '/ols_rol_nondim_old': 'ols_rol_nondim_old',
+        '/sid/fourier/nondim/p': 'nondim_p',
+        '/sid/fourier/nondim/r': 'nondim_r',
+        '/sid/fourier/nondim/ail': 'nondim_ail',
+        '/sid/fourier/nondim/rud': 'nondim_rud',
+        '/sid/fourier/nondim/qr': 'nondim_qr',
+        '/sid/fourier/nondim/rpq': 'nondim_rpq',
         }
-    
-    output_directory = '/develop_ws/src/ros2_sid/ros2_sid/ros2_sid/post_process/topic_data_files'
 
-    main(bag_file, topics_to_extract, output_directory)
+    topic_extractor(bag_file, topics_to_extract)
+
+if __name__ == "__main__":
+    main()

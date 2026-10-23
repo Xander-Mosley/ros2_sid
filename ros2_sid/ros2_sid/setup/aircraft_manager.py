@@ -357,7 +357,7 @@ def get_current_aircraft_name() -> str | None:
     except (FileNotFoundError, OSError, ValueError):
         return None
 
-def print_aircraft_list() -> None:
+def print_aircraft_list() -> list[Path]:
     """Print a list of aircraft names and a selection indicator."""
     aircraft_files = get_aircraft_list()
     if not aircraft_files:
@@ -690,7 +690,7 @@ def input_value(prompt, current=None, allow_negative=True) -> float | None:
 
         return value
 
-def edit_geometry(units: str, geometry: Geometry = None) -> Geometry:
+def edit_geometry(units: str, geometry: Geometry | None = None) -> Geometry:
     print_section("Geometry")
 
     if geometry is None:
@@ -724,7 +724,7 @@ def edit_geometry(units: str, geometry: Geometry = None) -> Geometry:
         mac_m=mac,
     )
 
-def edit_inertia(units: str, inertia: Inertia = None) -> Inertia:
+def edit_inertia(units: str, inertia: Inertia | None = None) -> Inertia:
     print_section("Moments of Inertia")
 
     if inertia is None:

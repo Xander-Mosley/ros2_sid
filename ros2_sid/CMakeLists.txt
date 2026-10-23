@@ -50,12 +50,19 @@ install(TARGETS
 ament_python_install_package(${PROJECT_NAME})
 # Install Python executables
 install(PROGRAMS
+  scripts/gcs_test_input.py
+  scripts/record_surface_excitation.sh
+  scripts/plot_surface_excitation.py
   scripts/run_mission_SITL.py
   scripts/run_mission_HITL.py
-  scripts/systemidentification.py
-  scripts/gcs_test_input.py
-  scripts/imufiltering.py
-  scripts/imudifferentiating.py
+  scripts/sid_filter.py
+  scripts/sid_fourier.py
+  scripts/sid_differ.py
+  scripts/sid_term_creation.py
+  scripts/system_identification.py
+  scripts/old_imufiltering.py
+  scripts/old_imudifferentiating.py
+  scripts/old_systemidentification.py
   # scripts/client_member_function.py
   # scripts/service_member_function.py
   DESTINATION lib/${PROJECT_NAME}
@@ -67,6 +74,15 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   set(_pytest_tests
     tests/dummy_test.py
+    tests/test_surface_data_parser.py
+    tests/test_surface_analysis.py
+    tests/test_surface_signals.py
+    tests/test_surface_mission_ros.py
+    tests/test_straight_flight.py
+    tests/test_sitl_ols.py
+    tests/test_air_data_analysis.py
+    tests/test_straight_analysis.py
+    tests/test_surface_doublets.py
     # Add other test files here
   )
   foreach(_test_path ${_pytest_tests})
@@ -82,5 +98,7 @@ endif()
 #launch
 install(DIRECTORY
   launch
+  config
   DESTINATION share/${PROJECT_NAME}
 )
+install(DIRECTORY ros2_sid/setup/mission_library DESTINATION share/${PROJECT_NAME}/ros2_sid/setup)

@@ -1,0 +1,1 @@
+{"units":"normalized_surface","rate":50,"duration":30,"axes":{"roll":{"signal":"multisine","amplitude":0.1,"frequencies":[0.1,0.3,0.6],"amplitudes":[0.04,0.03,0.03],"phases":[0,1,2]}}}

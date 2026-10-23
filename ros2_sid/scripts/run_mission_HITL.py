@@ -9,6 +9,15 @@ and system identification. Unlike 'run_mission_SITL.py', this node maps the run/
 switch to a physical RC kill switch channel on the flight controller, enabling live
 hardware control over signal execution.
 
+DDS surface excitation
+----------------------
+Use ``ros2 run ros2_sid run_mission_HITL.py --interface dds`` for the shared
+SITL waveform library, straight-flight coordination, rosbag telemetry and plots.
+The default RC gate remains MAVROS channel 8: >=1550 runs, <1550 stops. DDS
+requires a fresh low/high edge and stops on stale or invalid RC input. The
+experiment switch must not also select flight mode (check FLTMODE_CH/RC8_OPTION).
+See docs/manual_surface_excitation_hitl.md for setup, stop/recovery and tests.
+
 Key Features
 ------------
 - Load maneuvers from CSV files to ensure reproducibility.
@@ -29,7 +38,7 @@ Usage
 -----
 1. Launch the node:
     '''bash
-    ros2 run ros2_sid testingsignals_HINL.py
+    ros2 run ros2_sid run_mission_HITL.py --interface trajectory
     '''
 2. Use the RC kill switch to start/stop maneuver execution.
 3. When the kill switch is inactive (low), select maneuvers via console input.
@@ -46,6 +55,21 @@ Email: XanderDMosley.Engineer@gmail.com
 Date: 11 Jul 2025
 """
 
+
+# Select the normalized-surface DDS backend before importing legacy trajectory dependencies.
+# Both backends are owned by this mission entrypoint; they never publish concurrently.
+import sys
+
+if __name__ == "__main__" and "--interface" in sys.argv:
+    position = sys.argv.index("--interface")
+    if position + 1 < len(sys.argv) and sys.argv[position + 1] == "dds":
+        from ros2_sid.surface_mission import main as surface_main
+
+        raise SystemExit(surface_main(hitl=True))
+    if position + 1 < len(sys.argv) and sys.argv[position + 1] == "trajectory":
+        del sys.argv[position : position + 2]
+    else:
+        raise SystemExit("--interface must be dds or trajectory")
 
 from pathlib import Path
 import json
@@ -68,7 +92,7 @@ from drone_interfaces.msg import CtlTraj, Telem
 from mavros_msgs.msg import RCIn
 from mavros.base import SENSOR_QOS
 
-from ardupilot_msgs.msg import RcIn
+# from ardupilot_msgs.msg import RcIn
 
 
 __all__ = ['PubInputSignals']
@@ -150,15 +174,16 @@ class PubInputSignals(Node):
         self.print_developer_info()
 
         # Paths
-        package_subroot = Path(__file__).resolve().parents[1]
-        self.mission_library = (package_subroot / "ros2_sid" / "setup" / "mission_library")
+        from ros2_sid.mission_library import mission_library_path
+
+        self.mission_library = mission_library_path()
         self.current_mission_file = (self.mission_library / "current_mission.json")
 
         # Controller
         self.setup_subs()
         self.kill_switch: float = 0.0
         self.rc_bias: int = 1   # Channel 1 starts at index 0
-        self.kill_switch_channel: int = 9 - self.rc_bias
+        self.kill_switch_channel: int = 8 - self.rc_bias
         self.kill_switch_threshold: float = 1550
         
         # Execution States
@@ -221,20 +246,20 @@ class PubInputSignals(Node):
         """
         self.kill_switch = float(sub_msg.channels[self.kill_switch_channel])
     
-    def dds_rcin_callback(self, sub_msg: RcIn) -> None:
-        """
-        Callback for RC input messages.
+    # def dds_rcin_callback(self, sub_msg: RcIn) -> None:
+    #     """
+    #     Callback for RC input messages.
 
-        Parameters
-        ----------
-        sub_msg : RcIn
-            DDS RC input message containing PWM values for all channels.
+    #     Parameters
+    #     ----------
+    #     sub_msg : RcIn
+    #         DDS RC input message containing PWM values for all channels.
 
-        Notes
-        -----
-        - Updates 'self.kill_switch' with the PWM value from the configured channel.
-        """
-        self.kill_switch = float(sub_msg.values[self.kill_switch_channel])
+    #     Notes
+    #     -----
+    #     - Updates 'self.kill_switch' with the PWM value from the configured channel.
+    #     """
+    #     self.kill_switch = float(sub_msg.values[self.kill_switch_channel])
 
 
     def load_current_mission(self) -> Path:
@@ -297,11 +322,13 @@ class PubInputSignals(Node):
         if not mission_plan_file.exists():
             raise FileNotFoundError(
                 f"Mission plan not found:\n"
-                f"{mission_path_file}"
+                f"{mission_plan_file}"
             )
 
         with mission_plan_file.open("r", encoding="utf-8") as file:
             mission_plan = json.load(file)
+        if isinstance(mission_plan, dict) and mission_plan.get("units") == "normalized_surface":
+            raise ValueError("Surface mission selected: use --interface dds, or select a legacy attitude mission")
 
         if not isinstance(mission_plan, dict):
             raise ValueError(
@@ -779,7 +806,7 @@ class PubInputSignals(Node):
             )
         else:
             print(
-                f"MANEUVER STOPPED: "
+                f"MANEUVER CANCELED: "
                 f"{self.current_maneuver_name}"
             )
 

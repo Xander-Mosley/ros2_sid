@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    plugin_allowlist:
+      - sys_status
+      - sys_time
+      - setpoint_raw
+      - command
+      - rc_io
+      - imu
+      - local_position
+      - global_position
+/**/sys:
+  ros__parameters:
+    heartbeat_rate: 1.0
+    heartbeat_mav_type: ONBOARD_CONTROLLER

@@ -1,0 +1,1 @@
+{"units":"normalized_surface","rate":50,"duration":30,"axes":{"roll":{"signal":"chirp","amplitude":0.1,"start_frequency":0.1,"end_frequency":0.8}}}

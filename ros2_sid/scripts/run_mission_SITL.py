@@ -44,6 +44,21 @@ Date: 11 Jul 2025
 """
 
 
+# Select the normalized-surface DDS backend before importing legacy trajectory dependencies.
+# Both backends are owned by this mission entrypoint; they never publish concurrently.
+import sys
+
+if __name__ == "__main__" and "--interface" in sys.argv:
+    position = sys.argv.index("--interface")
+    if position + 1 < len(sys.argv) and sys.argv[position + 1] == "dds":
+        from ros2_sid.surface_mission import main as surface_main
+
+        raise SystemExit(surface_main(hitl=False))
+    if position + 1 < len(sys.argv) and sys.argv[position + 1] == "trajectory":
+        del sys.argv[position : position + 2]
+    else:
+        raise SystemExit("--interface must be dds or trajectory")
+
 from pathlib import Path
 import json
 import math
@@ -130,8 +145,9 @@ class PubInputSignals(Node):
         self.print_developer_info()
 
         # Paths
-        package_subroot = Path(__file__).resolve().parents[1]
-        self.mission_library = (package_subroot / "ros2_sid" / "setup" / "mission_library")
+        from ros2_sid.mission_library import mission_library_path
+
+        self.mission_library = mission_library_path()
         self.current_mission_file = (self.mission_library / "current_mission.json")
         
         # Execution States
@@ -218,11 +234,13 @@ class PubInputSignals(Node):
         if not mission_plan_file.exists():
             raise FileNotFoundError(
                 f"Mission plan not found:\n"
-                f"{mission_path_file}"
+                f"{mission_plan_file}"
             )
 
         with mission_plan_file.open("r", encoding="utf-8") as file:
             mission_plan = json.load(file)
+        if isinstance(mission_plan, dict) and mission_plan.get("units") == "normalized_surface":
+            raise ValueError("Surface mission selected: use --interface dds, or select a legacy attitude mission")
 
         if not isinstance(mission_plan, dict):
             raise ValueError(
@@ -702,7 +720,7 @@ class PubInputSignals(Node):
             )
         else:
             print(
-                f"MANEUVER STOPPED: "
+                f"MANEUVER CANCELED: "
                 f"{self.current_maneuver_name}"
             )
         
