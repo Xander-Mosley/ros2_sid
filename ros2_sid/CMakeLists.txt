@@ -79,6 +79,7 @@ if(BUILD_TESTING)
     tests/test_surface_signals.py
     tests/test_surface_mission_ros.py
     tests/test_straight_flight.py
+    tests/test_sitl_ols.py
     # Add other test files here
   )
   foreach(_test_path ${_pytest_tests})

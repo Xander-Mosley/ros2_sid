@@ -157,3 +157,121 @@ The guide distinguishes firmware installation from loading a parameter file.
 
 For the RC-gated HITL entrypoint, see [manual HITL excitation](ros2_sid/docs/manual_surface_excitation_hitl.md)
 and its [implementation/test plan](ros2_sid/docs/hitl_excitation_plan.md).
+
+## OLS comparison against the SITL aircraft
+
+See the [full SITL OLS identification report](ros2_sid/docs/sitl_ols_identification_report.md)
+for the experiment design, equations, complete limitations and implementation changes.
+
+![Recorded versus OLS-predicted aerodynamic coefficients on held-out multisines](ros2_sid/docs/figures/sitl_ols/held_out_predictions.png)
+
+This truth-assisted plot shows coefficient predictions at recorded states, not
+a free-running trajectory. The three multisine maneuvers were excluded from
+training. [Download the PDF](ros2_sid/docs/figures/sitl_ols/held_out_predictions.pdf).
+
+`python3 -m ros2_sid.sitl_ols` fits aerodynamic force and moment coefficients
+from a validated six-maneuver conventional-plane run. It uses this package's
+`ordinary_least_squares`, fitting the three chirps and reserving all three
+multisines for validation. Reference coefficients are read from
+`ardupilot_sid/libraries/SITL/SIM_Plane.h` **after** fitting, for comparison only.
+
+With the isolated compose services healthy, run from the outer workspace:
+
+```bash
+python3 ardupilot_sid/Tools/ros2/ardupilot_dds_tests/scripts/surface_sitl.py \
+  --container surface-excitation-sitl-ros-1 --individual-axes --rate 50 \
+  --output sid_results/ols_new_run
+
+docker exec -e PYTHONPATH=/work/ros2_sid/ros2_sid \
+  surface-excitation-sitl-ros-1 python3 -m ros2_sid.sitl_ols \
+  --run /work/sid_results/ols_new_run \
+  --reference /work/ardupilot_sid/libraries/SITL/SIM_Plane.h \
+  --state-source truth --include-transients \
+  --output /work/sid_results/ols_new_run/ols_truth_transients
+```
+
+Use a new output directory for each flight. To repeat the lower-frequency
+comparison, add `--waveform-config-dir ros2_sid/ros2_sid/config/surface_excitation/ols`
+to the flight command. That directory contains 30-second, 0.1–0.8 Hz chirps and separate 0.1/0.3/0.6 Hz multisines.
+The command above uses the original, shorter, higher-frequency examples.
+The flight runner leaves normal GUIDED navigation active during excitation.
+
+Outputs are `results.json`, `coefficients.csv`, `regression_data.npz`, and held-out
+prediction plots in PNG/PDF. The example derives rates and accelerations from
+logged simulator attitude/velocity. Repeat with `--state-source imu` and a new
+output directory to compare primary-IMU measurements. `--include-transients`
+adds the airborne climb and settling samples to training, excluding each entire
+multisine and its filter guard. Omit it to fit only chirps. Broader alpha coverage
+was essential to recovering the individual pitch derivatives in these runs.
+
+Both modes use simulator truth for angle of attack and sideslip, assume zero
+wind and known geometry/mass/CG/thrust calibration, and reconstruct the default
+one-pole servo dynamics from recorded applied PWM. They are simulation
+benchmarks, not sensor-only flight estimators. Importing OLS no longer requires
+an interactively generated Fourier configuration; Fourier defaults are loaded
+only when a transform without explicit frequencies is instantiated.
+
+The model follows the local simulator's conventions:
+
+- Body axes are forward/right/down, angles and body rates are radians.
+- Surface input is `(PWM - 1500) / 500`, followed by `SIM_SERVO_SPEED` filtering.
+  The `delta*_max` constants in the header are not applied by this simulator.
+- `beta = atan2(v, u)`. This fork uses equivalent airspeed together with density
+  at AMSL in its force equations; the estimator reproduces that convention.
+- `SIM_Plane` integrates its calculated moments directly as angular acceleration.
+  Do not introduce a physical aircraft inertia matrix into this comparison.
+- Subtract `CGOffset × aerodynamic_force` before fitting moment coefficients;
+  remove thrust from body force before calculating lift/drag.
+- Drag is fitted as a quadratic in alpha. Its comparison values are the expansion
+  of the simulator's induced-drag equation, not three independent header constants.
+
+Training and validation are separated by whole maneuvers using firmware sequence
+receipts. A 0.3-second edge exclusion prevents the symmetric numerical filter
+from reaching outside each selected maneuver. Reports include regressor rank
+and scaled condition number. A high prediction R² alone does **not** demonstrate
+accurate coefficients: correlated closed-loop regressors and timing errors can
+produce biased derivatives, especially in pitch. Validation evaluates predicted
+coefficients at recorded states; it is not a free-running trajectory rollout.
+
+Numerical regression, rank failure, servo scaling/lag and maneuver-selection tests:
+
+```bash
+PYTHONPATH=ros2_sid/ros2_sid python3 -m pytest \
+  ros2_sid/ros2_sid/tests/test_sitl_ols.py
+```
+
+### Measured results, 22 October 2026
+
+Two fresh SITL flights completed all six maneuvers, the safety probe, and bag vs
+DataFlash validation. The primary result is
+[`ols_identification_20261022/ols_truth_transients`](../sid_results/ols_identification_20261022/ols_truth_transients/results.json):
+7,118 training samples and 1,708 held-out samples at 50 Hz. These samples are
+temporally correlated, not independent repetitions. No reference aerodynamic
+coefficients were fixed in the regressions.
+
+| Coefficient | Hard-coded | OLS | Absolute relative error |
+|---|---:|---:|---:|
+| `c_lift_0` | 0.56 | 0.56631 | 1.13% |
+| `c_lift_a` | 6.9 | 7.01741 | 1.70% |
+| `c_l_p` | -1 | -0.98223 | 1.78% |
+| `c_l_deltaa` | 0.25 | 0.24443 | 2.23% |
+| `c_m_0` | 0.045 | 0.04666 | 3.68% |
+| `c_m_a` | -0.7 | -0.66157 | 5.49% |
+| `c_m_q` | -20 | -19.31486 | 3.43% |
+| `c_m_deltae` | 1 | 0.98806 | 1.19% |
+| `c_y_b` | -0.98 | -0.98496 | 0.51% |
+| `c_y_deltar` | -0.2 | -0.20143 | 0.71% |
+
+Held-out coefficient-prediction R²: roll 0.971, pitch 0.960, yaw 0.658,
+side force 0.996, lift 0.99985, drag 0.657. This is a partial identification
+success: yaw derivatives have roughly 13–60% error, roll/yaw-rate coupling
+`c_l_r` has 12% error, and several reference-zero derivatives are not recovered
+accurately (for example `c_lift_q` estimates 1.97 instead of zero). The complete
+CSV/JSON reports preserve these failures rather than showing only the table above.
+
+The lower-frequency flight is preserved in
+[`ols_low_frequency_20261022`](../sid_results/ols_low_frequency_20261022/ols_truth_transients/results.json).
+It gives a similar lift/pitch result with expanded training, but poorer yaw
+validation (R² 0.059). Chirp-only fits and IMU-output variants are saved alongside
+both flights. All variants use truth alpha/beta; none establishes sensor-only
+identification or a validated free-running aircraft model.

@@ -128,11 +128,9 @@ class CircularBuffer:
         self._size = self._capacity
 
 class RecursiveFourierTransform:
-    config = _load_frequency_config()
-    default_frequencies: np.ndarray = np.asarray(
-        config['frequencies_hz'],
-        dtype=float,
-    )
+    # Load interactive Fourier settings only when a transform needs them.
+    # Offline OLS does not require a generated frequency_config.json.
+    default_frequencies: np.ndarray | None = None
     default_eff: float = 0.999
 
     def __init__(
@@ -142,10 +140,11 @@ class RecursiveFourierTransform:
             ) -> None:
         
         self._eff = self.default_eff if eff is None else eff
-        self._frequencies = (
-            self.default_frequencies.copy()
-            if frequencies is None else frequencies.copy()
-        )
+        if frequencies is None:
+            frequencies = self.default_frequencies
+            if frequencies is None:
+                frequencies = np.asarray(_load_frequency_config()["frequencies_hz"], dtype=float)
+        self._frequencies = frequencies.copy()
 
         if not (0.0 <= self._eff <= 1.0):
             raise ValueError("eff should be in [0, 1]")
