@@ -15,7 +15,12 @@ def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         rows = sorted(rows, key=lambda row: row["monotonic_s"])
     segments: list[list[dict[str, Any]]] = []
     for row in rows:
-        if row["phase"] == "WAITING" or not segments:
+        # A new publisher's initial WAITING event may precede DDS discovery.
+        # A recorded DONE still closes its attempt; never merge a later maneuver.
+        after_done = bool(
+            segments and segments[-1][-1]["phase"] == "DONE" and row["phase"] != "DONE"
+        )
+        if row["phase"] == "WAITING" or not segments or after_done:
             segments.append([])
         segments[-1].append(row)
     reports = []

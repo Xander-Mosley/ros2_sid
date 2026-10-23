@@ -27,7 +27,7 @@ def read_log(path):
     from pymavlink import mavutil
 
     log = mavutil.mavlink_connection(str(path))
-    data = {k: [] for k in ('SIM', 'SIM2', 'IMU', 'RCOU', 'SXC', 'SXO')}
+    data = {k: [] for k in ('SIM', 'SIM2', 'IMU', 'RCOU', 'SXC', 'SXO', 'AIRD', 'AIRQ')}
     params = {}
     while (msg := log.recv_match()) is not None:
         kind = msg.get_type()
@@ -60,12 +60,12 @@ def servo_inputs(rows, t, tau):
     return np.column_stack([np.interp(t, fine, filtered[:, i]) for i in range(4)])
 
 
-def flight_arrays(data, params, state_source="imu"):
+def flight_arrays(data, params, state_source="imu", air_data_source="truth"):
     """Construct dimensionless regressors and force/moment observations."""
     for name in ('SIM', 'SIM2', 'IMU', 'RCOU'):
         if len(data[name]) < 20:
             raise ValueError(f'Insufficient {name} records')
-    for name in ('SIM_WIND_SPD', 'SIM_SERVO_DELAY', 'SIM_SERVO_FILTER'):
+    for name in ('SIM_SERVO_DELAY', 'SIM_SERVO_FILTER'):
         if params.get(name, 0) != 0:
             raise ValueError(f'{name} must be zero for this benchmark')
     start = max(data[k][0]['TimeUS'] for k in ('SIM','SIM2','IMU','RCOU')) * 1e-6 + 1
@@ -78,6 +78,21 @@ def flight_arrays(data, params, state_source="imu"):
     rot = Slerp(times, Rotation.from_quat(quat))(t)
     velocity = interpolate(data['SIM2'], ('VN','VE','VD'), t)
     vb = rot.inv().apply(velocity)  # zero-wind run, NED -> FRD
+    air_valid = np.ones(len(t), dtype=bool)
+    if air_data_source == 'estimate' or params.get('SIM_WIND_SPD', 0) != 0:
+        key = 'AIRD' if air_data_source == 'estimate' else 'AIRQ'
+        rows = data.get(key, [])
+        if len(rows) < 20:
+            raise ValueError(f'{key} is required for selected air-data source/wind')
+        vb = interpolate(rows, ('U','V','W'), t)
+        stamps = np.array([r['TimeUS']*1e-6 for r in rows])
+        indices = np.clip(np.searchsorted(stamps, t, side='right')-1, 0, len(rows)-1)
+        air_valid = (t >= stamps[0]) & (t <= stamps[-1]) & (t-stamps[indices] < .1)
+        if key == 'AIRD':
+            good = np.array([r['Flags']==31 for r in rows])
+            air_valid &= good[indices] & good[np.minimum(indices+1,len(rows)-1)]
+        air_valid &= np.all(np.isfinite(vb), axis=1)
+        vb = np.nan_to_num(vb)
     speed = np.linalg.norm(vb, axis=1)
     alpha = np.arctan2(vb[:, 2], vb[:, 0])
     beta = np.arctan2(vb[:, 1], vb[:, 0])  # SIM_Plane uses atan2, not asin
@@ -137,7 +152,8 @@ def flight_arrays(data, params, state_source="imu"):
     models = {name: (savgol_filter(x, 9, 3, axis=0),
                      savgol_filter(y, 9, 3), names)
               for name, (x, y, names) in models.items()}
-    valid = (speed > 12) & (alt > sim[0]['Alt'] + 20) & (np.abs(alpha) < .20) & (np.abs(beta) < .25)
+    air_valid &= np.convolve((~air_valid).astype(int), np.ones(9), mode="same") == 0
+    valid = air_valid & (speed > 12) & (alt > sim[0]['Alt'] + 20) & (np.abs(alpha) < .20) & (np.abs(beta) < .25)
     return t, models, valid
 
 
@@ -186,6 +202,8 @@ def fit_models(models, train, test):
 def main():
     """Write coefficient comparison, validation plots and reproducible fit inputs."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--common-air-data-mask', action='store_true', help='Use intersection of truth/estimate validity for controlled comparisons')
+    parser.add_argument('--air-data-source', choices=('estimate','truth'), default='truth')
     parser.add_argument('--state-source', choices=('imu', 'truth'), default='imu')
     parser.add_argument('--include-transients', action='store_true',
                         help='Also train on airborne climb/settling, excluding entire validation maneuvers')
@@ -202,7 +220,13 @@ def main():
     if not all(execution.get(key) is True for key in required):
         raise ValueError('Requires a complete, successfully validated six-maneuver flight')
     data, params = read_log(args.run / 'logs/00000001.BIN')
-    t, models, valid = flight_arrays(data, params, args.state_source)
+    t, models, valid = flight_arrays(data, params, args.state_source, args.air_data_source)
+    if args.common_air_data_mask:
+        other = 'truth' if args.air_data_source == 'estimate' else 'estimate'
+        other_t, _, other_valid = flight_arrays(data, params, args.state_source, other)
+        if not np.array_equal(t, other_t):
+            raise ValueError('Air-data comparisons require identical time grids')
+        valid &= other_valid
     train, train_intervals = maneuver_mask(args.run, data, t, 'chirp')
     test, test_intervals = maneuver_mask(args.run, data, t, 'multisine')
     if args.include_transients:
@@ -243,7 +267,7 @@ def main():
             rows.append({'model': model, 'coefficient': name, 'estimate': value, 'reference': ref,
                          'absolute_error': None if ref is None else abs(value-ref),
                          'relative_error_percent': None if ref is None or ref == 0 else 100*abs((value-ref)/ref)})
-    report = {'method': 'OLS; truth alpha/beta, selectable IMU/truth outputs, filtered PWM; known geometry/mass/CG/thrust',
+    report = {'method': 'OLS; selectable estimated/truth airflow, IMU/truth outputs, filtered PWM; known geometry/mass/CG/thrust',
               'reference_file': str(args.reference),
               'known_calibration': {'mass_kg': 2., 'area_m2': .45, 'span_m': 1.88,
                                     'chord_m': .24, 'cg_offset_m': [-.15, 0, -.05],
@@ -253,13 +277,13 @@ def main():
               'reference_sha256': hashlib.sha256(args.reference.read_bytes()).hexdigest(),
               'dataflash_file': str(args.run / 'logs/00000001.BIN'),
               'dataflash_sha256': hashlib.sha256((args.run/'logs/00000001.BIN').read_bytes()).hexdigest(),
-              'limitations': ['Not sensor-only: alpha and beta use simulator truth and zero wind.',
+              'limitations': ['Simulation benchmark: state outputs may use truth; estimated airflow remains EKF dependent.',
                               'One-step coefficient prediction, not free-running trajectory validation.',
                               'Correlated closed-loop regressors and sensor/servo timing can bias coefficients.',
                               'Drag is fitted as a polynomial in alpha; reference polynomial is derived from SIM_Plane.h.',
                               'No confidence intervals: residuals are temporally correlated.'],
-              'state_source': args.state_source, 'train_samples': int(train.sum()), 'validation_samples': int(test.sum()),
-              'include_airborne_transients': args.include_transients,
+              'air_data_source': args.air_data_source, 'state_source': args.state_source, 'train_samples': int(train.sum()), 'validation_samples': int(test.sum()),
+              'include_airborne_transients': args.include_transients, 'common_air_data_mask': args.common_air_data_mask,
               'train_intervals': train_intervals, 'validation_intervals': test_intervals,
               'models': results, 'comparison': rows, 'servo_tau_s': params.get('SIM_SERVO_SPEED', .14)}
     args.output.mkdir(parents=True, exist_ok=True)

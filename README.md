@@ -275,3 +275,12 @@ It gives a similar lift/pitch result with expanded training, but poorer yaw
 validation (R² 0.059). Chirp-only fits and IMU-output variants are saved alongside
 both flights. All variants use truth alpha/beta; none establishes sensor-only
 identification or a validated free-running aircraft model.
+
+### Estimated angle-of-attack and sideslip recording
+
+The existing SITL/HITL launcher and all-topic recorder now support configurable
+AHRS α/β acquisition through `AHRS_AOA_RATE` (20/50/100 Hz). The plotting helper
+adds air-data timing, truth comparisons and response figures automatically.
+See [recording setup](ros2_sid/docs/air_data_recording.md) and
+[verification results](ros2_sid/docs/air_data_verification.md). These new comparisons
+keep estimated airflow separate from the truth-based identification results above.

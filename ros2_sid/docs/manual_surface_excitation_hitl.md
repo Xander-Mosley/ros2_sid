@@ -526,3 +526,10 @@ switch checks separately before any onboard simulation experiment.
 
 See [executed verification and plots](hitl_verification.md) for the recorded
 simulator-backed HITL-entrypoint results and their limitations.
+
+## Angle-of-attack and sideslip recording
+
+The same recorder and plotting commands now include estimated α/β when the
+updated firmware publishes them. The identification configuration requests 50 Hz;
+the report measures the achieved rate. No additional maneuver arguments are needed.
+See [air-data recording and rate selection](air_data_recording.md).

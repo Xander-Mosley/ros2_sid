@@ -254,3 +254,11 @@ No physical HITL identification campaign or free-running model validation was
 performed. The next useful work would be stronger independent yaw excitation,
 better sensor/actuator time alignment, and validation without simulator-truth
 alpha/beta before treating this as a measured-aircraft model.
+
+## Follow-up: estimated air data
+
+A separate [configurable air-data experiment](air_data_verification.md) compares
+20/50/100 Hz acquisition settings and estimated versus truth airflow, including
+crosswind. The estimator now accepts `--air-data-source estimate` and
+`--common-air-data-mask` for controlled comparisons. The historical results in
+this report remain truth-based; they are not reclassified as sensor-only results.

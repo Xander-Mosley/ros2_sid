@@ -442,6 +442,8 @@ def main() -> int:
     if not a.log.strip():
         p.error("Input path is empty. Set BAG to the recorded bag directory first.")
     report = analyze(a.log, a.output)
+    from .air_data_analysis import analyze_air_data
+    report["air_data"] = analyze_air_data(a.log, a.output)
     if a.straight_flight:
         from .straight_analysis import analyze_straight
 

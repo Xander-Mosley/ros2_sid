@@ -1068,3 +1068,10 @@ fall back to excitation-only mode. The automated `surface_sitl.py` runner retain
 its own `--straight-flight` switch: without it, it explicitly opts its publisher
 out, preserving the original excitation-only test. The plotting command's
 `--straight-flight` flag still requests navigation plots and has not changed.
+
+## Angle-of-attack and sideslip recording
+
+The same recorder and plotting commands now include estimated α/β when the
+updated firmware publishes them. The identification configuration requests 50 Hz;
+the report measures the achieved rate. No additional maneuver arguments are needed.
+See [air-data recording and rate selection](air_data_recording.md).

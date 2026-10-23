@@ -80,6 +80,9 @@ if(BUILD_TESTING)
     tests/test_surface_mission_ros.py
     tests/test_straight_flight.py
     tests/test_sitl_ols.py
+    tests/test_air_data_analysis.py
+    tests/test_straight_analysis.py
+    tests/test_surface_doublets.py
     # Add other test files here
   )
   foreach(_test_path ${_pytest_tests})
