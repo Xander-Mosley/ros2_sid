@@ -1,5 +1,57 @@
 # Manually run HITL DDS surface excitation
 
+## Ground tests with physical control surfaces
+
+Ground tests require firmware containing `SX_GND_TEST`; rebuild and flash the
+appropriate custom Plane firmware before using this parameter. Its default is
+`0`, which preserves airborne, normal-flight-stage authorization. Set it to `1`
+to require the firmware's `is_flying()` detector to report grounded instead.
+Other values do not authorize excitation. This parameter does not disable
+failsafes: GUIDED, armed with safety off, `SX_ENABLE=1`, healthy RC/failsafe state,
+and the existing output limits and command watchdog are still required.
+
+Physically isolate propulsion before arming for a bench test. Excitation only
+adds surface perturbations to the controller outputs; it neither commands
+absolute surface positions nor disables the motor. Physical servo output also
+depends on the board's output configuration. Onboard simulation with physical
+output masks disabled will not move physical surfaces; its flight detector
+describes the simulated aircraft. Use the appropriate physical-aircraft firmware
+and output configuration for a real ground test.
+
+Use the connection/environment setup below and an all-topic recorder, but run
+the mission directly rather than the default straight-flight launcher:
+
+1. While disarmed, keep the experiment RC switch LOW and set `SX_GND_TEST=1`
+   and `SX_ENABLE=1` through the GCS.
+2. With propulsion isolated, arm with safety off and select GUIDED. Retain
+   normal arming and failsafe checks.
+3. In the sourced ROS shell, run (choose a fresh command-log path):
+
+   ```bash
+   ros2 run ros2_sid run_mission_HITL.py --interface dds \
+     --no-straight-flight --wait-timeout 180 \
+     --command-log "$RUN/ground-commands.csv"
+   ```
+
+   `RUN` is the recording directory selected in the manual setup below.
+   `--no-straight-flight` skips the altitude, airspeed, settling and navigation
+   checks from `straight_flight_sitl.json`, and disables automatic LOITER recovery.
+   The RC gate, clock synchronization and firmware acknowledgement still apply.
+4. Use `list` and `select N`, then switch LOW to HIGH to start. Confirm the
+   console reports firmware-confirmed ACTIVE excitation and verify surface motion.
+   Switch LOW to stop; `stop`, `quit` and Ctrl+C also stop excitation. A mode
+   change, failsafe, or airborne detection removes ground-test authorization.
+   Lost/stale commands retain the existing watchdog and bounded return behavior.
+5. Wait for zero excitation, disarm, then restore `SX_ENABLE=0` and
+   `SX_GND_TEST=0` before reconnecting propulsion or preparing for flight.
+   Do not change the ground-test parameter during an active maneuver.
+
+For bench verification, first confirm `SX_GND_TEST=0` rejects grounded excitation,
+then verify activation with `1`, RC-LOW stop, publisher-loss timeout, and
+mode-change stop. Record commanded/applied excitation and servo PWM; PWM telemetry
+alone does not prove physical surface motion. Ground-test runs have no
+straight-flight recovery, so omit `--straight-flight` when plotting their bags.
+
 ## Recommended: one launcher, no RUN/BAG variables
 
 From **any checkout location**, open a host terminal in the repository root:
