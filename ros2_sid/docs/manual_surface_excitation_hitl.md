@@ -66,6 +66,16 @@ straight-flight analysis plus RC analysis, and writes `plots/`. It never replays
 It can start the UDP-only ROS container for offline plotting if the original one
 is stopped. Do not move the session outside the checkout's `sid_results` directory.
 
+The MAVROS, recorder and mission panes open **inside the ROS container**, with ROS
+and the workspace already sourced and `RUN` set. HITL's router pane also runs in
+the container; SITL's simulator pane remains on the host. Ctrl-C returns to the
+container prompt. Use `run_mavros`, `run_recorder`, `run_mission` or
+`run_connections` in its corresponding pane to recall the supervised command
+(or press Up, Enter). You can also run `ros2` commands directly there. The short
+commands retain readiness checks and recording/recovery tracking internally.
+For a new recorded experiment, start a fresh launcher session so logs and shutdown
+markers are not reused. Use the mission menu’s `quit` for orderly recovery.
+
 Detach with **Ctrl-B, D**; reattach with `tmux attach -t surface-test`.
 Detaching does not stop the test. When ready to close connections, Ctrl-C their
 panes, then remove the finished session with `tmux kill-session -t surface-test`.
