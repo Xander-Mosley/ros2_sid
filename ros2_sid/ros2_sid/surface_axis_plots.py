@@ -12,9 +12,12 @@ from .surface_bag import records
 
 
 def plot_maneuvers(
-    bag: Path, command_directory: Path, output: Path
+    bag: Path,
+    command_directory: Path,
+    output: Path,
+    waveforms: tuple[str, ...] = ("chirp", "multisine"),
 ) -> list[dict[str, Any]]:
-    """Plot six conventional-airframe maneuvers using recorded firmware timestamps."""
+    """Plot selected conventional-airframe maneuvers using recorded firmware timestamps."""
     import matplotlib
     import numpy as np
 
@@ -31,7 +34,7 @@ def plot_maneuvers(
         ("pitch", "P", 19),
         ("yaw", "Y", 21),
     ):
-        for waveform in ("chirp", "multisine"):
+        for waveform in waveforms:
             name = f"{waveform}_{axis}"
             with (command_directory / f"{name}-commands.csv").open() as stream:
                 commands = [r for r in csv.DictReader(stream) if int(r["enable"])]
@@ -117,7 +120,11 @@ def plot_maneuvers(
             axes[-1].set_xlabel(
                 "Time from first enabled command (s); shaded = commanded maneuver"
             )
-            title = "Frequency sweep (chirp)" if waveform == "chirp" else "Multisine"
+            title = {
+                "chirp": "Frequency sweep (chirp)",
+                "multisine": "Multisine",
+                "doublet": "Doublet",
+            }[waveform]
             fig.suptitle(
                 f"{axis.title()} — {title}\nRecorded straight-flight SITL; normal controllers remain active"
             )
@@ -142,15 +149,27 @@ def plot_maneuvers(
 
 
 def main() -> None:
-    """Run offline plotting against a bag and its six publisher command logs."""
+    """Run offline plotting against a bag and its publisher command logs."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("bag", type=Path)
     parser.add_argument("--command-directory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--waveform",
+        action="append",
+        choices=("chirp", "multisine", "doublet"),
+        help="Repeat to select waveforms; default chirp and multisine",
+    )
     args = parser.parse_args()
     print(
         json.dumps(
-            plot_maneuvers(args.bag, args.command_directory, args.output), indent=2
+            plot_maneuvers(
+                args.bag,
+                args.command_directory,
+                args.output,
+                tuple(args.waveform or ("chirp", "multisine")),
+            ),
+            indent=2,
         )
     )
 

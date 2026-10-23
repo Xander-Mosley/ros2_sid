@@ -1,5 +1,94 @@
 # Run the DDS control-surface SITL tests yourself
 
+## Recommended: one launcher, no RUN/BAG variables
+
+From **any checkout location**, open a host terminal in the repository root:
+
+```bash
+./tools/sid/run_surface_test.sh sitl
+```
+
+This starts/reuses the Docker services, rebuilds `ros2_sid`, creates a unique
+`sid_results/sitl_YYYYMMDD_HHMMSS/` directory, and opens four tmux panes:
+
+1. Connections: SITL and interactive MAVProxy.
+2. MAVROS: telemetry and straight-flight navigation services.
+3. Recorder: **all ROS topics**, including topics discovered later.
+4. Mission: SITL console maneuver selection, after DDS/MAVROS/recorder readiness.
+
+Use the connection pane’s MAVProxy/GCS to take off and enter GUIDED as described below. The launcher never arms or takes off automatically.
+
+The default DDS library now includes doublets:
+
+```text
+list
+select 6    # roll doublet
+select 7    # pitch doublet
+select 8    # yaw doublet
+```
+
+Enter just one `select` command (without the comment). Then enter `start`.
+The existing chirps/multisines keep menu numbers 0–5. Each doublet uses the legacy
+`multi_step` generator: positive then negative pulses, one-second initial delay,
+1 Hz natural frequency, 50 Hz samples, and 15 seconds total. The nominal pulse
+width is 0.25 s; the legacy sample rounding and zero boundary samples are retained.
+Amplitude is **0.10 normalized surface fraction**, not radians. Existing firmware
+limits, RC stop, timeout protection and return-to-start recovery still apply.
+
+For an optional session label:
+
+```bash
+./tools/sid/run_surface_test.sh sitl --name doublet_roll
+```
+
+The label names the session; it does not select a maneuver. No name or log argument
+is required. `session.json` records the bag, command CSV and plot paths. A fresh
+run gets a fresh directory; collisions receive an index. The selected legacy-style
+`current_mission.json` library and straight-flight settings are copied into the run
+so the recording retains its configuration. The selected library must declare
+`normalized_surface` units.
+
+### Finish and plot
+
+Enter `quit` in the mission pane. After successful recovery handoff, recording
+continues for **90 seconds** to capture the return, then closes automatically.
+Use `--return-record-seconds N` to change that tail. It is a recording duration,
+not proof of arrival. Connections remain running so the GCS stays available.
+
+```bash
+./tools/sid/plot_surface_test.sh --latest sitl
+# Or replot a particular completed session:
+./tools/sid/plot_surface_test.sh sid_results/sitl_YOUR_SESSION
+```
+
+The plotting helper reads actual paths from the manifest, runs bag info and surface/
+straight-flight analysis, and writes `plots/`. It never replays commands.
+It can start the UDP-only ROS container for offline plotting if the original one
+is stopped. Do not move the session outside the checkout's `sid_results` directory.
+
+Detach with **Ctrl-B, D**; reattach with `tmux attach -t surface-test`.
+Detaching does not stop the test. When ready to close connections, Ctrl-C their
+panes, then remove the finished session with `tmux kill-session -t surface-test`.
+The launcher refuses a second session or existing MAVROS/router/recorder processes.
+
+If recovery or startup fails, recording/connections are retained for operator
+inspection. After taking over and quitting the mission, Ctrl-C the recorder and
+wait for its finalization; the plotting helper accepts that finalized bag and
+retains any failed test evidence. Never kill the container as a normal test stop.
+
+### Prerequisites and connection overrides
+
+Host: Docker Compose, tmux, and host MAVProxy plus the DDS-enabled ArduPlane binary.
+The configured ROS image must contain MAVROS and the existing ROS dependencies.
+SITL uses the existing host DDS launcher and UDP 14552 for MAVROS.
+
+[Verification results and doublet plots](doublet_launcher_verification.md).
+
+## Individual commands and troubleshooting
+
+The detailed commands below remain available when diagnosing individual services.
+
+
 ### Return to the test-start location
 
 With the default straight-flight coordinator, each maneuver saves the aircraft's

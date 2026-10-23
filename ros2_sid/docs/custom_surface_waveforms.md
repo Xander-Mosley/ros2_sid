@@ -251,3 +251,24 @@ Reenter the container and source ROS/the installed workspace. Run
 `ros2 run ros2_sid run_mission_SITL.py --interface dds`, then `list`, `select 0`,
 and `start`. Files are preloaded: restart the publisher after changes. Preserve
 CSV/JSON files alongside the bag to reproduce the exact requested input.
+
+## DDS doublets using the legacy generator
+
+The shared DDS library includes `doublet_roll.csv`, `doublet_pitch.csv`, and
+`doublet_yaw.csv` for both mission entrypoints. Menu indices 6–8 follow the existing
+six chirp/multisine entries. Their samples come directly from the unchanged
+`input_designs.multi_step` implementation with pulses `[1, 1]`, natural frequency
+1 Hz, initial delay 1 s, timestep 0.02 s and total duration 15 s. This preserves
+legacy rounding and zero samples at pulse boundaries; CSV interpolation spans
+adjacent samples and does not promise infinitely sharp physical actuator steps.
+
+To regenerate a **separate** normalized library inside the ROS container:
+
+```bash
+python3 -m ros2_sid.surface_doublets /work/sid_results/my_doublets --amplitude 0.05
+```
+
+Use its `mission_plan.json` with the existing `--mission-plan` option, or copy the
+CSV entries into a selected normalized library using the legacy folder structure.
+Do not reuse legacy radian amplitudes as surface fractions. Firmware amplitude
+limits and physical actuator dynamics still determine the applied response.

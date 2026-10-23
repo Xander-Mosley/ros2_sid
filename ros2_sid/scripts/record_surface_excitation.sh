@@ -14,6 +14,9 @@ while [[ -e "$output" || -L "$output" ]]; do
   index=$((index + 1))
 done
 printf 'Recording all ROS topics to: %s\n' "$output"
+if [[ -n "${SID_BAG_PATH_FILE:-}" ]]; then
+  printf '%s\n' "$output" > "$SID_BAG_PATH_FILE"
+fi
 config="$(ros2 pkg prefix --share ros2_sid)/config/surface_excitation/bag_qos.yaml"
 # --with-mavros remains accepted for older launch commands; all topics are now
 # recorded by default, including hidden topics and publishers discovered later.

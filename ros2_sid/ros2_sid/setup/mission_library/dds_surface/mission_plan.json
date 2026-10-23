@@ -31,6 +31,21 @@
       "filename": "multisine_yaw.csv",
       "name": "yaw multisine",
       "order": 6
+    },
+    {
+      "filename": "doublet_roll.csv",
+      "name": "roll doublet",
+      "order": 7
+    },
+    {
+      "filename": "doublet_pitch.csv",
+      "name": "pitch doublet",
+      "order": 8
+    },
+    {
+      "filename": "doublet_yaw.csv",
+      "name": "yaw doublet",
+      "order": 9
     }
   ]
 }
