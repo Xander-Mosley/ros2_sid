@@ -152,6 +152,31 @@ class ExcitationState(IntEnum):
     FAULT = 4
 
 
+class ExcitationReason(IntEnum):
+    """Reason codes from the firmware SurfaceExcitation::Reason enum."""
+
+    NONE = 0
+    UNAUTHORIZED = 1
+    INVALID = 2
+    STALE = 3
+    ORDER = 4
+    CONFIG = 5
+    CLOCK = 6
+    DISCONNECTED = 7
+    OVERRIDE = 8
+
+
+def status_label(enum_type: type[IntEnum], value: int | None) -> str:
+    """Name known codes while retaining unknown codes for firmware compatibility."""
+    if value is None:
+        return "unavailable"
+    try:
+        name = enum_type(value).name
+    except ValueError:
+        name = "UNKNOWN"
+    return f"{name} ({value})"
+
+
 class SurfaceMission(Node):
     """ROS 2 DDS excitation publisher with clock, firmware, RC, and cadence safeguards."""
 
@@ -457,8 +482,12 @@ class SurfaceMission(Node):
                 or now - self.status_time > 0.5
                 or self.status.state != ExcitationState.ARMED
             ):
-                state = self.status.state if self.status is not None else "unavailable"
-                reason = getattr(self.status, "reason", "unavailable")
+                state = status_label(
+                    ExcitationState, getattr(self.status, "state", None)
+                )
+                reason = status_label(
+                    ExcitationReason, getattr(self.status, "reason", None)
+                )
                 self.operator_status(
                     f"WAITING: firmware authorization/disable acknowledgement; state={state}, reason={reason}."
                 )

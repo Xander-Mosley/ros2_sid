@@ -125,12 +125,13 @@ host-installed agent:
 MicroXRCEAgent serial --dev /dev/ttyACM1 -b 115200
 ```
 
-For the existing agent image, use a separate terminal:
+After [building the shared image](../README_surface_excitation.md#first-time-docker-image-setup),
+use a separate terminal (only if the HITL launcher is not already running an agent):
 
 ```bash
 docker run --rm --name cube-soh-agent --network host \
   --device=/dev/ttyACM1:/dev/ttyACM1 \
-  local/ardupilot-ros2-dds-agent:humble \
+  ros2_trajectory:compact \
   bash -lc 'ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM1 -b 115200 -v4'
 ```
 

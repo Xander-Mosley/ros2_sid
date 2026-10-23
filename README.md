@@ -13,6 +13,10 @@
 
 For the detailed package guide, see [Surface excitation](ros2_sid/README_surface_excitation.md).
 
+On a new machine, complete [Docker image setup](ros2_sid/README_surface_excitation.md#first-time-docker-image-setup)
+before using the SITL/HITL launchers. ROS and the DDS agent share the
+`ros2_trajectory:compact` image built by this repository.
+
 For automatic mission loading and creating your own chirps/multisines, see [Custom DDS waveforms](ros2_sid/docs/custom_surface_waveforms.md).
 
 The shared DDS backend is selected from `run_mission_SITL.py` or

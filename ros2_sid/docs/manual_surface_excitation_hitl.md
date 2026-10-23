@@ -1,16 +1,25 @@
 # Manually run HITL DDS surface excitation
 
+On a new machine, first complete [Docker image setup](../README_surface_excitation.md#first-time-docker-image-setup).
+It builds the shared image used by both ROS and the DDS agent from this
+repository’s Dockerfile. No separate DDS-agent image is needed.
+
 ## Ground tests with physical control surfaces
 
 Ground tests require firmware containing `SX_GND_TEST`; rebuild and flash the
 appropriate custom Plane firmware before using this parameter. Its default is
 `0`, which preserves airborne, normal-flight-stage authorization. Set it to `1`
 to require the firmware's `is_flying()` detector to report grounded instead.
+The earlier ground-test firmware still required arming; rebuild and flash the
+updated image for disarmed operation. Previously generated `.apj` files do not
+change when source code is edited.
 Other values do not authorize excitation. This parameter does not disable
-failsafes: GUIDED, armed with safety off, `SX_ENABLE=1`, healthy RC/failsafe state,
+failsafes: GUIDED, hardware safety off, `SX_ENABLE=1`, healthy RC/failsafe state,
 and the existing output limits and command watchdog are still required.
 
-Physically isolate propulsion before arming for a bench test. Excitation only
+Both ground and flight excitation are independent of the vehicle arming state; keep the vehicle disarmed for
+a bench test and physically isolate propulsion. Hardware safety must still be
+released to allow surface motion. Excitation only
 adds surface perturbations to the controller outputs; it neither commands
 absolute surface positions nor disables the motor. Physical servo output also
 depends on the board's output configuration. Onboard simulation with physical
@@ -23,8 +32,11 @@ the mission directly rather than the default straight-flight launcher:
 
 1. While disarmed, keep the experiment RC switch LOW and set `SX_GND_TEST=1`
    and `SX_ENABLE=1` through the GCS.
-2. With propulsion isolated, arm with safety off and select GUIDED. Retain
-   normal arming and failsafe checks.
+2. With propulsion isolated, stay disarmed, release hardware safety and select
+   GUIDED. Retain normal failsafe checks. Excitation also requires `SERVO_AUTO_TRIM=0`,
+   `Q_ENABLE=0`, no active system-identification experiment, no active navigation
+   script, and no servo emergency stop. This interface supports fixed-wing-only
+   configurations; do not change a QuadPlane configuration just to bypass this gate.
 3. In the sourced ROS shell, run (choose a fresh command-log path):
 
    ```bash
@@ -46,11 +58,60 @@ the mission directly rather than the default straight-flight launcher:
    `SX_GND_TEST=0` before reconnecting propulsion or preparing for flight.
    Do not change the ground-test parameter during an active maneuver.
 
+Disarming alone does not stop excitation. Use the RC switch LOW,
+mission stop, hardware safety, or a mode change to stop it. Disarming also does not stop flight-mode excitation. Flight mode still requires
+airborne detection and normal flight stage. Normal flight-controller arming and
+throttle handling are unchanged.
+
 For bench verification, first confirm `SX_GND_TEST=0` rejects grounded excitation,
 then verify activation with `1`, RC-LOW stop, publisher-loss timeout, and
 mode-change stop. Record commanded/applied excitation and servo PWM; PWM telemetry
 alone does not prove physical surface motion. Ground-test runs have no
 straight-flight recovery, so omit `--straight-flight` when plotting their bags.
+
+### If ground excitation waits for firmware authorization
+
+`WAITING: firmware authorization/disable acknowledgement; state=..., reason=...`
+now prints names as well as codes, for example
+`state=FAULT (4), reason=UNAUTHORIZED (1)`. This means the publisher has not yet received a fresh, experiment-ready status
+acknowledging one of its own disable samples. It does not identify a Python
+exception, and increasing `--wait-timeout` does not remove the blocking condition.
+
+In another sourced ROS container shell, capture:
+
+```bash
+ros2 topic echo /ap/sid/status --once
+ros2 topic echo /mavros/state --once
+```
+
+If a topic produces no output, stop the echo with Ctrl+C and check the agent,
+serial connection, ROS domain and firmware DDS configuration. Use the actual
+numeric values from the console/status message to choose the next check:
+
+| Status | Interpretation and next check |
+|---|---|
+| `state=unavailable` | No status received by this publisher; check DDS connectivity. |
+| `state=0` | Firmware excitation is disabled; confirm `SX_ENABLE=1` on the connected Cube. |
+| `state=4, reason=1` | Unauthorized. Check the firmware gates listed below. |
+| `reason=3` | A command was stale or incorrectly timestamped; check `/ap/time`, transport delay and command freshness. |
+| `reason=5` | Invalid or changed configuration; inspect `SX_*` bounds, servo functions/calibration and mixer settings. |
+| `reason=6` | Firmware detected a clock discontinuity. |
+| `reason=7` | Firmware detected a DDS disconnect. |
+| `state=1` but still waiting | Experiment-ready is not enough: status must be fresh and its `sequence_id` must match this publisher's disable samples. Check command delivery and other publishers. |
+
+For `state=4, reason=1`, confirm the connected Cube actually runs the updated
+hardware firmware and exposes `SX_GND_TEST=1`; confirm `SX_ENABLE=1`, GUIDED,
+hardware safety off (arming is not required in ground mode), no aircraft/RC
+failsafe, and all the step-2
+conditions above. The firmware must also detect grounded operation. Simulation
+firmware evaluates simulated flight state, not whether the physical board is
+sitting on a bench. The status currently combines these authorization gates into
+one reason, so `reason=1` alone cannot identify which gate failed.
+
+Keep just one excitation publisher running. After correcting the cause, return
+the RC experiment switch LOW, stop/relaunch the mission if it timed out, select a
+maneuver, then move LOW to HIGH. The publisher sends the disable handshake
+automatically; do not bypass it or publish a second command stream manually.
 
 ## Recommended: one launcher, no RUN/BAG variables
 
@@ -174,7 +235,8 @@ After completion, `stop`, `quit`, Ctrl-C, or an HITL RC stop, it:
 The aircraft flies back and circles the saved point using its configured loiter
 radius. `DONE` confirms the return target was accepted; it does **not** mean the
 aircraft has already arrived. Keep recording to capture the return flight.
-Operator mode changes, disarming, and failsafes still take precedence. A new
+Operator mode changes and failsafes still take precedence; disarming alone does
+not revoke excitation or straight-flight navigation ownership. A new
 maneuver captures a new start point. `--no-straight-flight` disables this recovery.
 
 **Setup requirement:** rebuild ArduPlane from this updated repository (including
@@ -194,7 +256,9 @@ the command log's `.straight.jsonl` file. See the
 and recorded tracks.
 
 
-Use this guide with the Cube's **Simulation on Hardware** firmware. Installation
+The simulated HITL procedure below uses the Cube's **Simulation on Hardware**
+firmware; the physical ground-test section above uses standard hardware firmware.
+Simulation firmware installation
 is covered in [Cube setup](cubeorangeplus_simulation_on_hardware.md). The same
 mission library, waveforms, plots and straight-flight coordinator used by SITL
 are shared by `run_mission_HITL.py --interface dds`.
@@ -378,7 +442,8 @@ ros2 topic hz /mavros/rc/in
 
 Confirm MAVROS reports `connected: true`, with position/velocity and RC updates
 near 10 Hz. Reissue the stream requests after reconnecting if necessary. Before
-starting a maneuver, also confirm `armed: true` and `mode: GUIDED`. The `hz` command
+starting a simulated airborne maneuver, confirm `mode: GUIDED` and establish
+normal simulated flight. Excitation does not itself require `armed: true`. Physical ground tests may remain disarmed with `SX_GND_TEST=1`. The `hz` command
 runs continuously; press Ctrl+C after checking its rate. A topic that does not
 produce data needs troubleshooting before starting a test.
 

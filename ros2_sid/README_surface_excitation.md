@@ -23,9 +23,61 @@ For a hands-on walkthrough, see [Run the DDS surface-excitation SITL tests yours
 
 To enter the container and send waveforms directly, follow [Manual container waveform commands](docs/manual_container_waveforms.md).
 
+## First-time Docker image setup
+
+The ROS service and DDS agent both use `ros2_trajectory:compact`, built from
+this repository's `docker/Dockerfile`. It includes Micro-ROS Agent, MAVROS,
+mavlink-router and the tools used to build and test the mounted ROS workspace.
+No separate agent repository or `local/ardupilot-ros2-dds-agent` image is required.
+The services run in separate containers using the same image.
+
+With Docker and Compose installed, run from the outer checkout root:
+
+```bash
+git submodule update --init --recursive
+docker compose -f docker-compose.sid.yaml build ros
+```
+
+The HITL stack uses the same image; building it once is sufficient for both.
+The existing `docker compose -f docker-compose.yaml build develop` command also
+builds this image. SID/HITL Compose now include build definitions, so a missing
+image can be built during startup. An existing image is reused; run the build
+command above after Dockerfile changes to refresh it.
+
+Check the image and installed agent:
+
+```bash
+docker image inspect ros2_trajectory:compact
+docker run --rm ros2_trajectory:compact ros2 pkg prefix micro_ros_agent
+```
+
+Then follow the SITL or HITL manual and launch the selected stack:
+
+```bash
+./tools/sid/run_surface_test.sh sitl
+# Or, with the hardware and USB setup complete:
+./tools/sid/run_surface_test.sh hitl
+```
+
+SITL uses the agent's UDP transport on port 2021; HITL uses its serial transport
+on `/dev/ttyACM1` by default. The launchers still require their documented host
+prerequisites: this image does not move the SITL aircraft simulator into Docker
+or flash hardware. When migrating an existing installation, finish the current
+experiment before letting Compose recreate its agent with the shared image.
+
+To transfer an exact built image to a machine with the same CPU architecture:
+
+```bash
+# On the original machine:
+docker save -o sid-docker-image.tar ros2_trajectory:compact
+# After copying the archive to the new machine:
+docker load -i sid-docker-image.tar
+```
+
 ## Automatic ROS setup
 
-After building the DDS-enabled Plane binary, run from the outer workspace:
+After completing the Docker image setup above and building the DDS-enabled Plane
+binary, run from the outer workspace:
 
 ```bash
 docker compose -f docker-compose.sid.yaml up -d --wait --wait-timeout 900

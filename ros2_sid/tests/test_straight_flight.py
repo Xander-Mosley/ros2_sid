@@ -86,10 +86,13 @@ def test_settling_commands_once_and_wrap(coordinator):
     assert course_error(1, 359) == 2
 
 
-def test_return_waits_for_zero_and_confirms_loiter(coordinator):
+@pytest.mark.parametrize("armed,status", [(True, 4), (False, 3), (False, 4)])
+def test_return_waits_for_zero_and_confirms_loiter(coordinator, armed, status):
     """Quit must wait for zero output before requesting a turn and for mode telemetry."""
     f = coordinator
     f.owned = True
+    f.state.armed = armed
+    f.state.system_status = status
     f.output.applied = [0.05, 0, 0]
     f.output.delta = [20]
     f.request_stop(10)
@@ -332,3 +335,17 @@ def test_telemetry_request_alone_does_not_own_navigation(coordinator):
     assert f.recover(0.02)
     assert not f.owned
     f.loiter_client.call_async.assert_not_called()
+
+
+@pytest.mark.parametrize("armed", [False, True])
+@pytest.mark.parametrize("status", [3, 4])
+def test_navigation_authority_independent_of_arming(coordinator, armed, status):
+    """Healthy standby/active state permits setup, but stale/mode loss still stops it."""
+    f = coordinator
+    fresh(f, 10)
+    f.state.armed = armed
+    f.state.system_status = status
+    assert f.authorized(10)
+    assert not f.authorized(10 + f.config["state_timeout_s"] + 1)
+    f.state.mode = "MANUAL"
+    assert not f.authorized(10)

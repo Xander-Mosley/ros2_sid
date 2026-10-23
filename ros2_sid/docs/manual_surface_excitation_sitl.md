@@ -1,5 +1,9 @@
 # Run the DDS control-surface SITL tests yourself
 
+On a new machine, first complete [Docker image setup](../README_surface_excitation.md#first-time-docker-image-setup).
+It builds the shared image used by both ROS and the DDS agent from this
+repository’s Dockerfile. No separate DDS-agent image is needed.
+
 ## Recommended: one launcher, no RUN/BAG variables
 
 From **any checkout location**, open a host terminal in the repository root:
@@ -169,17 +173,17 @@ cd "$SID_WORKSPACE"
 ```
 
 You need Docker Compose with working Docker access, a host Python environment with
-`pymavlink`, the built DDS generator, and these existing local images:
+`pymavlink`, the built DDS generator, and the shared Docker image:
 
 ```bash
 docker info
-docker image inspect ros2_trajectory:compact local/ardupilot-ros2-dds-agent:humble
+docker image inspect ros2_trajectory:compact
 python3 -c 'from pymavlink import mavutil; print("pymavlink available")'
 test -x Micro-XRCE-DDS-Gen/scripts/microxrceddsgen
 ```
 
-The Compose file references local images; it does not build them. If an image or
-build dependency is missing, resolve that prerequisite before proceeding. Firmware
+To build or refresh the shared image, follow [Docker image setup](../README_surface_excitation.md#first-time-docker-image-setup)
+before proceeding. Firmware
 build dependencies include `empy==3.3.4`, `future`, `lxml`, `pyyaml`, `dronecan`, and
 `pexpect`. The ROS image must contain ROS Humble, colcon, rosbag2, NumPy, SciPy,
 matplotlib, and pymavlink. The interactive flight option additionally needs host

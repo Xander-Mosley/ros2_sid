@@ -76,7 +76,7 @@ flowchart TD
     D --> E[Sample maneuver CSV; fixed navigation targets]
     E --> F[Completion, stop, quit, or interrupt]
     F --> G[Repeated DDS disable; observe zero applied perturbation]
-    G --> H[Request LOITER at saved start if still armed GUIDED]
+    G --> H[Request LOITER at saved start if still healthy GUIDED]
     H --> I[Confirm vehicle mode; finish]
 ```
 
@@ -99,10 +99,10 @@ publishing and adds a bounded navigation handoff for the new straight-flight opt
    or immediate removal when authorization is lost.
 3. Wait for a fresh `/ap/sid/output` sample received after stopping with zero applied
    normalized excitation and zero physical PWM contribution.
-4. If still connected, armed, and GUIDED, request LOITER at the saved setup-start
+4. If still connected, healthy (STANDBY or ACTIVE), and GUIDED, request LOITER at the saved setup-start
    location once. Confirm the actual `/mavros/state` mode and a fresh matching
    `/mavros/setpoint_raw/target_global` echo; a service response alone is insufficient.
-5. If the operator/failsafe already changed mode or disarmed, yield without sending
+5. If the operator/failsafe already changed mode or entered a critical/emergency state, yield without sending
    another mode request. If confirmation is unavailable for eight seconds in the
    example configuration, report failure and the need for operator intervention.
 
@@ -210,3 +210,6 @@ The SITL harness option `--verify-start-return` additionally records the return
 track and requires 15 continuous seconds within 130 m of the saved center while
 in LOITER (test-only loiter radius 80 m). Use it with `--straight-flight` or
 `--hitl-rc`. This is simulated evidence, not validation on a physical Cube.
+
+Vehicle arming is not a navigation-authorization gate. Disarming alone does not
+stop excitation or suppress recovery; mode changes and failsafes still take priority.

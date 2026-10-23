@@ -204,13 +204,12 @@ class StraightFlight:
             self.altitude, self.altitude_time = msg.data, time.monotonic()
 
     def authorized(self, now: float) -> bool:
-        """Require fresh connected/armed GUIDED state; never force authority back."""
+        """Require fresh healthy GUIDED state, independently of vehicle arming."""
         return bool(
             self.state
             and now - self.state_time <= self.config["state_timeout_s"]
             and self.state.connected
-            and self.state.armed
-            and self.state.system_status == 4  # MAV_STATE_ACTIVE
+            and self.state.system_status in (3, 4)  # MAV_STATE_STANDBY / ACTIVE
             and self.state.mode == "GUIDED"
         )
 
@@ -436,7 +435,7 @@ class StraightFlight:
         if not self.owned:
             self.transition("DONE", "No navigation ownership")
             return True
-        # Never replace an operator/failsafe-selected mode or command a disarmed vehicle.
+        # Never replace an operator/failsafe-selected mode. Arming is independent.
         state_fresh = (
             self.state is not None
             and now - self.state_time <= self.config["state_timeout_s"]
@@ -445,16 +444,14 @@ class StraightFlight:
             state_fresh
             and self.mode_requested
             and self.state.mode == "LOITER"
-            and self.state.armed
-            and self.state.system_status == 4
+            and self.state.system_status in (3, 4)
         )
         if (
             state_fresh
             and not expected_loiter
             and (
-                not self.state.armed
-                or self.state.mode != "GUIDED"
-                or self.state.system_status != 4
+                self.state.mode != "GUIDED"
+                or self.state.system_status not in (3, 4)
             )
         ):
             self.transition(

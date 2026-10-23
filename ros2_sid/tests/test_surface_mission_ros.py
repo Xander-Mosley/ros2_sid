@@ -374,3 +374,26 @@ def test_hitl_running_message_requires_firmware_ack(node, monkeypatch):
     node.on_status(SimpleNamespace(state=2, sequence_id=1000))
     assert node.active_seen and logger.info.call_count == 1
     assert "RUNNING" in logger.info.call_args.args[0]
+
+
+@pytest.mark.parametrize("state,reason,expected", [
+    (4, 1, "state=FAULT (4), reason=UNAUTHORIZED (1)"),
+    (99, 99, "state=UNKNOWN (99), reason=UNKNOWN (99)"),
+])
+def test_authorization_wait_prints_names(node, monkeypatch, state, reason, expected):
+    """Real timer diagnostics name firmware codes without crashing on newer codes."""
+    from unittest.mock import Mock
+
+    logger = Mock()
+    monkeypatch.setattr(node, "get_logger", lambda: logger)
+    monkeypatch.setattr("ros2_sid.surface_mission.time.monotonic", lambda: 100.0)
+    node.hitl = True
+    node.started = 100.0
+    node.requested = True
+    node.rc.allowed = lambda now: True
+    node.clock_sync.update(1000, 100)
+    node.send = lambda *args: None
+    node.status = SimpleNamespace(state=state, reason=reason)
+    node.status_time = 100.0
+    node.tick()
+    assert any(expected in call.args[0] for call in logger.info.call_args_list)
