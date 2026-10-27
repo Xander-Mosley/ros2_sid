@@ -397,3 +397,47 @@ def test_authorization_wait_prints_names(node, monkeypatch, state, reason, expec
     node.status_time = 100.0
     node.tick()
     assert any(expected in call.args[0] for call in logger.info.call_args_list)
+
+
+@pytest.mark.parametrize("override,expected", [({}, None), ({"rc_timeout": 0.25}, 0.25)])
+def test_constructor_resolves_json_rc_timeout(node, tmp_path, override, expected):
+    from pathlib import Path
+
+    args = SimpleNamespace(**vars(node.args))
+    del args.rc_timeout
+    args.straight_flight = str(
+        Path(__file__).parents[1] / "config/surface_excitation/straight_flight_sitl.json"
+    )
+    args.command_log = str(tmp_path / "configured.csv")
+    for key, value in override.items():
+        setattr(args, key, value)
+    child = SurfaceMission(args, hitl=True)
+    try:
+        assert child.rc.timeout == expected
+        assert child.straight.config["rc_timeout_s"] == expected
+    finally:
+        child.straight.event_file.close()
+        child.logfile.close()
+        child.destroy_node()
+
+
+def test_hitl_null_timeout_waiting_and_stop(node, monkeypatch):
+    node.hitl = True
+    node.requested = False
+    node.rc.timeout = None
+    monkeypatch.setattr("ros2_sid.surface_mission.time.monotonic", lambda: 100.0)
+    node.send = lambda *args, **kwargs: None
+    node.tick()  # Missing RC still waits; status formatting accepts None.
+    assert not node.requested
+    low = [1000] * 8
+    high = [1900] * 8
+    node.rc.update(low, 255, 0)
+    node.rc.update(high, 255, 1)
+    node.clock_sync.update(1000, 100)
+    node.status = SimpleNamespace(state=1)
+    node.status_time = 100
+    node.disable_acknowledged = True
+    node.tick()
+    assert node.requested and node.stopping is None
+    node.on_mavros_rc(SimpleNamespace(channels=low))
+    assert node.stopping == 100 and not node.requested

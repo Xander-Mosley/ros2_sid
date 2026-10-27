@@ -103,7 +103,7 @@ def test_clock_stale_jump_and_recovery():
 
 
 def test_hitl_gate_fails_closed():
-    g = RCGate(0)
+    g = RCGate(0, timeout=0.5)
     g.update([1900], 1, 1)
     assert not g.allowed(1)
     g.update([1000], 1, 2)
@@ -143,7 +143,7 @@ def test_multisine_maneuver_examples():
 
 def test_legacy_rc_defaults_and_gap_reactivation():
     """Channel eight is high at 1550; a delivery gap requires another low edge."""
-    gate = RCGate()
+    gate = RCGate(timeout=0.5)
     channels = [1500] * 8
     gate.update(channels, 255, 0)
     channels[7] = 1550
@@ -157,3 +157,24 @@ def test_legacy_rc_defaults_and_gap_reactivation():
     channels[7] = 1550
     gate.update(channels, 255, 1.2)
     assert gate.allowed(1.2)
+
+
+def test_rc_null_timeout_preserves_switch_and_validity():
+    gate = RCGate(0, timeout=None)
+    assert not gate.allowed(0)
+    gate.update([1900], 1, 0)
+    assert not gate.allowed(100)
+    gate.update([1000], 1, 101)
+    gate.update([1900], 1, 1000)
+    assert gate.allowed(10000)
+    gate.update([1000], 1, 10001)
+    assert not gate.allowed(10001)
+    gate.update([1900], 1, 10002)
+    gate.reset()
+    assert not gate.allowed(10002)
+    gate.update([1000], 1, 10003)
+    gate.update([1900], 1, 10004)
+    gate.update([], 0, 10005)
+    assert not gate.allowed(10005)
+    gate.update([1900], 1, 10006)
+    assert not gate.allowed(10006)

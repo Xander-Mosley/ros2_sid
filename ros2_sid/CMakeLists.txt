@@ -76,6 +76,7 @@ if(BUILD_TESTING)
     tests/dummy_test.py
     tests/test_surface_data_parser.py
     tests/test_surface_analysis.py
+    tests/test_flight_config.py
     tests/test_surface_signals.py
     tests/test_surface_mission_ros.py
     tests/test_straight_flight.py

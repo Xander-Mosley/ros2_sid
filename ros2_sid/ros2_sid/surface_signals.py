@@ -205,10 +205,10 @@ class ClockSync:
 
 
 class RCGate:
-    """Fail-closed RC authorization requiring a fresh low-to-high switch transition."""
+    """RC authorization requiring valid LOW-to-HIGH input, with optional freshness."""
 
     def __init__(
-        self, channel: int = 7, threshold: int = 1550, timeout: float = 0.5
+        self, channel: int = 7, threshold: int = 1550, timeout: float | None = 30.0
     ) -> None:
         """Configure a zero-based RC channel, PWM threshold, and freshness timeout in seconds."""
         self.channel = channel
@@ -225,7 +225,7 @@ class RCGate:
             self.high = False
             self.saw_low = False
             return
-        if self.last is not None and now - self.last > self.timeout:
+        if not self.fresh(now):
             self.saw_low = False
         high = values[self.channel] >= self.threshold
         if not high:
@@ -233,9 +233,15 @@ class RCGate:
         self.high = high
         self.last = now
 
+    def fresh(self, now: float) -> bool:
+        """Require valid input; None disables only the sample-age limit."""
+        return self.last is not None and (
+            self.timeout is None or now - self.last <= self.timeout
+        )
+
     def allowed(self, now: float) -> bool:
-        """Return whether the switch is freshly high after observing low; stale input resets it."""
-        if self.last is None or now - self.last > self.timeout:
+        """Require HIGH after LOW; missing or expired input resets authorization."""
+        if not self.fresh(now):
             self.saw_low = False
             return False
         return self.saw_low and self.high

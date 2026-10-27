@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import math
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from .flight_config import load_straight_flight_config, within_limit
 
 if TYPE_CHECKING:
     from ardupilot_msgs.msg import ControlSurfaceOutput
@@ -29,7 +30,9 @@ def course_error(actual: float, target: float) -> float:
 class StraightFlight:
     """Coordinate acknowledged targets, continuous settling, and bounded recovery."""
 
-    def __init__(self, node: Node, path: str, event_path: str) -> None:
+    def __init__(
+        self, node: Node, path: str, event_path: str, config: dict | None = None
+    ) -> None:
         """Create optional ROS endpoints; importing this module does not start flight."""
         from ardupilot_msgs.msg import ControlSurfaceOutput
         from geometry_msgs.msg import PoseStamped, TwistStamped
@@ -40,53 +43,9 @@ class StraightFlight:
         from std_msgs.msg import Float64, String
 
         self.node = node
-        self.config = json.loads(Path(path).read_text())
-        required = (
-            "altitude_relative_m",
-            "airspeed_m_s",
-            "heading_accel_m_s2",
-            "dwell_s",
-            "setup_timeout_s",
-            "recovery_timeout_s",
-            "telemetry_timeout_s",
-            "state_timeout_s",
-            "course_tolerance_deg",
-            "bank_tolerance_deg",
-            "rate_tolerance_rad_s",
-            "altitude_tolerance_m",
-            "airspeed_tolerance_m_s",
-            "climb_tolerance_m_s",
-            "max_bank_deg",
-            "max_altitude_error_m",
-            "max_course_error_deg",
-            "max_duration_s",
-            "min_airspeed_m_s",
-            "max_airspeed_m_s",
+        self.config = (
+            dict(config) if config is not None else load_straight_flight_config(path)
         )
-        for key in required:
-            value = float(self.config[key])
-            if not math.isfinite(value) or value <= 0:
-                raise ValueError(f"{key} must be finite and positive")
-            self.config[key] = value
-        climb_rate = float(self.config["climb_rate_m_s"])
-        if not math.isfinite(climb_rate) or climb_rate < 0:
-            raise ValueError(
-                "climb_rate_m_s must be finite and nonnegative (zero uses firmware maximum)"
-            )
-        self.config["climb_rate_m_s"] = climb_rate
-        course = self.config.get("course_deg")
-        if course is not None and (not math.isfinite(course) or not 0 <= course < 360):
-            raise ValueError("course_deg must be null or in [0,360)")
-        if self.config.get("recovery_mode") != "LOITER":
-            raise ValueError("This coordinator requires explicit recovery_mode LOITER")
-        if (
-            not self.config["min_airspeed_m_s"]
-            < self.config["airspeed_m_s"]
-            < self.config["max_airspeed_m_s"]
-        ):
-            raise ValueError(
-                "Target airspeed must lie inside the active airspeed envelope"
-            )
         self.phase = "IDLE"
         self.reason = ""
         self.failed = False
@@ -293,7 +252,7 @@ class StraightFlight:
 
     def begin(self, now: float, duration: float) -> None:
         """Start setup only on user request; do not command until telemetry is valid."""
-        if duration > self.config["max_duration_s"]:
+        if not within_limit(duration, self.config["max_duration_s"]):
             raise RuntimeError("Maneuver exceeds straight-flight maximum duration")
         self.start_location = None
         self.started = now
@@ -395,27 +354,35 @@ class StraightFlight:
         course = abs(course_error(self.course, self.target_course))
         if self.phase in ("READY", "ACTIVE"):
             if (
-                not self.config["min_airspeed_m_s"]
-                <= self.output.airspeed
-                <= self.config["max_airspeed_m_s"]
-                or bank > self.config["max_bank_deg"]
-                or altitude_error > self.config["max_altitude_error_m"]
-                or course > self.config["max_course_error_deg"]
+                (
+                    self.config["min_airspeed_m_s"] is not None
+                    and self.output.airspeed < self.config["min_airspeed_m_s"]
+                )
+                or not within_limit(self.output.airspeed, self.config["max_airspeed_m_s"])
+                or not within_limit(bank, self.config["max_bank_deg"])
+                or not within_limit(altitude_error, self.config["max_altitude_error_m"])
+                or not within_limit(course, self.config["max_course_error_deg"])
             ):
                 raise RuntimeError("Straight-flight envelope exceeded")
             if active and self.phase != "ACTIVE":
                 self.transition("ACTIVE")
             self.emit(now)
             return True
-        stable = (
-            bank <= self.config["bank_tolerance_deg"]
-            and altitude_error <= self.config["altitude_tolerance_m"]
-            and course <= self.config["course_tolerance_deg"]
-            and max(abs(v) for v in self.output.rates)
-            <= self.config["rate_tolerance_rad_s"]
-            and abs(self.output.airspeed - self.config["airspeed_m_s"])
-            <= self.config["airspeed_tolerance_m_s"]
-            and abs(self.climb) <= self.config["climb_tolerance_m_s"]
+        stable = all(
+            (
+                within_limit(bank, self.config["bank_tolerance_deg"]),
+                within_limit(altitude_error, self.config["altitude_tolerance_m"]),
+                within_limit(course, self.config["course_tolerance_deg"]),
+                within_limit(
+                    max(abs(v) for v in self.output.rates),
+                    self.config["rate_tolerance_rad_s"],
+                ),
+                within_limit(
+                    abs(self.output.airspeed - self.config["airspeed_m_s"]),
+                    self.config["airspeed_tolerance_m_s"],
+                ),
+                within_limit(abs(self.climb), self.config["climb_tolerance_m_s"]),
+            )
         )
         if not stable:
             self.dwell_start = None

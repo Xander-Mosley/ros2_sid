@@ -1,5 +1,6 @@
 {
   "course_deg": null,
+  "rc_timeout_s": null,
   "altitude_relative_m": 100,
   "airspeed_m_s": 23,
   "heading_accel_m_s2": 2,

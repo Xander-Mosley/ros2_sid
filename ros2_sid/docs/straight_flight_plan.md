@@ -213,3 +213,36 @@ in LOITER (test-only loiter radius 80 m). Use it with `--straight-flight` or
 
 Vehicle arming is not a navigation-authorization gate. Disarming alone does not
 stop excitation or suppress recovery; mode changes and failsafes still take priority.
+
+## Optional checks in the DDS mission configuration
+
+`config/surface_excitation/straight_flight_sitl.json` now includes
+`"rc_timeout_s": null`. This disables RC sample-age checks in the Python mission
+coordinator. A valid RC sample and LOW-to-HIGH transition are still required for
+HITL activation; LOW or invalid input stops the maneuver. With freshness disabled,
+the last valid HIGH remains authorized if RC messages stop arriving.
+
+Use a number in `(0, 2]` to enable the RC timeout in seconds. An explicit
+`--rc-timeout 0.5` or `--rc-timeout null` overrides JSON. A missing JSON key, or
+`--no-straight-flight` without an override, uses the mission default of 0.5 seconds.
+This setting applies to the shared DDS mission path; SITL does not use the HITL
+RC activation gate. Firmware authorization and timeouts are independent.
+
+The following JSON settings also accept `null` to skip their own check:
+
+- Settling: `course_tolerance_deg`, `bank_tolerance_deg`, `rate_tolerance_rad_s`,
+  `altitude_tolerance_m`, `airspeed_tolerance_m_s`, `climb_tolerance_m_s`.
+- Envelope: `max_bank_deg`, `max_altitude_error_m`, `max_course_error_deg`,
+  `min_airspeed_m_s`, `max_airspeed_m_s`.
+- Planned maneuver duration limit: `max_duration_s`. The experiment still has
+  its own duration and completes normally.
+
+All other numeric settings remain required. Telemetry/state freshness, valid
+measurements, navigation authorization, setup/recovery deadlines, and dwell still
+apply. Disabling every settling tolerance still requires the configured dwell.
+Airspeed bounds can be disabled independently. `course_deg: null` retains its
+existing meaning: capture the current course. Missing limit/tolerance keys are
+configuration errors, not implicit opt-outs.
+
+Startup logs list disabled checks and the effective RC timeout. Straight-flight
+JSONL events include the effective configuration, including CLI RC overrides.

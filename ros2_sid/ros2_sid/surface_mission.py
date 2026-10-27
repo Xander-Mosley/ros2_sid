@@ -25,6 +25,12 @@ from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
+from .flight_config import (
+    NULLABLE_CHECKS,
+    load_straight_flight_config,
+    parse_rc_timeout,
+    resolve_rc_timeout,
+)
 from .mission_library import mission_library_path
 from .surface_signals import AxisSample, Cadence, ClockSync, Experiment, RCGate
 
@@ -196,7 +202,17 @@ class SurfaceMission(Node):
         self.experiment = self.experiments[0][1]
         self.quit_requested = False
         self.clock_sync = ClockSync()
+        config = getattr(args, "straight_config", None)
+        if config is None and getattr(args, "straight_flight", None):
+            config = load_straight_flight_config(args.straight_flight)
+        resolve_rc_timeout(args, config)
         self.rc = RCGate(args.rc_channel - 1, args.rc_threshold, args.rc_timeout)
+        self.get_logger().info(
+            f"RC freshness timeout: {args.rc_timeout if args.rc_timeout is not None else 'disabled'}"
+        )
+        if config is not None:
+            disabled = [key for key in (*NULLABLE_CHECKS, "rc_timeout_s") if config[key] is None]
+            self.get_logger().info(f"Disabled flight checks: {', '.join(disabled) or 'none'}")
         self.publisher = self.create_publisher(
             ControlSurfaceExcitation, "/ap/sid/control_surface", QOS
         )
@@ -234,7 +250,7 @@ class SurfaceMission(Node):
             from .straight_flight import StraightFlight
 
             self.straight = StraightFlight(
-                self, args.straight_flight, args.command_log + ".straight.jsonl"
+                self, args.straight_flight, args.command_log + ".straight.jsonl", config=config
             )
         self.timer = self.create_timer(
             1 / self.experiment.rate,
@@ -424,7 +440,7 @@ class SurfaceMission(Node):
                     "START REQUESTED: RC is HIGH; checking flight readiness."
                 )
             elif not allowed:
-                if self.rc.last is None or now - self.rc.last > self.rc.timeout:
+                if not self.rc.fresh(now):
                     self.operator_status(
                         "WAITING: RC input missing, invalid or stale. Check the RC topic."
                     )
@@ -546,7 +562,10 @@ def main(hitl: bool = False) -> int:
         help="one-based RC switch channel (HITL; legacy default 8)",
     )
     parser.add_argument("--rc-threshold", type=int, default=1550)
-    parser.add_argument("--rc-timeout", type=float, default=0.5)
+    parser.add_argument(
+        "--rc-timeout", type=parse_rc_timeout, default=argparse.SUPPRESS,
+        help="Override JSON RC freshness timeout in seconds (0, 2], or null to disable",
+    )
     parser.add_argument(
         "--rc-source",
         choices=("mavros", "dds"),
@@ -556,7 +575,6 @@ def main(hitl: bool = False) -> int:
     args, ros_args = parser.parse_known_args()
     if (
         not 1 <= args.rc_channel <= 16
-        or not 0 < args.rc_timeout <= 2
         or not 800 <= args.rc_threshold <= 2200
     ):
         parser.error("invalid RC gate configuration")
@@ -565,6 +583,10 @@ def main(hitl: bool = False) -> int:
     try:
         resolve_mission_source(args)
         resolve_straight_flight(args)
+        args.straight_config = (
+            load_straight_flight_config(args.straight_flight) if args.straight_flight else None
+        )
+        resolve_rc_timeout(args, args.straight_config)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     print(f"DDS mission source: {args.experiment or args.mission_plan}")

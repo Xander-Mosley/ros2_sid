@@ -349,3 +349,90 @@ def test_navigation_authority_independent_of_arming(coordinator, armed, status):
     assert not f.authorized(10 + f.config["state_timeout_s"] + 1)
     f.state.mode = "MANUAL"
     assert not f.authorized(10)
+
+
+@pytest.mark.parametrize("key,field,value", [
+    ("bank_tolerance_deg", "bank", 10),
+    ("altitude_tolerance_m", "altitude", 110),
+    ("course_tolerance_deg", "course", 10),
+    ("rate_tolerance_rad_s", "rate", 1),
+    ("airspeed_tolerance_m_s", "airspeed", 25),
+    ("climb_tolerance_m_s", "climb", 3),
+])
+def test_nullable_settling_check(coordinator, key, field, value):
+    f = coordinator
+    f.phase = "SETTLING"
+    f.course = f.target_course = 0
+    set_measurement(f, field, value)
+    fresh(f, 1)
+    assert not f.step(1, True, False, 10)
+    assert f.dwell_start is None
+    f.config[key] = None
+    fresh(f, 2)
+    assert not f.step(2, True, False, 10)
+    assert f.dwell_start == 2
+    fresh(f, 5)
+    assert f.step(5, True, False, 10)
+
+
+def set_measurement(f, field, value):
+    import math
+    if field == "bank":
+        f.output.attitude[0] = math.radians(value)
+    elif field == "rate":
+        f.output.rates[0] = value
+    elif field == "airspeed":
+        f.output.airspeed = value
+    else:
+        setattr(f, field, value)
+
+
+@pytest.mark.parametrize("key,field,value", [
+    ("max_bank_deg", "bank", 50),
+    ("max_altitude_error_m", "altitude", 150),
+    ("max_course_error_deg", "course", 90),
+    ("min_airspeed_m_s", "airspeed", 5),
+    ("max_airspeed_m_s", "airspeed", 40),
+])
+@pytest.mark.parametrize("phase", ["READY", "ACTIVE"])
+def test_nullable_envelope_check(coordinator, key, field, value, phase):
+    f = coordinator
+    f.phase = phase
+    f.target_course = f.course = 0
+    fresh(f, 1)
+    set_measurement(f, field, value)
+    with pytest.raises(RuntimeError, match="envelope"):
+        f.step(1, True, phase == "ACTIVE", 10)
+    f.config[key] = None
+    assert f.step(1, True, phase == "ACTIVE", 10)
+    # An unrelated enabled limit still aborts.
+    f.config["max_altitude_error_m"] = 30
+    f.altitude = 200
+    with pytest.raises(RuntimeError, match="envelope"):
+        f.step(1, True, phase == "ACTIVE", 10)
+
+
+def test_nullable_duration(coordinator):
+    f = coordinator
+    with pytest.raises(RuntimeError, match="maximum duration"):
+        f.begin(0, 100)
+    f.config["max_duration_s"] = None
+    f.begin(0, 100)
+    assert f.phase == "WAITING"
+
+
+def test_all_settling_checks_disabled_keep_dwell_and_freshness(coordinator):
+    f = coordinator
+    for key in f.config:
+        if "tolerance" in key:
+            f.config[key] = None
+    f.phase = "SETTLING"
+    f.output.attitude[0] = 0.2
+    fresh(f, 1)
+    assert not f.step(1, True, False, 10)
+    fresh(f, 2)
+    assert not f.step(2, True, False, 10)
+    fresh(f, 4)
+    assert f.step(4, True, False, 10)
+    with pytest.raises(RuntimeError, match="telemetry lost"):
+        f.step(10, True, True, 10)
