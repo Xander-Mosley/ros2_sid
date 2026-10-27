@@ -2,7 +2,7 @@
 
 > **DDS default:** `run_mission_SITL.py --interface dds` now loads the packaged
 > `straight_flight_sitl.json` automatically. MAVROS is required: defaults target
-> 75 m above home, 23 m/s, and the current ground course, then wait for settling.
+> 100 m above home, 23 m/s, and the current ground course, then wait for settling.
 > `--straight-flight PATH` overrides these settings; `--no-straight-flight`
 > explicitly disables navigation coordination and automatic LOITER recovery.
 > The shared HITL DDS entrypoint has the same default and retains its RC gate;
@@ -51,11 +51,107 @@ the selected legacy-layout CSV. Neither `--experiment` nor `--mission-plan` is
 required. Straight-flight coordination is enabled by default. Use `--no-straight-flight`
 for excitation-only behavior without navigation targets or LOITER recovery.
 
-The example configuration is for SITL: 75 m above home, 23 m/s airspeed, captured
+The example configuration is for SITL: 100 m above home, 23 m/s airspeed, captured
 current ground course, 0.25 seconds of continuous settling. Copy the JSON to
 change explicit targets/tolerances; these values are not aircraft-independent
 flight-test settings. Position stream requests apply to the current MAVLink link.
 Check that telemetry is arriving before starting.
+
+## JSON parameter reference
+
+Configuration: [straight_flight_sitl.json](../config/surface_excitation/straight_flight_sitl.json).
+The values below reflect the current source example, not hard-coded defaults or
+validated settings for every aircraft. The DDS SITL and HITL entrypoints load the
+installed copy by default. Use `--straight-flight PATH` to load a specific file;
+restart the mission after editing it. Rebuild/install when using an installed
+copy, and relaunch when using a launcher snapshot.
+
+### Navigation targets
+
+These settings command the aircraft during setup. Disabling a tolerance does not
+remove the associated navigation command.
+
+| Parameter | Example value | Units and behavior | Meaning of `null` |
+|---|---|---|---|
+| `course_deg` | `null` | Ground-track direction clockwise from true north: 0 = north, 90 = east, 180 = south, 270 = west. A number must be in `[0, 360)`. This is ground course, not aircraft yaw. | Capture the current ground course once valid setup telemetry is available, before sending navigation commands; retain it for this maneuver. Omitting this key has the same effect. |
+| `altitude_relative_m` | `100` | Target altitude in meters above home, not above terrain or sea level. Must be positive. | Not allowed. |
+| `airspeed_m_s` | `23` | Target airspeed in m/s, not groundspeed. Must be positive and strictly inside each enabled airspeed envelope bound. | Not allowed, even if all airspeed checks are disabled. |
+| `heading_accel_m_s2` | `2` | Positive lateral acceleration in m/s² passed to the ground-course command to control the turn toward the target. It is not a heading rate in degrees/s. | Not allowed. |
+| `climb_rate_m_s` | `0` | Nonnegative altitude-target slew-rate argument in m/s. Zero selects the firmware maximum; it does not command zero climb. Normal TECS limits still apply. | Not allowed. |
+
+### Settling before excitation
+
+All enabled tolerances must pass continuously for `dwell_s` before the coordinator
+becomes READY. A failed tolerance resets the dwell timer. A value exactly at a
+tolerance passes. These are settling requirements, separate from the wider
+READY/ACTIVE envelope below.
+
+| Parameter | Example value | Units and comparison | Meaning of `null` |
+|---|---|---|---|
+| `dwell_s` | `0.25` | Positive seconds for which all enabled settling checks must continuously pass. Still required when all tolerances are disabled. | Not allowed. |
+| `course_tolerance_deg` | `5` | Maximum absolute shortest-angle error in degrees between measured ground course and target course; wraps across north. | Skip course settling. |
+| `bank_tolerance_deg` | `5` | Maximum absolute roll/bank angle in degrees relative to wings level. | Skip bank settling. |
+| `rate_tolerance_rad_s` | `0.15` | Maximum absolute angular rate across all reported roll, pitch, and yaw rates, in rad/s. Every component must meet this limit. | Skip angular-rate settling. |
+| `altitude_tolerance_m` | `10` | Maximum absolute altitude error in meters relative to `altitude_relative_m`. | Skip altitude settling. |
+| `airspeed_tolerance_m_s` | `5` | Maximum absolute airspeed error in m/s relative to `airspeed_m_s`. | Skip airspeed settling. |
+| `climb_tolerance_m_s` | `1.5` | Maximum absolute vertical velocity in m/s; checks closeness to level flight, not closeness to `climb_rate_m_s`. | Skip climb settling. |
+
+For example, target airspeed 23 with tolerance 5 accepts 18–28 m/s during
+settling. The separate envelope below still requires 20–30 m/s in READY/ACTIVE.
+
+### Envelope and planned duration
+
+Enabled envelope limits are checked in both READY and ACTIVE. Exceeding a limit
+aborts the maneuver and enters the normal stop/recovery path. Equality with a
+limit is allowed. These checks do not replace the settling tolerances.
+
+| Parameter | Example value | Units and behavior | Meaning of `null` |
+|---|---|---|---|
+| `max_bank_deg` | `55` | Maximum absolute bank angle in degrees. | Skip the bank envelope check. |
+| `max_altitude_error_m` | `30` | Maximum absolute altitude error in meters from the commanded altitude. | Skip the altitude envelope check. |
+| `max_course_error_deg` | `40` | Maximum absolute shortest-angle course error in degrees from the commanded course. | Skip the course envelope check. |
+| `min_airspeed_m_s` | `20` | Minimum measured airspeed in m/s. Checked independently of the upper bound. | Skip the lower airspeed bound. |
+| `max_airspeed_m_s` | `30` | Maximum measured airspeed in m/s. Checked independently of the lower bound. | Skip the upper airspeed bound. |
+| `max_duration_s` | `30` | Maximum planned experiment duration in seconds, checked before setup begins. Does not include setup or recovery time. | Skip this admission check; the experiment still ends at its own duration. |
+
+All numeric tolerances and envelope/duration limits must be finite and positive.
+Their keys must remain in the JSON even when their value is `null`.
+
+### Timeouts and recovery
+
+Timeouts use local monotonic time. Freshness measures time since receipt, rather
+than vehicle wall-clock time. None of these settings changes a firmware watchdog.
+
+| Parameter | Example value | Units and behavior | Meaning of `null` |
+|---|---|---|---|
+| `rc_timeout_s` | `null` | Maximum valid RC sample age in seconds for HITL authorization. Numeric values must be greater than 0 and at most 2. A stale sample revokes authorization and requires another LOW-to-HIGH transition. | Skip RC age checks only. Valid input and LOW-to-HIGH activation remain required; LOW or invalid input still stops. The last valid HIGH remains authorized if messages stop. |
+| `setup_timeout_s` | `90` | Positive seconds from setup start, covering WAITING, COMMANDING, SETTLING, and READY until ACTIVE. Exceeding it aborts setup. It is not reset on each phase transition. | Not allowed. |
+| `recovery_timeout_s` | `8` | Positive seconds from stop/recovery initiation to confirm the navigation handoff. Includes waiting for zero excitation and LOITER confirmation. Expiry reports recovery unconfirmed; it is not a deadline for physically arriving at the saved location. | Not allowed. |
+| `telemetry_timeout_s` | `1` | Positive maximum receipt age in seconds for output, velocity, and altitude telemetry. Also applies to the setup GPS fix, recovery target echo, and zero-output confirmation. Missing or stale telemetry blocks setup or prevents confirmation; loss after setup proceeds aborts the maneuver. | Not allowed. |
+| `state_timeout_s` | `3` | Positive maximum age in seconds of `/mavros/state`, used for navigation authorization and recovery decisions. A recent state must still satisfy the separate connection, mode, and system-status requirements. | Not allowed. |
+| `recovery_mode` | `"LOITER"` | Required string; only `LOITER` is accepted. After zero excitation is confirmed, request LOITER at the position/altitude saved before setup, if navigation authority is still available. Operator/failsafe mode changes take priority. | Not allowed; other mode strings are also rejected. |
+
+RC timeout precedence is explicit `--rc-timeout` override, then JSON, then the
+0.5-second mission fallback if the key is absent. `--rc-timeout null` explicitly
+disables it. With `--no-straight-flight`, this JSON is not loaded, so use the CLI
+override to change RC freshness. The SITL mission does not use the HITL RC gate.
+`--wait-timeout` is a separate mission option, not a replacement for these timers.
+
+### Course example and checks that remain active
+
+With `course_deg: null`, an aircraft tracking east at setup captures 90° as its
+target. With `course_tolerance_deg: 5`, settling requires 85–95°. With
+`max_course_error_deg: 40`, a deviation greater than 40° triggers an envelope
+stop in READY/ACTIVE. Setting both course check values to `null` skips those two
+comparisons while still commanding the captured 90° course.
+
+There is no `armed` JSON parameter. The coordinator does not use arming as its
+navigation gate. Required valid/finite telemetry, groundspeed above 3 m/s,
+healthy GUIDED authorization, command acknowledgements, clock synchronization,
+and firmware authorization remain independent of the nullable checks. The
+navigation-command ACK timeout is a separate fixed five seconds in the code.
+See the HITL manual's [worked null examples](manual_surface_excitation_hitl.md#examples-change-only-the-checks-you-want-to-skip)
+for RC, airspeed, bank, and duration changes.
 
 ## Command and state behavior
 
@@ -80,10 +176,11 @@ flowchart TD
     H --> I[Confirm vehicle mode; finish]
 ```
 
-Phases are WAITING, COMMANDING, SETTLING, READY, ACTIVE, RETURNING, RECOVERY, DONE.
-Settling checks course, bank, angular rates, altitude, airspeed, and climb rate.
+Phases use the `FlightPhase` enum: IDLE, WAITING, COMMANDING, SETTLING, READY,
+ACTIVE, RETURNING, RECOVERY, DONE. Logs and JSON retain these names as strings.
+Settling applies the enabled checks for course, bank, angular rates, altitude, airspeed, and climb rate.
 The dwell resets whenever any criterion fails. Waveform time starts after READY.
-During ACTIVE, a wider flight envelope applies and navigation targets remain
+During READY and ACTIVE, a wider flight envelope applies and navigation targets remain
 fixed. Normal guidance and stabilization remain running, so the response need
 not be perfectly straight or level during excitation.
 
@@ -182,7 +279,7 @@ and the limits of these simulation results.
 See the manual's [settling tolerances and active limits](manual_surface_excitation_sitl.md#settling-tolerances-and-active-limits)
 for parameter names, numeric ranges, timer reset behavior, and the difference
 between settling and active abort checks. The current source configuration uses
-a 75 m target, 23 m/s airspeed, and a 0.25-second dwell. Historical SITL verification
+a 100 m target, 23 m/s airspeed, and a 0.25-second dwell. Historical SITL verification
 used a three-second dwell; its results are not validation of these edited settings.
 
 ## Implemented revision: return to the maneuver start

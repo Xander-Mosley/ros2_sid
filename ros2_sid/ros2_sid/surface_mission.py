@@ -32,6 +32,7 @@ from .flight_config import (
     resolve_rc_timeout,
 )
 from .mission_library import mission_library_path
+from .straight_flight import FlightPhase
 from .surface_signals import AxisSample, Cadence, ClockSync, Experiment, RCGate
 
 QOS = QoSProfile(
@@ -430,7 +431,7 @@ class SurfaceMission(Node):
                 or (
                     self.straight
                     and self.straight.owned
-                    and self.straight.phase != "DONE"
+                    and self.straight.phase != FlightPhase.DONE
                 )
             ) and not allowed:
                 self.stop("RC switch off, invalid, or stale")
@@ -461,7 +462,7 @@ class SurfaceMission(Node):
                     "WAITING: no synchronized /ap/time clock from the aircraft."
                 )
             if self.cadence or (
-                self.straight and self.straight.owned and self.straight.phase != "DONE"
+                self.straight and self.straight.owned and self.straight.phase != FlightPhase.DONE
             ):
                 self.stop(str(exc), failed=True)
             elif now - self.started > self.args.wait_timeout:
@@ -479,7 +480,7 @@ class SurfaceMission(Node):
                 return
             if not ready:
                 self.operator_status(
-                    f"PREPARING: straight-flight phase {self.straight.phase}; excitation has not started."
+                    f"PREPARING: straight-flight phase {self.straight.phase.value}; excitation has not started."
                 )
                 self.started = now
                 if now - self.last_disable >= 0.05:

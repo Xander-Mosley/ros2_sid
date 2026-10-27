@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from .flight_config import load_straight_flight_config, within_limit
@@ -25,6 +26,20 @@ if TYPE_CHECKING:
 def course_error(actual: float, target: float) -> float:
     """Return signed shortest course error in degrees."""
     return (actual - target + 180) % 360 - 180
+
+
+class FlightPhase(Enum):
+    """Straight-flight lifecycle states; values preserve the event/log format."""
+
+    IDLE = "IDLE"
+    WAITING = "WAITING"
+    COMMANDING = "COMMANDING"
+    SETTLING = "SETTLING"
+    READY = "READY"
+    ACTIVE = "ACTIVE"
+    RETURNING = "RETURNING"
+    RECOVERY = "RECOVERY"
+    DONE = "DONE"
 
 
 class StraightFlight:
@@ -46,7 +61,7 @@ class StraightFlight:
         self.config = (
             dict(config) if config is not None else load_straight_flight_config(path)
         )
-        self.phase = "IDLE"
+        self.phase: FlightPhase = FlightPhase.IDLE
         self.reason = ""
         self.failed = False
         self.owned = False
@@ -209,7 +224,7 @@ class StraightFlight:
             firmware_time_us=int(self.output.time_us)
             if self.output and hasattr(self.output, "time_us")
             else None,
-            phase=self.phase,
+            phase=self.phase.value,
             receipt_age_s=dict(
                 state=now - self.state_time,
                 output=now - self.output_time,
@@ -244,10 +259,10 @@ class StraightFlight:
             )
         self.last_event = now
 
-    def transition(self, phase: str, reason: str = "") -> None:
+    def transition(self, phase: FlightPhase, reason: str = "") -> None:
         """Expose a phase transition in ROS, logs, and the operator console."""
         self.phase, self.reason = phase, reason
-        self.node.get_logger().info(f"Straight flight: {phase}: {reason}")
+        self.node.get_logger().info(f"Straight flight: {phase.value}: {reason}")
         self.emit(time.monotonic(), True)
 
     def begin(self, now: float, duration: float) -> None:
@@ -259,11 +274,11 @@ class StraightFlight:
         self.failed = self.owned = self.mode_requested = False
         self.dwell_start = None
         self.future = None
-        self.transition("WAITING")
+        self.transition(FlightPhase.WAITING)
 
     def request_stop(self, now: float) -> None:
         """Revoke setup and enter return-to-baseline before any planned recovery turn."""
-        if self.phase in ("RETURNING", "RECOVERY", "DONE"):
+        if self.phase in (FlightPhase.RETURNING, FlightPhase.RECOVERY, FlightPhase.DONE):
             return
         self.commands.clear()
         # A sent command cannot be recalled; never issue further setup commands.
@@ -271,24 +286,24 @@ class StraightFlight:
             self.future.cancel()
         self.future = None
         self.return_started = now
-        self.transition("RETURNING")
+        self.transition(FlightPhase.RETURNING)
 
     def step(self, now: float, requested: bool, active: bool, duration: float) -> bool:
         """Advance setup without blocking; return true only when excitation may start."""
         from mavros_msgs.srv import CommandLong
 
-        if self.phase in ("IDLE", "DONE"):
+        if self.phase in (FlightPhase.IDLE, FlightPhase.DONE):
             if not requested:
                 return False
             self.begin(now, duration)
-        if self.phase in ("RETURNING", "RECOVERY"):
+        if self.phase in (FlightPhase.RETURNING, FlightPhase.RECOVERY):
             return False
         if (
             now - self.started > self.config["setup_timeout_s"]
-            and self.phase != "ACTIVE"
+            and self.phase != FlightPhase.ACTIVE
         ):
             raise RuntimeError("Straight-flight settling/setup timeout")
-        if self.phase == "WAITING":
+        if self.phase == FlightPhase.WAITING:
             if not self.authorized(now) or not self.fresh(now):
                 return False
             if (
@@ -324,10 +339,10 @@ class StraightFlight:
                     ),
                 ),
             ]
-            self.transition("COMMANDING")
+            self.transition(FlightPhase.COMMANDING)
         if not self.authorized(now) or not self.fresh(now):
             raise RuntimeError("Straight-flight authorization/telemetry lost")
-        if self.phase == "COMMANDING":
+        if self.phase == FlightPhase.COMMANDING:
             if self.future is not None:
                 if not self.future.done():
                     if now - self.future_started > 5:
@@ -348,11 +363,11 @@ class StraightFlight:
                 if command != 511:  # A telemetry-rate request does not own navigation.
                     self.owned = True
                 return False
-            self.transition("SETTLING")
+            self.transition(FlightPhase.SETTLING)
         bank = abs(math.degrees(self.output.attitude[0]))
         altitude_error = abs(self.altitude - self.config["altitude_relative_m"])
         course = abs(course_error(self.course, self.target_course))
-        if self.phase in ("READY", "ACTIVE"):
+        if self.phase in (FlightPhase.READY, FlightPhase.ACTIVE):
             if (
                 (
                     self.config["min_airspeed_m_s"] is not None
@@ -364,8 +379,8 @@ class StraightFlight:
                 or not within_limit(course, self.config["max_course_error_deg"])
             ):
                 raise RuntimeError("Straight-flight envelope exceeded")
-            if active and self.phase != "ACTIVE":
-                self.transition("ACTIVE")
+            if active and self.phase != FlightPhase.ACTIVE:
+                self.transition(FlightPhase.ACTIVE)
             self.emit(now)
             return True
         stable = all(
@@ -389,18 +404,18 @@ class StraightFlight:
         elif self.dwell_start is None:
             self.dwell_start = now
         elif now - self.dwell_start >= self.config["dwell_s"]:
-            self.transition("READY")
+            self.transition(FlightPhase.READY)
         self.emit(now)
-        return self.phase == "READY"
+        return self.phase == FlightPhase.READY
 
     def recover(self, now: float) -> bool:
         """After zero excitation, command LOITER about the saved setup-start fix."""
         from mavros_msgs.srv import CommandInt
 
-        if self.phase == "DONE":
+        if self.phase == FlightPhase.DONE:
             return True
         if not self.owned:
-            self.transition("DONE", "No navigation ownership")
+            self.transition(FlightPhase.DONE, "No navigation ownership")
             return True
         # Never replace an operator/failsafe-selected mode. Arming is independent.
         state_fresh = (
@@ -422,7 +437,7 @@ class StraightFlight:
             )
         ):
             self.transition(
-                "DONE",
+                FlightPhase.DONE,
                 f"Yielded to vehicle mode {self.state.mode}, system status {self.state.system_status}",
             )
             return True
@@ -442,20 +457,20 @@ class StraightFlight:
             except Exception as exc:
                 self.failed = True
                 self.transition(
-                    "DONE",
+                    FlightPhase.DONE,
                     f"LOITER service failed: {exc}; operator intervention required",
                 )
                 return True
             if result and result.success:
                 self.transition(
-                    "DONE",
+                    FlightPhase.DONE,
                     "LOITER target confirmed at saved start; aircraft returning (arrival not confirmed)",
                 )
                 return True
         if now - self.return_started > self.config["recovery_timeout_s"]:
             self.failed = True
             self.transition(
-                "DONE", "Recovery unconfirmed: operator intervention required"
+                FlightPhase.DONE, "Recovery unconfirmed: operator intervention required"
             )
             return True
         if not self.authorized(now) and not expected_loiter:
@@ -471,7 +486,7 @@ class StraightFlight:
             if self.start_location is None:
                 self.failed = True
                 self.transition(
-                    "DONE",
+                    FlightPhase.DONE,
                     "Missing saved start location; operator intervention required",
                 )
                 return True
@@ -489,14 +504,14 @@ class StraightFlight:
             except Exception as exc:
                 self.failed = True
                 self.transition(
-                    "DONE",
+                    FlightPhase.DONE,
                     f"LOITER service failed: {exc}; operator intervention required",
                 )
                 return True
             self.future_started = now
             self.mode_requested = True
             self.transition(
-                "RECOVERY",
+                FlightPhase.RECOVERY,
                 "Zero applied perturbation confirmed; requesting LOITER at saved start",
             )
         if self.mode_requested and self.future.done():
@@ -505,14 +520,14 @@ class StraightFlight:
             except Exception as exc:
                 self.failed = True
                 self.transition(
-                    "DONE",
+                    FlightPhase.DONE,
                     f"LOITER service failed: {exc}; operator intervention required",
                 )
                 return True
             if not result or not result.success:
                 self.failed = True
                 self.transition(
-                    "DONE", "LOITER request rejected; operator intervention required"
+                    FlightPhase.DONE, "LOITER request rejected; operator intervention required"
                 )
                 return True
         self.emit(now)

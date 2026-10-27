@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from ros2_sid.straight_flight import StraightFlight, course_error
+from ros2_sid.straight_flight import FlightPhase, StraightFlight, course_error
 
 
 @pytest.fixture
@@ -21,7 +21,29 @@ def coordinator(tmp_path):
     # Keep deterministic test conditions independent of operator-edited settings.
     config = json.loads(path.read_text())
     config.update(
-        airspeed_m_s=18, min_airspeed_m_s=10, altitude_relative_m=100, dwell_s=3
+        course_deg=None,
+        airspeed_m_s=18,
+        min_airspeed_m_s=10,
+        max_airspeed_m_s=30,
+        altitude_relative_m=100,
+        heading_accel_m_s2=2,
+        climb_rate_m_s=0,
+        dwell_s=3,
+        setup_timeout_s=90,
+        recovery_timeout_s=8,
+        telemetry_timeout_s=1,
+        state_timeout_s=3,
+        course_tolerance_deg=5,
+        bank_tolerance_deg=5,
+        rate_tolerance_rad_s=0.15,
+        altitude_tolerance_m=5,
+        airspeed_tolerance_m_s=2,
+        climb_tolerance_m_s=1.5,
+        max_bank_deg=35,
+        max_altitude_error_m=30,
+        max_course_error_deg=40,
+        max_duration_s=30,
+        recovery_mode="LOITER",
     )
     path = tmp_path / "test-settings.json"
     path.write_text(json.dumps(config))
@@ -70,7 +92,7 @@ def test_settling_commands_once_and_wrap(coordinator):
     for t in range(5):
         fresh(f, t)
         assert not f.step(t, True, False, 10)
-    assert f.phase == "SETTLING"
+    assert f.phase == FlightPhase.SETTLING
     f.output.attitude[0] = 0.3
     fresh(f, 5)
     assert not f.step(5, True, False, 10)
@@ -82,7 +104,7 @@ def test_settling_commands_once_and_wrap(coordinator):
     assert f.command_client.call_async.call_count == 4
     fresh(f, 10)
     assert f.step(10, True, True, 10)
-    assert f.phase == "ACTIVE"
+    assert f.phase == FlightPhase.ACTIVE
     assert course_error(1, 359) == 2
 
 
@@ -102,7 +124,7 @@ def test_return_waits_for_zero_and_confirms_loiter(coordinator, armed, status):
     f.output.applied = [0, 0, 0]
     f.output.delta = [0]
     assert not f.recover(11)
-    assert f.phase == "RECOVERY"
+    assert f.phase == FlightPhase.RECOVERY
     request = f.loiter_client.call_async.call_args.args[0]
     assert (request.command, request.frame, request.x, request.y, request.z) == (
         17,
@@ -128,7 +150,7 @@ def test_operator_mode_and_stale_recovery(coordinator):
     f.state.mode = "RTL"
     assert f.recover(11)
     f.loiter_client.call_async.assert_not_called()
-    f.phase = "RETURNING"
+    f.phase = FlightPhase.RETURNING
     f.state.mode = "GUIDED"
     assert f.recover(20)
     assert f.failed
@@ -143,7 +165,7 @@ def test_rejected_ack_and_stale_active(coordinator):
     fresh(f, 1)
     with pytest.raises(RuntimeError, match="rejected"):
         f.step(1, True, False, 10)
-    f.phase = "ACTIVE"
+    f.phase = FlightPhase.ACTIVE
     with pytest.raises(RuntimeError, match="lost"):
         f.step(20, True, True, 10)
 
@@ -361,7 +383,7 @@ def test_navigation_authority_independent_of_arming(coordinator, armed, status):
 ])
 def test_nullable_settling_check(coordinator, key, field, value):
     f = coordinator
-    f.phase = "SETTLING"
+    f.phase = FlightPhase.SETTLING
     f.course = f.target_course = 0
     set_measurement(f, field, value)
     fresh(f, 1)
@@ -394,7 +416,7 @@ def set_measurement(f, field, value):
     ("min_airspeed_m_s", "airspeed", 5),
     ("max_airspeed_m_s", "airspeed", 40),
 ])
-@pytest.mark.parametrize("phase", ["READY", "ACTIVE"])
+@pytest.mark.parametrize("phase", [FlightPhase.READY, FlightPhase.ACTIVE])
 def test_nullable_envelope_check(coordinator, key, field, value, phase):
     f = coordinator
     f.phase = phase
@@ -402,14 +424,14 @@ def test_nullable_envelope_check(coordinator, key, field, value, phase):
     fresh(f, 1)
     set_measurement(f, field, value)
     with pytest.raises(RuntimeError, match="envelope"):
-        f.step(1, True, phase == "ACTIVE", 10)
+        f.step(1, True, phase == FlightPhase.ACTIVE, 10)
     f.config[key] = None
-    assert f.step(1, True, phase == "ACTIVE", 10)
+    assert f.step(1, True, phase == FlightPhase.ACTIVE, 10)
     # An unrelated enabled limit still aborts.
     f.config["max_altitude_error_m"] = 30
     f.altitude = 200
     with pytest.raises(RuntimeError, match="envelope"):
-        f.step(1, True, phase == "ACTIVE", 10)
+        f.step(1, True, phase == FlightPhase.ACTIVE, 10)
 
 
 def test_nullable_duration(coordinator):
@@ -418,7 +440,7 @@ def test_nullable_duration(coordinator):
         f.begin(0, 100)
     f.config["max_duration_s"] = None
     f.begin(0, 100)
-    assert f.phase == "WAITING"
+    assert f.phase == FlightPhase.WAITING
 
 
 def test_all_settling_checks_disabled_keep_dwell_and_freshness(coordinator):
@@ -426,7 +448,7 @@ def test_all_settling_checks_disabled_keep_dwell_and_freshness(coordinator):
     for key in f.config:
         if "tolerance" in key:
             f.config[key] = None
-    f.phase = "SETTLING"
+    f.phase = FlightPhase.SETTLING
     f.output.attitude[0] = 0.2
     fresh(f, 1)
     assert not f.step(1, True, False, 10)
@@ -436,3 +458,15 @@ def test_all_settling_checks_disabled_keep_dwell_and_freshness(coordinator):
     assert f.step(4, True, False, 10)
     with pytest.raises(RuntimeError, match="telemetry lost"):
         f.step(10, True, True, 10)
+
+
+def test_phase_enum_preserves_event_and_log_names(coordinator):
+    f = coordinator
+    assert f.phase is FlightPhase.IDLE
+    f.transition(FlightPhase.SETTLING, "test transition")
+    assert f.phase is FlightPhase.SETTLING
+    f.node.get_logger().info.assert_called_with(
+        "Straight flight: SETTLING: test transition"
+    )
+    record = json.loads(Path(f.event_file.name).read_text().splitlines()[-1])
+    assert record["phase"] == "SETTLING"

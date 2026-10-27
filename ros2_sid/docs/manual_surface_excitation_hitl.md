@@ -273,18 +273,158 @@ The defaults match the legacy HITL execution gate:
 | Channel | 8 (one-based; array index 7) |
 | Run | channel 8 >= 1550 microseconds |
 | Stop | channel 8 < 1550 microseconds |
-| RC receipt timeout | 0.5 seconds |
+| RC receipt timeout | Disabled by `rc_timeout_s: null` in the packaged straight-flight JSON; otherwise 0.5 seconds when the key/config is absent |
 
 **To start a test:** set the switch LOW, select a maneuver, then switch HIGH.
 The aircraft settles into straight flight before the test signal begins.
 Repeat this sequence after every test or stop; starting with the switch already
-HIGH does nothing. Switching LOW—even briefly—or losing valid RC input stops
-the test. The console `start` command and `--autostart` cannot start HITL tests.
+HIGH does nothing. Switching LOW—even briefly—or receiving invalid RC input stops
+the test. Missing initial RC input blocks activation. If an RC timeout is enabled,
+stale input also stops the test; with `rc_timeout_s: null`, message silence alone
+does not revoke the last valid HIGH. The console `start` command and `--autostart` cannot start HITL tests.
 
 **Switch LOW:** stops the test signal, then returns the aircraft to LOITER.
 It **does not stop the motor or disarm the aircraft**. If you change flight mode
 or a failsafe takes over, that takes priority. Keep the switch low until recovery
 finishes; raise it again to start another test.
+
+## Configuring optional checks with `null`
+
+For every setting, including command targets, units, timers, and recovery, see the
+[complete JSON parameter reference](straight_flight_plan.md#json-parameter-reference).
+
+Edit [straight_flight_sitl.json](../config/surface_excitation/straight_flight_sitl.json)
+and restart the mission to load changes. The normal command loads the installed
+copy; rebuild/install after editing source, or pass `--straight-flight /work/path/to/settings.json`
+to use an explicit file. Launcher snapshots retain the settings copied at launch.
+
+| JSON setting | What `null` disables |
+|---|---|
+| `rc_timeout_s` | RC sample-age checks; valid input, LOW-to-HIGH activation, and LOW/invalid-input stop still apply |
+| `course_tolerance_deg`, `bank_tolerance_deg`, `rate_tolerance_rad_s` | The corresponding course, bank, or angular-rate settling requirement |
+| `altitude_tolerance_m`, `airspeed_tolerance_m_s`, `climb_tolerance_m_s` | The corresponding altitude, airspeed, or climb settling requirement |
+| `max_bank_deg`, `max_altitude_error_m`, `max_course_error_deg` | The corresponding envelope limit during READY/ACTIVE |
+| `min_airspeed_m_s`, `max_airspeed_m_s` | The lower or upper airspeed envelope limit, independently |
+| `max_duration_s` | The coordinator's maximum planned maneuver-duration check; the experiment still ends at its own duration |
+
+Only `rc_timeout_s` is disabled in the supplied configuration. To disable another
+check, change its existing numeric value to JSON `null`. Restore a positive number
+to enable it again. Missing limit/tolerance keys are errors, not opt-outs.
+
+The target `airspeed_m_s` must remain numeric, even when airspeed checks are
+disabled. Flight targets, `dwell_s`, telemetry/state freshness, setup/recovery
+deadlines, valid measurements, and navigation authorization remain required.
+Disabling every settling tolerance still requires dwell. There is no `armed`
+setting in this JSON; arming behavior is described in the ground-test section.
+`course_deg: null` has a separate meaning: capture the current course.
+
+RC precedence is explicit CLI override, then JSON, then the 0.5-second mission
+default. Use `--rc-timeout 0.5` to enable a timeout or `--rc-timeout null` to disable
+it; numeric RC timeouts must be in `(0, 2]` seconds. With `--no-straight-flight`,
+the JSON is not loaded, so use `--rc-timeout null` explicitly if needed for the
+ground-test command. `--wait-timeout` does not change RC freshness.
+
+With RC freshness disabled, the last valid HIGH remains authorized when messages
+stop arriving. Firmware failsafes and command watchdogs remain independent and
+are not disabled by these JSON settings. Startup logs list disabled checks;
+straight-flight JSONL events record the effective configuration and CLI overrides.
+See [optional-check details](straight_flight_plan.md#optional-checks-in-the-dds-mission-configuration).
+
+### Examples: change only the checks you want to skip
+
+For an optional check, a **number means enforce that limit** and **`null` means
+skip that one comparison**. Use bare `null`, not the string `"null"` or zero.
+The snippets below show selected entries: edit those entries in your existing
+JSON file and keep the rest of the file. These examples do not change firmware
+checks or make missing/invalid telemetry acceptable.
+
+**Example 1: stop RC message gaps from triggering the Python RC timeout**
+
+```json
+{
+  "rc_timeout_s": null
+}
+```
+
+With `0.5`, an RC sample older than half a second loses authorization. With
+`null`, the Python gate does not expire that sample: after a valid LOW-to-HIGH
+transition, the last HIGH remains authorized even if RC messages stop. Receiving
+LOW or invalid RC input still stops the maneuver. Starting with HIGH alone still
+does not start it. Other checks can still stop the maneuver.
+
+For the ground-test command that uses `--no-straight-flight`, the JSON is ignored.
+Add the override to that command instead:
+
+```bash
+ros2 run ros2_sid run_mission_HITL.py --interface dds \
+  --no-straight-flight --rc-timeout null --wait-timeout 180 \
+  --command-log "$RUN/ground-commands.csv"
+```
+
+**Example 2: skip airspeed settling, but keep the airspeed envelope**
+
+```json
+{
+  "airspeed_m_s": 23,
+  "airspeed_tolerance_m_s": null,
+  "min_airspeed_m_s": 20,
+  "max_airspeed_m_s": 30
+}
+```
+
+The commanded target is still 23 m/s. With tolerance `2`, airspeed must be
+between 21 and 25 m/s while settling. With tolerance `null`, an airspeed of
+26 m/s no longer blocks settling on that criterion. All other settling checks
+and dwell still apply. Once READY/ACTIVE, airspeed below 20 or above 30 m/s
+still triggers an envelope stop.
+
+**Example 3: skip all three configurable airspeed checks**
+
+```json
+{
+  "airspeed_m_s": 23,
+  "airspeed_tolerance_m_s": null,
+  "min_airspeed_m_s": null,
+  "max_airspeed_m_s": null
+}
+```
+
+The target remains 23 m/s, but neither airspeed settling error nor the lower/upper
+airspeed limits block the maneuver. Airspeed telemetry must still be present,
+fresh, and finite. The separate groundspeed requirement also remains. Do not set
+`airspeed_m_s` itself to `null`: it is a command target, not an optional check.
+
+**Example 4: skip bank settling, but keep the bank envelope**
+
+```json
+{
+  "bank_tolerance_deg": null,
+  "max_bank_deg": 35
+}
+```
+
+With tolerance `5`, a 10-degree bank prevents settling. With tolerance `null`,
+it no longer blocks settling on bank angle. A bank above 35 degrees still stops
+the maneuver in READY/ACTIVE. Setting `max_bank_deg` to `null` as well would skip
+that envelope check too. The two settings apply at different stages.
+
+**Example 5: remove the coordinator's duration cap**
+
+```json
+{
+  "max_duration_s": null
+}
+```
+
+With `30`, the coordinator rejects a planned 45-second maneuver before setup.
+With `null`, that particular duration check accepts it. The experiment still ends
+at its own configured duration; this does not create an unlimited maneuver.
+
+To restore any check, replace `null` with its numeric limit and restart the
+mission. Keep required settings such as `telemetry_timeout_s`, `state_timeout_s`,
+`setup_timeout_s`, `recovery_timeout_s`, and `dwell_s` numeric. `course_deg: null`
+is the exception to the skip-check meaning: it captures the current course as
+the command target. There is no `armed: null` option.
 
 ## Start the connections
 
@@ -613,6 +753,7 @@ The simple command above is the normal workflow. Only add these when needed:
 | `--straight-flight /work/path/to/settings.json` | Override the installed navigation settings |
 | `--rc-source dds` | Read `/ap/rcin` instead of `/mavros/rc/in`; navigation still needs MAVROS |
 | `--rc-channel N` | Use a different one-based RC channel |
+| `--rc-timeout 0.5` / `--rc-timeout null` | Override JSON RC freshness with a timeout in seconds or disable sample-age checks |
 | `--no-straight-flight` | Disable navigation coordination and automatic LOITER recovery |
 
 Do not combine `--straight-flight` with `--no-straight-flight`. If you choose DDS

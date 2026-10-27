@@ -6,6 +6,7 @@ import pytest
 
 rclpy = pytest.importorskip("rclpy")
 from ros2_sid.surface_mission import SurfaceMission
+from ros2_sid.straight_flight import FlightPhase
 
 
 @pytest.fixture
@@ -248,7 +249,7 @@ def test_clock_loss_during_straight_setup_stops(node, monkeypatch):
     from unittest.mock import Mock
 
     monkeypatch.setattr("ros2_sid.surface_mission.time.monotonic", lambda: 100.0)
-    node.straight = Mock(owned=True, phase="SETTLING")
+    node.straight = Mock(owned=True, phase=FlightPhase.SETTLING)
     node.tick()
     assert node.failed and node.stopping == 100.0
     node.straight.request_stop.assert_called_once_with(100.0)
