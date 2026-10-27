@@ -20,7 +20,7 @@
   "max_altitude_error_m": 30,
   "max_course_error_deg": 40,
   "max_duration_s": 30,
-  "recovery_mode": "LOITER",
+  "recovery_mode": "GUIDED",
   "min_airspeed_m_s": 20,
   "max_airspeed_m_s": 30
 }

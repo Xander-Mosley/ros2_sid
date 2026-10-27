@@ -54,7 +54,7 @@ def add_navigation_arguments(parser: argparse.ArgumentParser) -> None:
     navigation.add_argument(
         "--no-straight-flight",
         action="store_true",
-        help="Disable navigation coordination and LOITER recovery; publish DDS excitation only",
+        help="Disable navigation coordination and automatic recovery; publish DDS excitation only",
     )
 
 

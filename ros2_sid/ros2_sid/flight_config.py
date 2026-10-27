@@ -103,8 +103,8 @@ def load_straight_flight_config(path):
     course = config.get("course_deg")
     if course is not None and (not math.isfinite(course) or not 0 <= course < 360):
         raise ValueError("course_deg must be null or in [0,360)")
-    if config.get("recovery_mode") != "LOITER":
-        raise ValueError("This coordinator requires explicit recovery_mode LOITER")
+    if config.get("recovery_mode") not in ("LOITER", "GUIDED"):
+        raise ValueError("recovery_mode must be GUIDED or LOITER")
     if (
         (
             config["min_airspeed_m_s"] is not None

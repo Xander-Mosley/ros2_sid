@@ -1,7 +1,8 @@
 """Optional MAVROS straight-flight coordination around DDS surface excitation.
 
 COMMAND_LONG altitude is relative to home in this ArduPlane fork. Course is true
-north clockwise; MAVROS local velocity is ENU. No arming or GUIDED request is sent.
+north clockwise; MAVROS local velocity is ENU. Setup never arms or selects GUIDED.
+GUIDED recovery briefly enters LOITER before restoring the original GUIDED target.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -40,6 +42,25 @@ class FlightPhase(Enum):
     RETURNING = "RETURNING"
     RECOVERY = "RECOVERY"
     DONE = "DONE"
+
+
+class RecoveryStage(Enum):
+    """Progress of the temporary LOITER / restored GUIDED handoff."""
+
+    IDLE = "IDLE"
+    WAIT_LOITER = "WAIT_LOITER"
+    WAIT_GUIDED = "WAIT_GUIDED"
+    COMPLETE = "COMPLETE"
+
+
+@dataclass(frozen=True)
+class GuidedTarget:
+    """A position target echoed by this firmware in MAV_FRAME_GLOBAL (AMSL)."""
+
+    latitude: float
+    longitude: float
+    altitude: float
+    coordinate_frame: int = 0
 
 
 class StraightFlight:
@@ -81,6 +102,13 @@ class StraightFlight:
         self.position: tuple[float, float] | None = None
         self.last_event = -math.inf
         self.mode_requested = False
+        self.target_stream_requested = False
+        self.target_stream_started = -math.inf
+        self.target_stream_ready = False
+        self.observed_guided_target: GuidedTarget | None = None
+        self.saved_guided_target: GuidedTarget | None = None
+        self.recovery_stage = RecoveryStage.IDLE
+        self.recovery_override_reason = ""
         self.global_position: tuple[float, float] | None = None
         self.global_position_time = -math.inf
         self.recovery_target: tuple[float, float] | None = None
@@ -131,6 +159,22 @@ class StraightFlight:
     def on_state(self, msg: State) -> None:
         """Retain vehicle authority telemetry and local receipt time."""
         self.state, self.state_time = msg, time.monotonic()
+        # Latch observed operator/failsafe takeover even if another state arrives
+        # before the timer tick. Same-mode operator intent is not observable here.
+        if self.config["recovery_mode"] == "GUIDED" and self.phase in (
+            FlightPhase.RETURNING, FlightPhase.RECOVERY
+        ):
+            allowed_modes = (
+                {"GUIDED"} if self.recovery_stage == RecoveryStage.IDLE
+                else {"GUIDED", "LOITER"}
+            )
+            if (
+                not msg.connected or msg.system_status not in (3, 4)
+                or msg.mode not in allowed_modes
+            ):
+                self.recovery_override_reason = (
+                    f"Yielded to vehicle mode {msg.mode}, system status {msg.system_status}"
+                )
 
     def on_output(self, msg: ControlSurfaceOutput) -> None:
         """Retain coherent applied-output and aircraft-response telemetry."""
@@ -156,9 +200,24 @@ class StraightFlight:
 
     def on_recovery_target(self, msg: GlobalPositionTarget) -> None:
         """Observe the firmware navigation target, independently of command ACKs."""
+        self.observed_guided_target = None
         if math.isfinite(msg.latitude) and math.isfinite(msg.longitude):
             self.recovery_target = (msg.latitude, msg.longitude)
             self.recovery_target_time = time.monotonic()
+        # The local Plane firmware echoes absolute altitude in MAV_FRAME_GLOBAL.
+        # Do not silently interpret relative/terrain altitude as AMSL, or use a
+        # velocity-only target whose position bits are ignored.
+        if (
+            msg.coordinate_frame == 0
+            and not (msg.type_mask & 7)
+            and all(math.isfinite(v) for v in (msg.latitude, msg.longitude, msg.altitude))
+            and -90 <= msg.latitude <= 90
+            and -180 <= msg.longitude <= 180
+            and (msg.latitude, msg.longitude) != (0.0, 0.0)
+        ):
+            self.observed_guided_target = GuidedTarget(
+                float(msg.latitude), float(msg.longitude), float(msg.altitude)
+            )
 
     def on_global_position(self, msg: NavSatFix) -> None:
         """Retain a valid global fix for the test-start recovery location."""
@@ -241,6 +300,14 @@ class StraightFlight:
             position_enu_m=self.position,
             recovery_start_location=self.start_location,
             recovery_target_latlon=self.recovery_target,
+            saved_guided_target=(
+                asdict(self.saved_guided_target) if self.saved_guided_target else None
+            ),
+            observed_guided_target=(
+                asdict(self.observed_guided_target) if self.observed_guided_target else None
+            ),
+            recovery_stage=self.recovery_stage.value,
+            recovery_confirmed=self.recovery_stage == RecoveryStage.COMPLETE,
             bank_deg=math.degrees(self.output.attitude[0]) if self.output else None,
             airspeed_m_s=float(self.output.airspeed) if self.output else None,
             groundspeed_m_s=self.speed,
@@ -270,6 +337,11 @@ class StraightFlight:
         if not within_limit(duration, self.config["max_duration_s"]):
             raise RuntimeError("Maneuver exceeds straight-flight maximum duration")
         self.start_location = None
+        self.saved_guided_target = None
+        self.target_stream_requested = self.target_stream_ready = False
+        self.target_stream_started = -math.inf
+        self.recovery_stage = RecoveryStage.IDLE
+        self.recovery_override_reason = ""
         self.started = now
         self.failed = self.owned = self.mode_requested = False
         self.dwell_start = None
@@ -313,6 +385,9 @@ class StraightFlight:
                 return False
             if self.global_position == (0.0, 0.0):
                 raise RuntimeError("Zero latitude/longitude is reserved for loiter-here commands")
+            if self.config["recovery_mode"] == "GUIDED":
+                if not self.capture_guided_target(now):
+                    return False
             self.start_location = (*self.global_position, self.altitude)
             self.target_course = self.config.get("course_deg")
             if self.target_course is None:
@@ -339,6 +414,8 @@ class StraightFlight:
                     ),
                 ),
             ]
+            if self.config["recovery_mode"] == "GUIDED":
+                self.commands.pop(0)  # Target stream was requested before capture.
             self.transition(FlightPhase.COMMANDING)
         if not self.authorized(now) or not self.fresh(now):
             raise RuntimeError("Straight-flight authorization/telemetry lost")
@@ -409,7 +486,9 @@ class StraightFlight:
         return self.phase == FlightPhase.READY
 
     def recover(self, now: float) -> bool:
-        """After zero excitation, command LOITER about the saved setup-start fix."""
+        """Restore GUIDED loiter, or retain explicit legacy LOITER recovery."""
+        if self.config["recovery_mode"] == "GUIDED":
+            return self.recover_guided(now)
         from mavros_msgs.srv import CommandInt
 
         if self.phase == FlightPhase.DONE:
@@ -530,5 +609,165 @@ class StraightFlight:
                     FlightPhase.DONE, "LOITER request rejected; operator intervention required"
                 )
                 return True
+        self.emit(now)
+        return False
+
+    def capture_guided_target(self, now: float) -> bool:
+        """Request target echoes before changing navigation and capture one fresh target."""
+        from mavros_msgs.srv import CommandLong
+
+        if not self.target_stream_requested:
+            if not self.command_client.service_is_ready():
+                return False
+            self.future = self.command_client.call_async(
+                CommandLong.Request(command=511, param1=87.0, param2=200000.0)
+            )
+            self.target_stream_started = now
+            self.target_stream_requested = True
+            self.reason = "Waiting for original GUIDED target telemetry"
+            self.emit(now, True)
+            return False
+        if not self.target_stream_ready:
+            if not self.future.done():
+                if now - self.target_stream_started > 5:
+                    raise RuntimeError("Target telemetry request ACK timeout")
+                return False
+            result = self.future.result()
+            self.future = None
+            if not result or not result.success or result.result != 0:
+                raise RuntimeError("Target telemetry request rejected")
+            self.target_stream_ready = True
+        if (
+            self.observed_guided_target is None
+            or self.recovery_target_time <= self.target_stream_started
+            or now - self.recovery_target_time > self.config["telemetry_timeout_s"]
+        ):
+            return False
+        self.saved_guided_target = self.observed_guided_target
+        return True
+
+    def recovery_failure(self, reason: str) -> bool:
+        """End without issuing further navigation commands after an unconfirmed handoff."""
+        self.failed = True
+        self.transition(FlightPhase.DONE, f"{reason}; operator intervention required")
+        return True
+
+    def recover_guided(self, now: float) -> bool:
+        """Clear persistent overrides via LOITER, then restore the pre-setup waypoint."""
+        from mavros_msgs.srv import CommandInt, CommandLong
+
+        if self.phase == FlightPhase.DONE:
+            return True
+        if not self.owned:
+            self.transition(FlightPhase.DONE, "No navigation ownership")
+            return True
+        state_fresh = (
+            self.state is not None
+            and now - self.state_time <= self.config["state_timeout_s"]
+        )
+        if self.recovery_override_reason:
+            self.transition(FlightPhase.DONE, self.recovery_override_reason)
+            return True
+        allowed_modes = (
+            {"GUIDED"} if self.recovery_stage == RecoveryStage.IDLE
+            else {"GUIDED", "LOITER"}
+        )
+        if state_fresh and (
+            not self.state.connected
+            or self.state.system_status not in (3, 4)
+            or self.state.mode not in allowed_modes
+        ):
+            self.transition(
+                FlightPhase.DONE,
+                f"Yielded to vehicle mode {self.state.mode}, system status {self.state.system_status}",
+            )
+            return True
+        if now - self.return_started > self.config["recovery_timeout_s"]:
+            return self.recovery_failure("GUIDED recovery unconfirmed")
+        if self.saved_guided_target is None:
+            return self.recovery_failure("Missing original GUIDED target")
+        if not state_fresh:
+            return False
+        zero = (
+            self.output is not None
+            and self.output_time > self.return_started
+            and now - self.output_time <= self.config["telemetry_timeout_s"]
+            and all(abs(v) < 1e-6 for v in self.output.applied)
+            and all(v == 0 for v in self.output.delta[: self.output.count])
+        )
+        if self.recovery_stage == RecoveryStage.IDLE:
+            if not zero or not self.command_client.service_is_ready():
+                return False
+            try:
+                self.future = self.command_client.call_async(
+                    CommandLong.Request(command=17)
+                )
+            except Exception as exc:
+                return self.recovery_failure(f"LOITER service failed: {exc}")
+            self.future_started = now
+            self.recovery_stage = RecoveryStage.WAIT_LOITER
+            self.transition(
+                FlightPhase.RECOVERY,
+                "Zero excitation confirmed; requesting temporary LOITER to clear overrides",
+            )
+            return False
+        if not self.future.done():
+            return False
+        try:
+            result = self.future.result()
+        except Exception as exc:
+            return self.recovery_failure(f"Recovery service failed: {exc}")
+        if not result or not result.success or (
+            self.recovery_stage == RecoveryStage.WAIT_LOITER and result.result != 0
+        ):
+            return self.recovery_failure("Recovery command rejected")
+        if self.recovery_stage == RecoveryStage.WAIT_LOITER:
+            if self.state.mode != "LOITER" or self.state_time <= self.future_started:
+                return False
+            if not zero or not self.loiter_client.service_is_ready():
+                return False
+            target = self.saved_guided_target
+            try:
+                self.future = self.loiter_client.call_async(
+                    CommandInt.Request(
+                        command=192,  # MAV_CMD_DO_REPOSITION
+                        frame=target.coordinate_frame,  # Absolute altitude, as echoed.
+                        param1=-1.0,  # Default speed after clearing the speed override.
+                        param2=1.0,  # CHANGE_MODE: LOITER -> GUIDED.
+                        param3=0.0,  # Firmware default loiter radius.
+                        param4=0.0,
+                        x=round(target.latitude * 1e7),
+                        y=round(target.longitude * 1e7),
+                        z=target.altitude,
+                    )
+                )
+            except Exception as exc:
+                return self.recovery_failure(f"GUIDED reposition service failed: {exc}")
+            self.future_started = now
+            self.recovery_stage = RecoveryStage.WAIT_GUIDED
+            self.transition(
+                FlightPhase.RECOVERY,
+                "Temporary LOITER confirmed; restoring original GUIDED target",
+            )
+            return False
+        target = self.observed_guided_target
+        saved = self.saved_guided_target
+        if (
+            self.state.mode == "GUIDED"
+            and self.state_time > self.future_started
+            and target is not None
+            and self.recovery_target_time > self.future_started
+            and now - self.recovery_target_time <= self.config["telemetry_timeout_s"]
+            and target.coordinate_frame == saved.coordinate_frame
+            and abs(target.latitude - saved.latitude) < 1e-6
+            and abs(target.longitude - saved.longitude) < 1e-6
+            and abs(target.altitude - saved.altitude) <= 0.5
+        ):
+            self.recovery_stage = RecoveryStage.COMPLETE
+            self.transition(
+                FlightPhase.DONE,
+                "Original GUIDED target confirmed; aircraft returning to loiter (arrival not confirmed)",
+            )
+            return True
         self.emit(now)
         return False

@@ -47,7 +47,7 @@ the mission directly rather than the default straight-flight launcher:
 
    `RUN` is the recording directory selected in the manual setup below.
    `--no-straight-flight` skips the altitude, airspeed, settling and navigation
-   checks from `straight_flight_sitl.json`, and disables automatic LOITER recovery.
+   checks from `straight_flight_sitl.json`, and disables automatic navigation recovery.
    The RC gate, clock synchronization and firmware acknowledgement still apply.
 4. Use `list` and `select N`, then switch LOW to HIGH to start. Confirm the
    console reports firmware-confirmed ACTIVE excitation and verify surface motion.
@@ -146,7 +146,7 @@ The existing chirps/multisines keep menu numbers 0–5. Each doublet uses the le
 1 Hz natural frequency, 50 Hz samples, and 15 seconds total. The nominal pulse
 width is 0.25 s; the legacy sample rounding and zero boundary samples are retained.
 Amplitude is **0.10 normalized surface fraction**, not radians. Existing firmware
-limits, RC stop, timeout protection and return-to-start recovery still apply.
+limits, RC stop, timeout protection and configured recovery still apply.
 
 For an optional session label:
 
@@ -222,38 +222,45 @@ The launcher refuses an already-owned serial device. No Cube flashing is perform
 The detailed commands below remain available when diagnosing individual services.
 
 
-### Return to the test-start location
+### Recovery to the original GUIDED loiter target
 
-With the default straight-flight coordinator, each maneuver saves the aircraft's
-latitude, longitude, and altitude above home **before straight-flight setup begins**.
-After completion, `stop`, `quit`, Ctrl-C, or an HITL RC stop, it:
+The default `"recovery_mode": "GUIDED"` saves the existing GUIDED navigation
+target before sending straight-flight commands. This is the loiter waypoint's
+latitude, longitude, and absolute altitude, not home or the aircraft's position
+at maneuver start. Setup waits for a valid fresh target echo; it never guesses
+where the original loiter center was.
 
-1. Disables excitation and waits for observed zero applied perturbation.
-2. Commands LOITER centered on that saved location, at the saved altitude.
-3. Confirms LOITER mode and a fresh navigation-target echo matching the saved coordinates.
+After completion, `stop`, `quit`, Ctrl-C, or an HITL RC stop:
 
-The aircraft flies back and circles the saved point using its configured loiter
-radius. `DONE` confirms the return target was accepted; it does **not** mean the
-aircraft has already arrived. Keep recording to capture the return flight.
-Operator mode changes and failsafes still take precedence; disarming alone does
-not revoke excitation or straight-flight navigation ownership. A new
-maneuver captures a new start point. `--no-straight-flight` disables this recovery.
+1. Disable excitation and wait for fresh zero applied perturbation.
+2. Briefly select LOITER to clear the persistent straight-flight overrides.
+3. After LOITER is confirmed, restore the saved waypoint with `DO_REPOSITION`
+   and return to GUIDED.
+4. Confirm fresh GUIDED state and a matching latitude/longitude/altitude echo.
 
-**Setup requirement:** rebuild ArduPlane from this updated repository (including
-Cube Simulation-on-Hardware firmware for HITL), rebuild `ros2_sid`, and restart
-MAVROS with `config/surface_excitation/mavros_straight.yaml`. It now enables
-`setpoint_raw` to receive the navigation-target echo. The coordinator requests that
-MAVLink message at 5 Hz automatically. It also requires a fresh global GPS fix
-from `/mavros/global_position/global` before setup can start.
+The final mode is **GUIDED**. `DONE` confirms the navigation handoff, not arrival
+at the loiter circle. The saved waypoint altitude is restored, even if it differs
+from the straight-flight altitude. Firmware-configured loiter radius/direction
+are used; a previous custom radius/direction cannot be recovered from target echoes.
+Keep RC LOW until recovery finishes, then select and use LOW-to-HIGH for another test.
 
-Older firmware ignores the location in this LOITER command and may circle the
-end point; the coordinator reports recovery unconfirmed if its target does not
-match. No hardware is flashed automatically by this change. The eight-second
-`recovery_timeout_s` bounds command/target confirmation, not the flight back.
-Saved coordinates and target echoes are recorded in `/sid/straight_flight` and
-the command log's `.straight.jsonl` file. See the
-[return-to-start verification report](return_to_start_verification.md) for tests
-and recorded tracks.
+MAVROS must enable `setpoint_raw` (included in `mavros_straight.yaml`). The mission
+requests target telemetry at 5 Hz before capture. Missing/invalid target telemetry
+blocks setup until its timeout. The existing `recovery_timeout_s` covers the entire
+handoff; failure leaves the current mode alone and reports recovery unconfirmed.
+Observed operator/failsafe takeover has priority. State telemetry cannot distinguish
+an operator selecting the same expected LOITER/GUIDED mode from our own transition.
+
+No firmware changes are needed for this sequence on the inspected fork. Rebuild
+or install the ROS changes, and restart the mission or launcher to load the updated
+configuration. `--no-straight-flight` disables navigation and recovery completely.
+
+For the earlier behavior, explicitly set `"recovery_mode": "LOITER"`: return to
+the aircraft's setup-start location and finish in LOITER. The
+[return-to-start verification report](return_to_start_verification.md) describes
+that earlier behavior, not flight validation of the new GUIDED sequence. See the
+[recovery reference](straight_flight_plan.md#default-recovery-restore-the-original-guided-loiter-target)
+for confirmation criteria, event fields, and limitations.
 
 
 The simulated HITL procedure below uses the Cube's **Simulation on Hardware**
@@ -283,7 +290,8 @@ the test. Missing initial RC input blocks activation. If an RC timeout is enable
 stale input also stops the test; with `rc_timeout_s: null`, message silence alone
 does not revoke the last valid HIGH. The console `start` command and `--autostart` cannot start HITL tests.
 
-**Switch LOW:** stops the test signal, then returns the aircraft to LOITER.
+**Switch LOW:** stops the test signal, then briefly enters LOITER and restores
+the original waypoint in GUIDED with the default recovery setting.
 It **does not stop the motor or disarm the aircraft**. If you change flight mode
 or a failsafe takes over, that takes priority. Keep the switch low until recovery
 finishes; raise it again to start another test.
@@ -704,11 +712,13 @@ Use the actual `list` output if you have changed the library. Then:
 2. Raise the RC switch **HIGH**. The aircraft settles into straight flight, then
    starts the maneuver. Do not type `start`; HITL uses the RC switch.
 3. Let the maneuver finish, or switch **LOW** to stop it.
-4. Keep LOW and wait for zero excitation and LOITER confirmation. If an operator
+4. Keep LOW and wait for zero excitation, the temporary LOITER transition, and
+   final GUIDED target confirmation. If an operator
    mode change or failsafe takes over, that takes priority.
 5. Type `quit` to close the publisher. Keep recording until recovery is complete.
 
-To run another maneuver, return the simulated aircraft to GUIDED, keep RC LOW,
+To run another maneuver, confirm recovery finished in GUIDED (select GUIDED
+manually if using legacy LOITER recovery), keep RC LOW,
 launch the publisher again and select the next maneuver. **Use a different
 command-log filename for each launch** (for example `roll-multisine-commands.csv`):
 the direct ROS command overwrites an existing command CSV. The bag recorder can
@@ -754,7 +764,7 @@ The simple command above is the normal workflow. Only add these when needed:
 | `--rc-source dds` | Read `/ap/rcin` instead of `/mavros/rc/in`; navigation still needs MAVROS |
 | `--rc-channel N` | Use a different one-based RC channel |
 | `--rc-timeout 0.5` / `--rc-timeout null` | Override JSON RC freshness with a timeout in seconds or disable sample-age checks |
-| `--no-straight-flight` | Disable navigation coordination and automatic LOITER recovery |
+| `--no-straight-flight` | Disable navigation coordination and automatic navigation recovery |
 
 Do not combine `--straight-flight` with `--no-straight-flight`. If you choose DDS
 RC, also add `--rc-source dds` to the RC plotting command. See

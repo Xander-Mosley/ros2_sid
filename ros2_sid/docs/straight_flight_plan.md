@@ -4,7 +4,7 @@
 > `straight_flight_sitl.json` automatically. MAVROS is required: defaults target
 > 100 m above home, 23 m/s, and the current ground course, then wait for settling.
 > `--straight-flight PATH` overrides these settings; `--no-straight-flight`
-> explicitly disables navigation coordination and automatic LOITER recovery.
+> explicitly disables navigation coordination and automatic navigation recovery.
 > The shared HITL DDS entrypoint has the same default and retains its RC gate;
 > the packaged settings remain SITL examples, not validated physical-flight settings.
 > The legacy trajectory interface is unchanged. Rebuild/restart the ROS service
@@ -49,7 +49,7 @@ Take off and enter GUIDED using the existing operator workflow. The coordinator
 never arms, takes off, or forces GUIDED. Use `list`, `select N`, and `start` to run
 the selected legacy-layout CSV. Neither `--experiment` nor `--mission-plan` is
 required. Straight-flight coordination is enabled by default. Use `--no-straight-flight`
-for excitation-only behavior without navigation targets or LOITER recovery.
+for excitation-only behavior without navigation targets or recovery.
 
 The example configuration is for SITL: 100 m above home, 23 m/s airspeed, captured
 current ground course, 0.25 seconds of continuous settling. Copy the JSON to
@@ -126,10 +126,10 @@ than vehicle wall-clock time. None of these settings changes a firmware watchdog
 |---|---|---|---|
 | `rc_timeout_s` | `null` | Maximum valid RC sample age in seconds for HITL authorization. Numeric values must be greater than 0 and at most 2. A stale sample revokes authorization and requires another LOW-to-HIGH transition. | Skip RC age checks only. Valid input and LOW-to-HIGH activation remain required; LOW or invalid input still stops. The last valid HIGH remains authorized if messages stop. |
 | `setup_timeout_s` | `90` | Positive seconds from setup start, covering WAITING, COMMANDING, SETTLING, and READY until ACTIVE. Exceeding it aborts setup. It is not reset on each phase transition. | Not allowed. |
-| `recovery_timeout_s` | `8` | Positive seconds from stop/recovery initiation to confirm the navigation handoff. Includes waiting for zero excitation and LOITER confirmation. Expiry reports recovery unconfirmed; it is not a deadline for physically arriving at the saved location. | Not allowed. |
+| `recovery_timeout_s` | `8` | Positive seconds from stop/recovery initiation to confirm the navigation handoff. Includes waiting for zero excitation, temporary LOITER, then restored GUIDED mode and target confirmation (or final LOITER in legacy mode). Expiry reports recovery unconfirmed; it is not a deadline for physically arriving at the saved location. | Not allowed. |
 | `telemetry_timeout_s` | `1` | Positive maximum receipt age in seconds for output, velocity, and altitude telemetry. Also applies to the setup GPS fix, recovery target echo, and zero-output confirmation. Missing or stale telemetry blocks setup or prevents confirmation; loss after setup proceeds aborts the maneuver. | Not allowed. |
 | `state_timeout_s` | `3` | Positive maximum age in seconds of `/mavros/state`, used for navigation authorization and recovery decisions. A recent state must still satisfy the separate connection, mode, and system-status requirements. | Not allowed. |
-| `recovery_mode` | `"LOITER"` | Required string; only `LOITER` is accepted. After zero excitation is confirmed, request LOITER at the position/altitude saved before setup, if navigation authority is still available. Operator/failsafe mode changes take priority. | Not allowed; other mode strings are also rejected. |
+| `recovery_mode` | `"GUIDED"` | `GUIDED`: save the original GUIDED waypoint before setup, briefly enter LOITER to clear overrides, then restore that waypoint in GUIDED. `LOITER`: retain the earlier behavior of circling the aircraft's setup-start position in LOITER. Both require zero excitation before recovery commands and yield to observed operator/failsafe takeover. | Not allowed; only `GUIDED` and `LOITER` are accepted. |
 
 RC timeout precedence is explicit `--rc-timeout` override, then JSON, then the
 0.5-second mission fallback if the key is absent. `--rc-timeout null` explicitly
@@ -172,8 +172,9 @@ flowchart TD
     D --> E[Sample maneuver CSV; fixed navigation targets]
     E --> F[Completion, stop, quit, or interrupt]
     F --> G[Repeated DDS disable; observe zero applied perturbation]
-    G --> H[Request LOITER at saved start if still healthy GUIDED]
-    H --> I[Confirm vehicle mode; finish]
+    G --> H[Request temporary LOITER to clear overrides]
+    H --> I[Confirm LOITER; restore saved waypoint in GUIDED]
+    I --> J[Confirm GUIDED and original target; finish]
 ```
 
 Phases use the `FlightPhase` enum: IDLE, WAITING, COMMANDING, SETTLING, READY,
@@ -196,22 +197,26 @@ publishing and adds a bounded navigation handoff for the new straight-flight opt
    or immediate removal when authorization is lost.
 3. Wait for a fresh `/ap/sid/output` sample received after stopping with zero applied
    normalized excitation and zero physical PWM contribution.
-4. If still connected, healthy (STANDBY or ACTIVE), and GUIDED, request LOITER at the saved setup-start
-   location once. Confirm the actual `/mavros/state` mode and a fresh matching
-   `/mavros/setpoint_raw/target_global` echo; a service response alone is insufficient.
-5. If the operator/failsafe already changed mode or entered a critical/emergency state, yield without sending
-   another mode request. If confirmation is unavailable for eight seconds in the
-   example configuration, report failure and the need for operator intervention.
+4. With `recovery_mode: "GUIDED"`, request temporary LOITER while still connected,
+   healthy, and GUIDED. Wait for an accepted command and a fresh LOITER state.
+5. Send `MAV_CMD_DO_REPOSITION` to the saved pre-setup GUIDED waypoint with the
+   change-mode flag. Wait for fresh GUIDED state and a matching target echo,
+   including altitude. A service response alone does not confirm recovery.
+6. If the operator/failsafe selects another mode or reports unhealthy state, yield
+   without further recovery commands. If the handoff exceeds `recovery_timeout_s`,
+   report recovery unconfirmed and leave the current mode alone.
 
 `stop` returns to the console after recovery; `quit` and Ctrl-C exit after the
-handoff. Starting another segment requires the operator to select GUIDED again.
+handoff. Successful default recovery ends in GUIDED, ready for a new request.
+HITL still requires another LOW-to-HIGH switch transition. Explicit `LOITER`
+recovery ends in LOITER and requires the operator to select GUIDED again.
 Keep MAVROS, DDS, and recording running until recovery is complete. Do not stop
 the container or simulator first. A command already sent cannot be recalled.
 
 SIGKILL, process/host failure, or loss of both communication paths cannot guarantee
-LOITER recovery. Firmware timeout removes stale excitation, but a persistent
+navigation recovery. Firmware timeout removes stale excitation, but a persistent
 GUIDED course target may remain. Existing vehicle failsafes and operator authority
-remain essential. Recovery LOITER is not a landing or a disarm command.
+remain essential. Recovery is not a landing or a disarm command.
 
 ## ROS commands to physical surfaces
 
@@ -282,7 +287,77 @@ between settling and active abort checks. The current source configuration uses
 a 100 m target, 23 m/s airspeed, and a 0.25-second dwell. Historical SITL verification
 used a three-second dwell; its results are not validation of these edited settings.
 
-## Implemented revision: return to the maneuver start
+## Default recovery: restore the original GUIDED loiter target
+
+The source JSON now uses `"recovery_mode": "GUIDED"`. Before any speed, altitude,
+or course command, the coordinator requests `POSITION_TARGET_GLOBAL_INT` at 5 Hz
+and waits for a fresh `/mavros/setpoint_raw/target_global` sample. It captures the
+waypoint latitude, longitude, and **absolute altitude above mean sea level**.
+It does not substitute home or the aircraft's current position. The local Plane
+firmware echoes `MAV_FRAME_GLOBAL` (0); ignored position components, other altitude
+frames, nonfinite/out-of-range positions, and the unset `(0, 0)` target are rejected.
+Without a valid target, setup waits until `setup_timeout_s` and sends no navigation
+commands. MAVROS must enable `setpoint_raw`, as in `mavros_straight.yaml`.
+
+After zero applied excitation is confirmed, `NAV_LOITER_UNLIM` briefly selects
+LOITER at the current position. The mode transition clears the persistent course,
+altitude-slew, airspeed, and temporary attitude overrides. After LOITER is observed,
+`DO_REPOSITION` restores the saved coordinates and absolute altitude and selects
+GUIDED. The original waypoint altitude is preserved even when it differs from
+`altitude_relative_m`. The normal configured firmware loiter radius/direction
+are used; the target echo does not expose a previous custom radius/direction.
+
+`DONE` requires a fresh GUIDED state and a fresh post-command target echo within
+`1e-6` degrees horizontally and 0.5 m vertically, plus successful service completion.
+This confirms the handoff, not arrival at the loiter circle. The eight-second
+example recovery budget covers the entire sequence, including zero confirmation.
+Commands are sent once per stage. Rejection, service failure, or timeout reports
+failure without blindly retrying or claiming restoration.
+
+Recovery stages are `IDLE`, `WAIT_LOITER`, `WAIT_GUIDED`, and `COMPLETE` within the
+existing flight phases. Events record `saved_guided_target`,
+`observed_guided_target`, `recovery_stage`, and `recovery_confirmed`. Offline analysis
+checks the intermediate LOITER and final GUIDED restoration while retaining
+support for historical LOITER logs. `recovery_start_location` remains the aircraft's
+setup-start location for historical analysis; it is not the GUIDED destination.
+
+Observed operator/failsafe changes to other modes or unhealthy/disconnected state
+stop the sequence. Standard state telemetry cannot distinguish an operator
+selecting the same expected LOITER/GUIDED mode from our own transition, nor prevent
+a mode-change race after a command has been sent. Recovery never forces GUIDED
+from an observed RTL, MANUAL, or other unexpected mode.
+
+This path changes ROS coordination only; no ArduPilot source or firmware rebuild
+is required for this change on the inspected fork. Rebuild/install the ROS package
+and restart the mission to load the changed default. Historical return-to-start
+SITL results below apply to `LOITER`, not to the new GUIDED sequence. The new path
+has mocked ROS regression coverage and the airborne SITL evidence below; physical
+flight validation is still required.
+
+Validation on 2026-10-27: 130 configuration, coordinator, analysis, and ROS mission
+tests passed. A separate disarmed SITL command check applied speed/altitude/course
+overrides, observed LOITER, and restored GUIDED with the original waypoint and
+684 m AMSL altitude (distinct from both aircraft position and the 100 m relative
+straight-flight target). This checks the firmware command/target handoff, not
+an airborne return or a complete ROS-to-aircraft flight. The existing SITL binary
+required the host runtime because the ROS image lacked GLIBC 2.38.
+
+### Airborne SITL recovery verification (2026-10-27)
+
+The follow-up run passed 141 regression tests and two airborne cases: normal
+completion and an early console stop. Both restored the original GUIDED waypoint
+and altitude, then remained within 130 m of it for 20 seconds. Recorded handoff
+times were 0.514 s and 0.433 s; the standard ROS-bag validator passed both with zero
+mismatched command/output frames. These results cover simulation, not physical flight.
+
+See the [validation report and plots](../../../sid_results/guided_recovery_20261027_validation/README.md),
+including [ground tracks](../../../sid_results/guided_recovery_20261027_validation/plots/ground_tracks.png)
+and the [mode/recovery timeline](../../../sid_results/guided_recovery_20261027_validation/plots/recovery_timeline.png).
+
+## Legacy option: LOITER at the maneuver start
+
+The following behavior applies only to explicit `"recovery_mode": "LOITER"`.
+
 
 The shared SITL/HITL coordinator captures a fresh GPS fix and relative altitude
 before sending its first setup command. Completion and all normal cancellation

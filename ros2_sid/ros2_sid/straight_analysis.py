@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .flight_config import within_limit
+
 
 def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Check each recorded segment's entry dwell, fixed targets, and zero-before-turn."""
@@ -20,7 +22,12 @@ def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         after_done = bool(
             segments and segments[-1][-1]["phase"] == "DONE" and row["phase"] != "DONE"
         )
-        if row["phase"] == "WAITING" or not segments or after_done:
+        new_wait = bool(
+            row["phase"] == "WAITING"
+            and segments
+            and segments[-1][-1]["phase"] != "WAITING"
+        )
+        if new_wait or not segments or after_done:
             segments.append([])
         segments[-1].append(row)
     reports = []
@@ -50,18 +57,13 @@ def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
             c = row["configuration"]
             stable = (
-                abs(row["bank_deg"]) <= c["bank_tolerance_deg"]
-                and abs(
-                    (row["course_deg"] - row["target_course_deg"] + 180) % 360 - 180
-                )
-                <= c["course_tolerance_deg"]
-                and abs(row["altitude_relative_m"] - c["altitude_relative_m"])
-                <= c["altitude_tolerance_m"]
-                and abs(row["airspeed_m_s"] - c["airspeed_m_s"])
-                <= c["airspeed_tolerance_m_s"]
-                and abs(row["climb_m_s"]) <= c["climb_tolerance_m_s"]
+                within_limit(abs(row["bank_deg"]), c["bank_tolerance_deg"])
+                and within_limit(abs((row["course_deg"] - row["target_course_deg"] + 180) % 360 - 180), c["course_tolerance_deg"])
+                and within_limit(abs(row["altitude_relative_m"] - c["altitude_relative_m"]), c["altitude_tolerance_m"])
+                and within_limit(abs(row["airspeed_m_s"] - c["airspeed_m_s"]), c["airspeed_tolerance_m_s"])
+                and within_limit(abs(row["climb_m_s"]), c["climb_tolerance_m_s"])
                 and row.get("rates_rad_s") is not None
-                and max(abs(v) for v in row["rates_rad_s"]) <= c["rate_tolerance_rad_s"]
+                and within_limit(max(abs(v) for v in row["rates_rad_s"]), c["rate_tolerance_rad_s"])
             )
             if not stable:
                 stable_since = None
@@ -104,14 +106,33 @@ def validate_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         recovery_ok = (
             start_target_verified if "recovery_start_location" in final else loiter
         )
+        guided_recovery = final.get("configuration", {}).get("recovery_mode") == "GUIDED"
+        guided_verified = False
+        if guided_recovery:
+            saved_guided = final.get("saved_guided_target")
+            observed_guided = final.get("observed_guided_target")
+            guided_verified = bool(
+                final["phase"] == "DONE"
+                and final.get("vehicle_mode") == "GUIDED"
+                and final.get("recovery_confirmed") is True
+                and final.get("recovery_stage") == "COMPLETE"
+                and saved_guided and observed_guided
+                and saved_guided["coordinate_frame"] == observed_guided["coordinate_frame"] == 0
+                and abs(saved_guided["latitude"] - observed_guided["latitude"]) < 1e-6
+                and abs(saved_guided["longitude"] - observed_guided["longitude"]) < 1e-6
+                and abs(saved_guided["altitude"] - observed_guided["altitude"]) <= 0.5
+                and any(r.get("recovery_stage") == "WAIT_GUIDED" and r.get("vehicle_mode") == "LOITER" for r in segment)
+            )
+            recovery_ok = guided_verified
         reports.append(
             dict(
+                original_guided_target_verified=guided_verified,
                 return_to_start_target_verified=start_target_verified,
                 passed=bool(active)
                 and dwell_ok
                 and fixed_targets
                 and zero_before_turn
-                and loiter
+                and (guided_verified if guided_recovery else loiter)
                 and recovery_ok,
                 active_events=len(active),
                 entry_dwell_verified=dwell_ok,

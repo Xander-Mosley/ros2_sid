@@ -470,3 +470,252 @@ def test_phase_enum_preserves_event_and_log_names(coordinator):
     )
     record = json.loads(Path(f.event_file.name).read_text().splitlines()[-1])
     assert record["phase"] == "SETTLING"
+
+
+@pytest.fixture
+def guided(coordinator):
+    coordinator.config["recovery_mode"] = "GUIDED"
+    return coordinator
+
+
+def target_message(latitude=34.9, longitude=-105.9, altitude=1550.0, **kwargs):
+    fields = dict(latitude=latitude, longitude=longitude, altitude=altitude,
+                  coordinate_frame=0, type_mask=0)
+    fields.update(kwargs)
+    return SimpleNamespace(**fields)
+
+
+def echo(f, now, monkeypatch, **kwargs):
+    monkeypatch.setattr("ros2_sid.straight_flight.time.monotonic", lambda: now)
+    f.on_recovery_target(target_message(**kwargs))
+
+
+def setup_guided(f, monkeypatch):
+    fresh(f, 0)
+    assert not f.step(0, True, False, 10)  # Request stream, no navigation changes.
+    echo(f, 0.1, monkeypatch)
+    fresh(f, 0.1)
+    assert not f.step(0.1, True, False, 10)  # Capture original and send speed.
+    assert f.owned
+
+
+def start_guided_recovery(f, monkeypatch):
+    setup_guided(f, monkeypatch)
+    f.request_stop(1)
+    fresh(f, 1.1)
+    assert not f.recover(1.1)
+    assert f.command_client.call_async.call_args.args[0].command == 17
+
+
+def confirm_loiter(f, monkeypatch):
+    fresh(f, 1.2)
+    f.state.mode = "LOITER"
+    assert not f.recover(1.2)
+    return f.loiter_client.call_async.call_args.args[0]
+
+
+def test_guided_capture_waits_for_target_before_navigation(guided, monkeypatch):
+    from ros2_sid.straight_flight import GuidedTarget
+    f = guided
+    fresh(f, 0)
+    echo(f, -1, monkeypatch)  # Old target is insufficient even if otherwise valid.
+    assert not f.step(0, True, False, 10)
+    fresh(f, 0.1)
+    assert not f.step(0.1, True, False, 10)
+    assert not f.owned and f.saved_guided_target is None
+    assert [c.args[0].command for c in f.command_client.call_async.call_args_list] == [511]
+    echo(f, 0.2, monkeypatch)
+    fresh(f, 0.2)
+    f.step(0.2, True, False, 10)
+    saved = f.saved_guided_target
+    assert saved == GuidedTarget(34.9, -105.9, 1550.0)
+    assert saved.latitude != f.start_location[0]
+    echo(f, 0.3, monkeypatch, latitude=36.0, altitude=2000.0)
+    fresh(f, 0.3)
+    f.step(0.3, True, False, 10)
+    assert f.saved_guided_target == saved
+    f.begin(5, 10)
+    assert f.saved_guided_target is None
+    assert not f.target_stream_requested
+
+
+@pytest.mark.parametrize("fields", [
+    dict(coordinate_frame=3), dict(type_mask=4), dict(latitude=float("nan")),
+    dict(latitude=91), dict(longitude=181), dict(altitude=float("inf")),
+    dict(latitude=0, longitude=0),
+])
+def test_guided_capture_rejects_invalid_target(guided, monkeypatch, fields):
+    fresh(guided, 0)
+    guided.step(0, True, False, 10)
+    echo(guided, 0.1, monkeypatch, **fields)
+    fresh(guided, 0.1)
+    guided.step(0.1, True, False, 10)
+    assert guided.saved_guided_target is None and not guided.owned
+    assert guided.command_client.call_async.call_count == 1
+    fresh(guided, 100)
+    with pytest.raises(RuntimeError, match="setup timeout"):
+        guided.step(100, True, False, 10)
+
+
+def test_guided_zero_then_loiter_then_guided_original_target(guided, monkeypatch):
+    from ros2_sid.straight_flight import RecoveryStage
+    f = guided
+    setup_guided(f, monkeypatch)
+    f.request_stop(1)
+    fresh(f, 1.1)
+    f.output.applied = [0.1, 0, 0]
+    assert not f.recover(1.1)
+    assert f.command_client.call_async.call_count == 2
+    f.output.applied = [0, 0, 0]
+    assert not f.recover(1.1)
+    assert f.recovery_stage == RecoveryStage.WAIT_LOITER
+    assert f.command_client.call_async.call_args.args[0].command == 17
+    f.loiter_client.call_async.assert_not_called()
+    assert not f.recover(1.15)  # ACK alone is not a confirmed mode change.
+    request = confirm_loiter(f, monkeypatch)
+    assert (request.command, request.frame, request.param2) == (192, 0, 1.0)
+    assert (request.x, request.y, request.z) == (349000000, -1059000000, 1550.0)
+    assert f.recovery_stage == RecoveryStage.WAIT_GUIDED
+    fresh(f, 1.3)
+    f.state.mode = "GUIDED"
+    assert not f.recover(1.3)  # Old echo cannot confirm restoration.
+    echo(f, 1.4, monkeypatch)
+    fresh(f, 1.4)
+    assert f.recover(1.4)
+    assert f.recovery_stage == RecoveryStage.COMPLETE and not f.failed
+    assert f.state.mode == "GUIDED"
+    assert f.recover(2)
+    assert f.loiter_client.call_async.call_count == 1
+
+
+@pytest.mark.parametrize("bad", [dict(latitude=36), dict(altitude=100), dict(coordinate_frame=3)])
+def test_guided_wrong_target_cannot_confirm(guided, monkeypatch, bad):
+    f = guided
+    start_guided_recovery(f, monkeypatch)
+    confirm_loiter(f, monkeypatch)
+    fresh(f, 1.3)
+    f.state.mode = "GUIDED"
+    echo(f, 1.3, monkeypatch, **bad)
+    assert not f.recover(1.3)
+    assert f.recover(10)
+    assert f.failed and "unconfirmed" in f.reason
+
+
+@pytest.mark.parametrize("stage", ["before_loiter", "before_guided", "after_guided"])
+def test_guided_operator_takeover_is_latched(guided, monkeypatch, stage):
+    f = guided
+    setup_guided(f, monkeypatch)
+    f.request_stop(1)
+    fresh(f, 1.1)
+    if stage != "before_loiter":
+        f.recover(1.1)
+    if stage == "after_guided":
+        confirm_loiter(f, monkeypatch)
+    n = f.loiter_client.call_async.call_count
+    monkeypatch.setattr("ros2_sid.straight_flight.time.monotonic", lambda: 1.3)
+    f.on_state(SimpleNamespace(connected=True, mode="RTL", system_status=4))
+    f.on_state(SimpleNamespace(connected=True, mode="GUIDED", system_status=4))
+    assert f.recover(1.3)
+    assert "Yielded" in f.reason
+    assert f.loiter_client.call_async.call_count == n
+
+
+@pytest.mark.parametrize("which", ["loiter", "guided"])
+@pytest.mark.parametrize("failure", ["reject", "exception", "pending"])
+def test_guided_recovery_failures(guided, monkeypatch, which, failure):
+    f = guided
+    start_guided_recovery(f, monkeypatch)
+    if which == "guided":
+        confirm_loiter(f, monkeypatch)
+    future = f.future
+    if failure == "reject":
+        future.result.return_value = SimpleNamespace(success=False, result=4)
+    elif failure == "exception":
+        future.result.side_effect = RuntimeError("transport failure")
+    else:
+        future.done.return_value = False
+    fresh(f, 1.3)
+    if failure == "pending":
+        assert not f.recover(1.3)
+        assert f.recover(10)
+    else:
+        assert f.recover(1.3)
+    assert f.failed
+
+
+def test_guided_stale_state_and_output_do_not_restore(guided, monkeypatch):
+    f = guided
+    start_guided_recovery(f, monkeypatch)
+    f.state.mode = "LOITER"
+    f.state_time = -10
+    assert not f.recover(1.2)
+    fresh(f, 1.3)
+    f.output_time = -10
+    assert not f.recover(1.3)
+    f.loiter_client.call_async.assert_not_called()
+    assert f.recover(10) and f.failed
+
+
+def test_guided_cancel_stream_request_has_no_navigation_ownership(guided):
+    fresh(guided, 0)
+    guided.step(0, True, False, 10)
+    guided.request_stop(0.1)
+    assert guided.recover(0.2)
+    assert not guided.owned
+    guided.loiter_client.call_async.assert_not_called()
+
+
+def test_guided_stale_mode_cannot_confirm_loiter(guided, monkeypatch):
+    f = guided
+    start_guided_recovery(f, monkeypatch)
+    f.state.mode = "LOITER"
+    f.state_time = 1.0  # Fresh by age, but older than the LOITER request.
+    assert not f.recover(1.2)
+    f.loiter_client.call_async.assert_not_called()
+
+
+def test_guided_missing_saved_target_fails_without_command(guided):
+    guided.owned = True
+    guided.request_stop(1)
+    fresh(guided, 1.1)
+    assert guided.recover(1.1) and guided.failed
+    guided.command_client.call_async.assert_not_called()
+    guided.loiter_client.call_async.assert_not_called()
+
+
+def test_guided_offline_analysis_requires_full_handoff(guided):
+    from copy import deepcopy
+    from ros2_sid.straight_analysis import validate_events
+
+    # Disabled tolerances must remain usable in the offline evidence path.
+    config = dict(guided.config, bank_tolerance_deg=None)
+    base = dict(
+        configuration=config, bank_deg=0, course_deg=0, target_course_deg=0,
+        altitude_relative_m=100, airspeed_m_s=18, climb_m_s=0,
+        rates_rad_s=[0, 0, 0], applied_axes=[0, 0, 0], applied_delta_pwm=[0],
+        reason="", vehicle_mode="GUIDED", recovery_stage="IDLE",
+    )
+    rows = [dict(base, phase=phase, monotonic_s=t) for t, phase in [
+        (0, "WAITING"), (0.1, "WAITING"), (1, "SETTLING"), (4, "READY"),
+        (5, "ACTIVE"), (6, "RETURNING"), (7, "RECOVERY"), (8, "RECOVERY"), (9, "DONE"),
+    ]]
+    rows[-3]["recovery_stage"] = "WAIT_LOITER"
+    rows[-2].update(recovery_stage="WAIT_GUIDED", vehicle_mode="LOITER")
+    target = dict(latitude=34.9, longitude=-105.9, altitude=1550, coordinate_frame=0)
+    rows[-1].update(
+        saved_guided_target=target, observed_guided_target=dict(target),
+        recovery_stage="COMPLETE", recovery_confirmed=True,
+        reason="Original GUIDED target confirmed",
+    )
+    report = validate_events(rows)
+    assert len(report) == 1 and report[0]["passed"]
+    assert report[0]["original_guided_target_verified"]
+    for field, value in [("vehicle_mode", "LOITER"), ("recovery_confirmed", False),
+                         ("recovery_stage", "WAIT_GUIDED")]:
+        bad = deepcopy(rows)
+        bad[-1][field] = value
+        assert not validate_events(bad)[0]["passed"]
+    bad = deepcopy(rows)
+    bad[-1]["observed_guided_target"]["altitude"] = 100
+    assert not validate_events(bad)[0]["passed"]
+    assert not validate_events(rows[:-2] + rows[-1:])[0]["passed"]

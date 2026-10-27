@@ -89,3 +89,14 @@ def test_missing_rc_default_and_required_keys(tmp_path):
     path.write_text(json.dumps(config))
     with pytest.raises(ValueError, match="max_bank_deg"):
         load_straight_flight_config(path)
+
+
+@pytest.mark.parametrize("mode", ["GUIDED", "LOITER"])
+def test_recovery_mode_choices(tmp_path, mode):
+    assert load_modified(tmp_path, recovery_mode=mode)["recovery_mode"] == mode
+
+
+@pytest.mark.parametrize("mode", [None, "RTL", "guided"])
+def test_invalid_recovery_mode(tmp_path, mode):
+    with pytest.raises(ValueError, match="recovery_mode"):
+        load_modified(tmp_path, recovery_mode=mode)
