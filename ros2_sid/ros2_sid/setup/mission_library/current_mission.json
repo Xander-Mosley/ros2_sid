@@ -1,1 +1,4 @@
-{"subfolder": "dds_surface"}
+{
+    "subfolder": "dds_surface",
+    "amplitude_modifier": 1.0
+}

@@ -213,6 +213,11 @@ class PubInputSignals(Node):
         self.current_mission_name = mission_name
         self.current_mission_path = mission_path
 
+        mission_amplitude = mission_data.get("amplitude_modifier")
+        if not isinstance(mission_amplitude, (int, float)) or isinstance(mission_amplitude, bool):
+            mission_amplitude = 1.0
+        self.amplitude_modifier = float(mission_amplitude)
+
         return mission_path
     
     def load_mission_plan(self, mission_path: Path) -> dict:
@@ -659,9 +664,9 @@ class PubInputSignals(Node):
             """
             trajectory: CtlTraj = CtlTraj()
             # trajectory.header.stamp = self.get_clock().now().to_msg()
-            trajectory.roll  = [self.current_maneuver[self.counter, 1]]
-            trajectory.pitch = [self.current_maneuver[self.counter, 2]]
-            trajectory.yaw   = [self.current_maneuver[self.counter, 3]]
+            trajectory.roll  = [self.current_maneuver[self.counter, 1] * self.amplitude_modifier]
+            trajectory.pitch = [self.current_maneuver[self.counter, 2] * self.amplitude_modifier]
+            trajectory.yaw   = [self.current_maneuver[self.counter, 3] * self.amplitude_modifier]
             trajectory.thrust = [0.5]
             trajectory.idx = 0
             self.input_signal.publish(trajectory)
