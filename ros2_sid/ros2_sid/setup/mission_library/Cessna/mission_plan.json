@@ -1,0 +1,147 @@
+{
+    "name": "Cessna",
+    "description": "Normalized amplitude and no pitch offset",
+    "created": "2026-10-27T14:37:00",
+    "modified": "2026-10-27T15:53:00",
+    "units": "normalized_surface",
+
+    "maneuvers": [
+        {
+            "filename": "All Multisines.csv",
+            "order": 10,
+            "name": "All Multisines",
+
+            "description": "Multisine applied to the roll, pitch, and yaw command.",
+
+            "amplitude": 0.1,
+            "minimum_frequency_hz": 0.470,
+            "maximum_frequency_hz": 7.048,
+            "time_step_s": 0.02,
+            "final_time_s": 15.0,
+            "number_of_channels": 3
+        },
+        {
+            "filename": "Multisine Roll.csv",
+            "order": 1,
+            "name": "Multisine Roll",
+
+            "description": "Multisine applied to the roll command.",
+
+            "amplitude": 0.1,
+            "minimum_frequency_hz": 0.470,
+            "maximum_frequency_hz": 7.048,
+            "time_step_s": 0.02,
+            "final_time_s": 15.0,
+            "number_of_channels": 3
+        },
+        {
+            "filename": "Multisine Pitch.csv",
+            "order": 2,
+            "name": "Multisine Pitch",
+
+            "description": "Multisine applied to the pitch command.",
+
+            "amplitude": 0.1,
+            "minimum_frequency_hz": 0.470,
+            "maximum_frequency_hz": 7.048,
+            "time_step_s": 0.02,
+            "final_time_s": 15.0,
+            "number_of_channels": 3
+        },
+        {
+            "filename": "Multisine Yaw.csv",
+            "order": 3,
+            "name": "Multisine Yaw",
+
+            "description": "Multisine applied to the yaw command.",
+
+            "amplitude": 0.1,
+            "minimum_frequency_hz": 0.470,
+            "maximum_frequency_hz": 7.048,
+            "time_step_s": 0.02,
+            "final_time_s": 15.0,
+            "number_of_channels": 3
+        },
+        {
+            "filename": "Doublet Roll.csv",
+            "order": 4,
+            "name": "Doublet Roll",
+
+            "description": "Doublet applied to the roll command.",
+
+            "amplitude": 0.1,
+            "natural_frequency_hz": 4.70,
+            "time_step_s": 0.02,
+            "time_delay_s": 7.5,
+            "final_time_s": 15.0
+        },
+        {
+            "filename": "Doublet Pitch.csv",
+            "order": 5,
+            "name": "Doublet Pitch",
+
+            "description": "Doublet applied to the pitch command.",
+
+            "amplitude": 0.1,
+            "natural_frequency_hz": 4.70,
+            "time_step_s": 0.02,
+            "time_delay_s": 7.5,
+            "final_time_s": 15.0
+        },
+        {
+            "filename": "Doublet Yaw.csv",
+            "order": 6,
+            "name": "Doublet Yaw",
+
+            "description": "Doublet applied to the yaw command.",
+
+            "amplitude": 0.1,
+            "natural_frequency_hz": 4.70,
+            "time_step_s": 0.02,
+            "time_delay_s": 7.5,
+            "final_time_s": 15.0
+        },
+        {
+            "filename": "Sweep Roll.csv",
+            "order": 7,
+            "name": "Sweep Roll",
+
+            "description": "Sweep applied to the roll command.",
+
+            "amplitude": 0.1,
+            "minimum_frequency_hz": 0.470,
+            "maximum_frequency_hz": 7.048,
+            "time_step_s": 0.02,
+            "final_time_s": 15.0,
+            "function": "logarithmic"
+        },
+        {
+            "filename": "Sweep Pitch.csv",
+            "order": 8,
+            "name": "Sweep Pitch",
+
+            "description": "Sweep applied to the pitch command.",
+
+            "amplitude": 0.1,
+            "minimum_frequency_hz": 0.470,
+            "maximum_frequency_hz": 7.048,
+            "time_step_s": 0.02,
+            "final_time_s": 15.0,
+            "function": "logarithmic"
+        },
+        {
+            "filename": "Sweep Yaw.csv",
+            "order": 9,
+            "name": "Sweep Yaw",
+            
+            "description": "Sweep applied to the yaw command.",
+
+            "amplitude": 0.1,
+            "minimum_frequency_hz": 0.470,
+            "maximum_frequency_hz": 7.048,
+            "time_step_s": 0.02,
+            "final_time_s": 15.0,
+            "function": "logarithmic"
+        }
+    ]
+}
