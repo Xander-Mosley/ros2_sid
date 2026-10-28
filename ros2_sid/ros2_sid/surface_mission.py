@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import queue
 import secrets
@@ -77,7 +78,11 @@ def resolve_straight_flight(args: argparse.Namespace) -> None:
 
 
 def resolve_mission_source(args: argparse.Namespace) -> None:
-    """Resolve the packaged current DDS mission unless an explicit source was given."""
+    """
+    Resolve the packaged current DDS mission and its
+    amplitude modifier unless an explicit source was given.
+    """
+    args.amplitude_modifier = 1.0
     if args.experiment or args.mission_plan:
         return
     library = mission_library_path()
@@ -90,6 +95,17 @@ def resolve_mission_source(args: argparse.Namespace) -> None:
     if not path.is_file():
         raise FileNotFoundError(f"DDS mission plan not found: {path}")
     args.mission_plan = str(path)
+    try:
+        modifier = float(selection.get("amplitude_modifier", 1.0))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{pointer} requires amplitude_modifier to be a float"
+        ) from exc
+    if not math.isfinite(modifier):
+        raise ValueError(
+            f"{pointer} amplitude_modifier must be finite"
+        )
+    args.amplitude_modifier = modifier
 
 
 def load_mission_experiments(plan_path: Path) -> list[tuple[str, Experiment]]:
@@ -350,13 +366,17 @@ class SurfaceMission(Node):
         msg.enable = enable
         msg.stamp.sec = int(stamp)
         msg.stamp.nanosec = int((stamp - int(stamp)) * 1e9)
-        msg.roll, msg.pitch, msg.yaw = map(float, values)
+        scale = self.args.amplitude_modifier if enable else 1.0
+        scaled_values = tuple(float(value) * scale for value in values)
+        msg.roll, msg.pitch, msg.yaw = scaled_values
+        # msg.roll, msg.pitch, msg.yaw = map(float, values)
         self.publisher.publish(msg)
         if enable:
             self.last_enabled_sequence = msg.sequence_id
         else:
             self.disable_sequences.append(msg.sequence_id)
-        self.log.writerow([now, stamp, msg.sequence_id, int(enable), *values])
+        self.log.writerow([now, stamp, msg.sequence_id, int(enable), *scaled_values])
+        # self.log.writerow([now, stamp, msg.sequence_id, int(enable), *values])
         self.logfile.flush()
 
     def stop(self, reason: str, failed: bool = False) -> None:
@@ -583,6 +603,7 @@ def main(hitl: bool = False) -> int:
         parser.error("HITL requires a fresh low-to-high RC transition")
     try:
         resolve_mission_source(args)
+        print(f"Amplitude modifier: {args.amplitude_modifier}")
         resolve_straight_flight(args)
         args.straight_config = (
             load_straight_flight_config(args.straight_flight) if args.straight_flight else None
