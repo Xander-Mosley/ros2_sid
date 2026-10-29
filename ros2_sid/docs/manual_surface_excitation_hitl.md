@@ -148,6 +148,44 @@ width is 0.25 s; the legacy sample rounding and zero boundary samples are retain
 Amplitude is **0.10 normalized surface fraction**, not radians. Existing firmware
 limits, RC stop, timeout protection and configured recovery still apply.
 
+
+### Amplitude modifier and firmware limits
+
+Both `run_mission_SITL.py --interface dds` and `run_mission_HITL.py --interface dds`
+read `amplitude_modifier` from `ros2_sid/setup/mission_library/current_mission.json`
+inside the package. It defaults to **1.0** and multiplies every roll, pitch, and yaw
+sample before publishing and command CSV logging. Restart the mission script after
+editing the JSON. `--amplitude-modifier` overrides the JSON value; explicit
+`--experiment` or `--mission-plan` sources default to 1.0 unless this override is supplied.
+
+For example, a waveform amplitude of 0.10 with modifier 5.0 sends a peak of 0.50.
+The modifier changes amplitude only, not frequency or duration. A raw axis command
+of 5.0 is invalid: firmware rejects commands outside [-1, 1], rather than clipping
+them into that range.
+
+Firmware defaults and the conventional/elevon/vtail SITL parameter presets now set
+`SX_R_MAX`, `SX_P_MAX`, `SX_Y_MAX`, and `SX_S_MAX` to **1.0**. The first three clip
+individual axis commands; `SX_S_MAX` bounds each mixed physical surface. Lower
+configured limits still apply: with `SX_R_MAX=0.1`, a requested roll of 0.5 is clipped
+to 0.1, which can hide the effect of increasing the modifier. Servo calibration,
+remaining output travel, mixing, and any configured slew limit also affect motion.
+The waveform definitions retain their existing amplitudes (typically 0.10).
+
+These defaults require rebuilding the firmware. Existing saved aircraft/SITL
+parameters can retain the old limits after a rebuild; inspect the active values
+and explicitly set the following if full normalized excitation range is intended:
+
+```text
+param set SX_R_MAX 1.0
+param set SX_P_MAX 1.0
+param set SX_Y_MAX 1.0
+param set SX_S_MAX 1.0
+```
+
+A limit of 1.0 permits excitation up to the full calibrated deflection; it does not
+command that deflection by itself. Compare the scaled command CSV with firmware
+applied-axis/clipping telemetry when diagnosing a smaller-than-requested response.
+
 For an optional session label:
 
 ```bash
