@@ -1,12 +1,49 @@
 """ROS-node tests with controlled clocks and synthetic RC/status input (no aircraft)."""
 
+import csv
 import json
+from pathlib import Path
+import runpy
+import sys
 from types import SimpleNamespace
 import pytest
 
 rclpy = pytest.importorskip("rclpy")
 from ros2_sid.surface_mission import SurfaceMission
 from ros2_sid.straight_flight import FlightPhase
+
+
+@pytest.mark.parametrize("mode", ["SITL", "HITL"])
+def test_entrypoint_uses_current_mission_amplitude(tmp_path, monkeypatch, mode):
+    """Both DDS entrypoints resolve the mission scale before constructing a node."""
+    import ros2_sid.surface_mission as surface
+
+    (tmp_path / "selected").mkdir()
+    (tmp_path / "selected/mission_plan.json").write_text("{}")
+    (tmp_path / "current_mission.json").write_text(
+        '{"subfolder":"selected", "amplitude_modifier":0.35}'
+    )
+    monkeypatch.setattr(surface, "mission_library_path", lambda: tmp_path)
+    monkeypatch.setattr(surface, "resolve_straight_flight", lambda args: None)
+    captured = []
+
+    class NodeConstructed(Exception):
+        pass
+
+    def capture_node(args, hitl):
+        captured.append((args.amplitude_modifier, hitl))
+        raise NodeConstructed
+
+    monkeypatch.setattr(surface, "SurfaceMission", capture_node)
+    script = Path(__file__).resolve().parents[1] / "scripts" / f"run_mission_{mode}.py"
+    monkeypatch.setattr(sys, "argv", [str(script), "--interface", "dds", "--no-straight-flight"])
+    try:
+        with pytest.raises(NodeConstructed):
+            runpy.run_path(str(script), run_name="__main__")
+    finally:
+        if rclpy.ok():
+            rclpy.shutdown()
+    assert captured == [(0.35, mode == "HITL")]
 
 
 @pytest.fixture
@@ -25,6 +62,7 @@ def node(tmp_path):
     args = SimpleNamespace(
         experiment=str(path),
         mission_plan=None,
+        amplitude_modifier=1.0,
         autostart=True,
         rc_channel=7,
         rc_threshold=1800,
@@ -133,26 +171,31 @@ def test_new_publisher_requires_own_disable_ack(node, monkeypatch):
     assert node.failed
 
 
-def test_default_mission_source(tmp_path, monkeypatch):
+@pytest.mark.parametrize("override, expected", [(None, 0.4), (0.2, 0.2), (0.0, 0.0)])
+def test_default_mission_source(tmp_path, monkeypatch, override, expected):
     """Load the current DDS plan relative to the installed package config."""
     from ros2_sid.surface_mission import resolve_mission_source
 
     config = tmp_path / "library"
     config.mkdir(parents=True)
-    (config / "current_mission.json").write_text('{"subfolder":"selected"}')
+    (config / "current_mission.json").write_text(
+        '{"subfolder":"selected", "amplitude_modifier":0.4}'
+    )
     (config / "selected").mkdir()
     plan = config / "selected/mission_plan.json"
     plan.write_text("{}")
     monkeypatch.setattr("ros2_sid.surface_mission.mission_library_path", lambda: config)
-    args = SimpleNamespace(experiment=None, mission_plan=None)
+    args = SimpleNamespace(experiment=None, mission_plan=None, amplitude_modifier=override)
     resolve_mission_source(args)
     assert args.mission_plan == str(plan)
+    assert args.amplitude_modifier == expected
     plan.unlink()
     with pytest.raises(FileNotFoundError):
         resolve_mission_source(SimpleNamespace(experiment=None, mission_plan=None))
 
 
-def test_explicit_mission_source_bypasses_default(monkeypatch):
+@pytest.mark.parametrize("override, expected", [(None, 1.0), (0.3, 0.3), (0.0, 0.0)])
+def test_explicit_mission_source_bypasses_default(monkeypatch, override, expected):
     """Explicit CLI selections work independently of the packaged pointer."""
     from ros2_sid.surface_mission import resolve_mission_source
 
@@ -163,10 +206,35 @@ def test_explicit_mission_source_bypasses_default(monkeypatch):
         "ros2_sid.surface_mission.mission_library_path", unexpected_lookup
     )
     for field in ("experiment", "mission_plan"):
-        args = SimpleNamespace(experiment=None, mission_plan=None)
+        args = SimpleNamespace(experiment=None, mission_plan=None, amplitude_modifier=override)
         setattr(args, field, "custom.json")
         resolve_mission_source(args)
         assert getattr(args, field) == "custom.json"
+        assert args.amplitude_modifier == expected
+
+
+@pytest.mark.parametrize("modifier", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_amplitude_modifier_rejected(modifier):
+    from ros2_sid.surface_mission import resolve_mission_source
+
+    args = SimpleNamespace(experiment="custom.json", mission_plan=None, amplitude_modifier=modifier)
+    with pytest.raises(ValueError, match="must be finite"):
+        resolve_mission_source(args)
+
+
+def test_send_scales_all_axes_and_command_log(node, monkeypatch):
+    monkeypatch.setattr("ros2_sid.surface_mission.time.monotonic", lambda: 100.0)
+    node.clock_sync.update(1000.0, 100.0)
+    node.args.amplitude_modifier = 0.4
+    sent = []
+    node.publisher = SimpleNamespace(publish=sent.append)
+    node.send(True, (0.2, -0.3, 0.1))
+    assert (sent[-1].roll, sent[-1].pitch, sent[-1].yaw) == pytest.approx((0.08, -0.12, 0.04))
+    node.send(False)
+    assert (sent[-1].roll, sent[-1].pitch, sent[-1].yaw) == (0.0, 0.0, 0.0)
+    with open(node.args.command_log) as stream:
+        rows = list(csv.DictReader(stream))
+    assert tuple(float(rows[0][axis]) for axis in ("roll", "pitch", "yaw")) == pytest.approx((0.08, -0.12, 0.04))
 
 
 def test_csv_plan_order_units_and_cadence(tmp_path):

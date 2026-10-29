@@ -213,10 +213,9 @@ class PubInputSignals(Node):
         self.current_mission_name = mission_name
         self.current_mission_path = mission_path
 
-        mission_amplitude = mission_data.get("amplitude_modifier")
-        if not isinstance(mission_amplitude, (int, float)) or isinstance(mission_amplitude, bool):
-            mission_amplitude = 1.0
-        self.amplitude_modifier = float(mission_amplitude)
+        from ros2_sid.mission_library import mission_amplitude_modifier
+
+        self.amplitude_modifier = mission_amplitude_modifier(mission_data)
 
         return mission_path
     

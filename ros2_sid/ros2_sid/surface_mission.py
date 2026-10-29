@@ -32,7 +32,7 @@ from .flight_config import (
     parse_rc_timeout,
     resolve_rc_timeout,
 )
-from .mission_library import mission_library_path
+from .mission_library import mission_amplitude_modifier, mission_library_path
 from .straight_flight import FlightPhase
 from .surface_signals import AxisSample, Cadence, ClockSync, Experiment, RCGate
 
@@ -82,7 +82,12 @@ def resolve_mission_source(args: argparse.Namespace) -> None:
     Resolve the packaged current DDS mission and its
     amplitude modifier unless an explicit source was given.
     """
-    args.amplitude_modifier = 1.0
+    modifier = getattr(args, "amplitude_modifier", None)
+    if modifier is not None:
+        modifier = float(modifier)
+        if not math.isfinite(modifier):
+            raise ValueError("amplitude_modifier must be finite")
+    args.amplitude_modifier = modifier if modifier is not None else 1.0
     if args.experiment or args.mission_plan:
         return
     library = mission_library_path()
@@ -95,17 +100,9 @@ def resolve_mission_source(args: argparse.Namespace) -> None:
     if not path.is_file():
         raise FileNotFoundError(f"DDS mission plan not found: {path}")
     args.mission_plan = str(path)
-    try:
-        modifier = float(selection.get("amplitude_modifier", 1.0))
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{pointer} requires amplitude_modifier to be a float"
-        ) from exc
-    if not math.isfinite(modifier):
-        raise ValueError(
-            f"{pointer} amplitude_modifier must be finite"
-        )
-    args.amplitude_modifier = modifier
+    if modifier is not None:
+        return
+    args.amplitude_modifier = mission_amplitude_modifier(selection)
 
 
 def load_mission_experiments(plan_path: Path) -> list[tuple[str, Experiment]]:
@@ -369,14 +366,12 @@ class SurfaceMission(Node):
         scale = self.args.amplitude_modifier if enable else 1.0
         scaled_values = tuple(float(value) * scale for value in values)
         msg.roll, msg.pitch, msg.yaw = scaled_values
-        # msg.roll, msg.pitch, msg.yaw = map(float, values)
         self.publisher.publish(msg)
         if enable:
             self.last_enabled_sequence = msg.sequence_id
         else:
             self.disable_sequences.append(msg.sequence_id)
         self.log.writerow([now, stamp, msg.sequence_id, int(enable), *scaled_values])
-        # self.log.writerow([now, stamp, msg.sequence_id, int(enable), *values])
         self.logfile.flush()
 
     def stop(self, reason: str, failed: bool = False) -> None:
@@ -576,7 +571,10 @@ def main(hitl: bool = False) -> int:
     add_navigation_arguments(parser)
     parser.add_argument("--command-log", default="surface_commands.csv")
     parser.add_argument("--wait-timeout", type=float, default=30.0)
-    parser.add_argument("--amplitude-modifier", type=float, default=1.0)
+    parser.add_argument(
+        "--amplitude-modifier", type=float, default=None,
+        help="Scale all surface axes; overrides current_mission.json (otherwise defaults to 1.0)",
+    )
     parser.add_argument(
         "--rc-channel",
         type=int,

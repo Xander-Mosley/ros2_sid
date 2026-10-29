@@ -1,6 +1,18 @@
 """Locate the shared legacy/DDS mission library in source and installed packages."""
 
+import math
 from pathlib import Path
+
+
+def mission_amplitude_modifier(selection: dict) -> float:
+    """Read the mission scale shared by the SITL, HITL, and DDS backends."""
+    modifier = selection.get("amplitude_modifier")
+    if not isinstance(modifier, (int, float)) or isinstance(modifier, bool):
+        modifier = 1.0
+    modifier = float(modifier)
+    if not math.isfinite(modifier):
+        raise ValueError("amplitude_modifier must be finite")
+    return modifier
 
 
 def mission_library_path() -> Path:
