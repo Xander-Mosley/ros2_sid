@@ -164,7 +164,20 @@ class Cadence:
         self.deadline = now
 
     def due(self, now: float) -> float | None:
-        """Return elapsed seconds if due, skip missed deadlines, and reject excessive jitter."""
+        """Return waveform elapsed time when due, or None before the next deadline.
+
+        CPU contention, host/container scheduling, ROS callbacks, or blocking
+        logging can delay this call beyond its scheduled publication deadline.
+        Lateness greater than two sample periods (20 ms at 100 Hz, 40 ms at
+        50 Hz) raises RuntimeError, which the mission catches to stop excitation.
+        This timing guard limits waveform distortion and protects identification
+        data quality; it does not by itself indicate an aircraft fault.
+
+        Smaller delays skip missed deadlines and sample at the current elapsed
+        time instead of publishing a burst of stale samples. Removing the guard
+        would allow larger gaps with the same skipping behavior; firmware timeout
+        protection remains separate and does not guarantee waveform timing.
+        """
         if now < self.deadline:
             return None
         if now - self.deadline > 2 * self.period:
