@@ -14,7 +14,7 @@ from ros2_sid.straight_flight import FlightPhase
 
 
 @pytest.mark.parametrize("mode", ["SITL", "HITL"])
-@pytest.mark.parametrize("explicit_plan", [False, True])
+@pytest.mark.parametrize("explicit_plan", [False, True, "current_mission"])
 def test_entrypoint_uses_current_mission_amplitude(tmp_path, monkeypatch, mode, explicit_plan):
     """Both DDS entrypoints resolve the mission scale before constructing a node."""
     import ros2_sid.surface_mission as surface
@@ -38,7 +38,16 @@ def test_entrypoint_uses_current_mission_amplitude(tmp_path, monkeypatch, mode, 
     monkeypatch.setattr(surface, "SurfaceMission", capture_node)
     script = Path(__file__).resolve().parents[1] / "scripts" / f"run_mission_{mode}.py"
     argv = [str(script), "--interface", "dds", "--no-straight-flight"]
-    if explicit_plan:
+    if explicit_plan == "current_mission":
+        pointer = tmp_path / "current_mission.json"
+        pointer.write_text('{"subfolder":"selected", "amplitude_modifier":5.0}')
+        argv += ["--current-mission", str(pointer)]
+
+        def unexpected_library():
+            raise AssertionError("Explicit pointer must bypass installed mission library")
+
+        monkeypatch.setattr(surface, "mission_library_path", unexpected_library)
+    elif explicit_plan:
         argv += ["--mission-plan", str(tmp_path / "selected/mission_plan.json"),
                  "--amplitude-modifier", "5.0"]
     monkeypatch.setattr(sys, "argv", argv)

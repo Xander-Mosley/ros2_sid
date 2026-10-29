@@ -151,6 +151,27 @@ limits, RC stop, timeout protection and configured recovery still apply.
 
 ### Amplitude modifier and firmware limits
 
+`bash /work/tools/sid/run_hitl.sh` reads the source selection directly through
+`--current-mission /work/ros2_sid/ros2_sid/ros2_sid/setup/mission_library/current_mission.json`.
+Edit `subfolder` and `amplitude_modifier` in that file, then restart the launcher.
+JSON-only changes do not require rebuilding or creating a new recording run.
+Startup prints the selection file path and resolved modifier. The launcher does
+not use the installed JSON or the copy under `$RUN/mission_library`.
+
+After updating the Python code, build it once inside Docker:
+
+```bash
+source /opt/ros/humble/setup.bash
+source /tmp/install/setup.bash
+cd /tmp
+colcon build --base-paths /work/ros2_sid/ros2_sid --packages-select ros2_sid
+source /tmp/install/setup.bash
+```
+
+Direct DDS launches of either mission script can use the same `--current-mission`
+argument to read the source JSON instead of the installed selection.
+
+
 Both `run_mission_SITL.py --interface dds` and `run_mission_HITL.py --interface dds`
 read `amplitude_modifier` from `ros2_sid/setup/mission_library/current_mission.json`
 inside the package. It defaults to **1.0** and multiplies every roll, pitch, and yaw

@@ -79,7 +79,7 @@ def resolve_straight_flight(args: argparse.Namespace) -> None:
 
 def resolve_mission_source(args: argparse.Namespace) -> None:
     """
-    Resolve the packaged current DDS mission and its
+    Resolve the selected current_mission.json (packaged by default) and its
     amplitude modifier unless an explicit source was given.
     """
     modifier = getattr(args, "amplitude_modifier", None)
@@ -90,8 +90,10 @@ def resolve_mission_source(args: argparse.Namespace) -> None:
     args.amplitude_modifier = modifier if modifier is not None else 1.0
     if args.experiment or args.mission_plan:
         return
-    library = mission_library_path()
-    pointer = library / "current_mission.json"
+    current_mission = getattr(args, "current_mission", None)
+    pointer = Path(current_mission) if current_mission else mission_library_path() / "current_mission.json"
+    library = pointer.parent
+    print(f"Current mission selection: {pointer}")
     selection = json.loads(pointer.read_text())
     folder = selection.get("subfolder")
     if not isinstance(folder, str) or not folder.strip():
@@ -557,6 +559,9 @@ def main(hitl: bool = False) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--interface", choices=["dds"], required=True)
     source = parser.add_mutually_exclusive_group()
+    source.add_argument(
+        "--current-mission", help="Read mission selection and amplitude from this current_mission.json"
+    )
     source.add_argument(
         "--experiment", help="JSON with explicit normalized_surface units"
     )
