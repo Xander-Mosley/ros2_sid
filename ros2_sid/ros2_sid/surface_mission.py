@@ -576,6 +576,7 @@ def main(hitl: bool = False) -> int:
     add_navigation_arguments(parser)
     parser.add_argument("--command-log", default="surface_commands.csv")
     parser.add_argument("--wait-timeout", type=float, default=30.0)
+    parser.add_argument("--amplitude-modifier", type=float, default=1.0)
     parser.add_argument(
         "--rc-channel",
         type=int,
