@@ -49,6 +49,11 @@ sample before publishing and command CSV logging. Restart the mission script aft
 editing the JSON. `--amplitude-modifier` overrides the JSON value; explicit
 `--experiment` or `--mission-plan` sources default to 1.0 unless this override is supplied.
 
+The `tools/sid/run_surface_test.sh` launcher records the selected JSON modifier in
+`session.json` and passes it as `--amplitude-modifier` alongside its explicit
+mission-plan snapshot. Start a new session after changing the source JSON;
+restarting a pane in an existing session reuses that session's saved modifier.
+
 For example, a waveform amplitude of 0.10 with modifier 5.0 sends a peak of 0.50.
 The modifier changes amplitude only, not frequency or duration. A raw axis command
 of 5.0 is invalid: firmware rejects commands outside [-1, 1], rather than clipping

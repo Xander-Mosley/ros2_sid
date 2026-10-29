@@ -14,7 +14,8 @@ from ros2_sid.straight_flight import FlightPhase
 
 
 @pytest.mark.parametrize("mode", ["SITL", "HITL"])
-def test_entrypoint_uses_current_mission_amplitude(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize("explicit_plan", [False, True])
+def test_entrypoint_uses_current_mission_amplitude(tmp_path, monkeypatch, mode, explicit_plan):
     """Both DDS entrypoints resolve the mission scale before constructing a node."""
     import ros2_sid.surface_mission as surface
 
@@ -36,14 +37,18 @@ def test_entrypoint_uses_current_mission_amplitude(tmp_path, monkeypatch, mode):
 
     monkeypatch.setattr(surface, "SurfaceMission", capture_node)
     script = Path(__file__).resolve().parents[1] / "scripts" / f"run_mission_{mode}.py"
-    monkeypatch.setattr(sys, "argv", [str(script), "--interface", "dds", "--no-straight-flight"])
+    argv = [str(script), "--interface", "dds", "--no-straight-flight"]
+    if explicit_plan:
+        argv += ["--mission-plan", str(tmp_path / "selected/mission_plan.json"),
+                 "--amplitude-modifier", "5.0"]
+    monkeypatch.setattr(sys, "argv", argv)
     try:
         with pytest.raises(NodeConstructed):
             runpy.run_path(str(script), run_name="__main__")
     finally:
         if rclpy.ok():
             rclpy.shutdown()
-    assert captured == [(0.35, mode == "HITL")]
+    assert captured == [(5.0 if explicit_plan else 0.35, mode == "HITL")]
 
 
 @pytest.fixture
