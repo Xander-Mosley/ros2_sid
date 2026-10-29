@@ -363,7 +363,7 @@ class SurfaceMission(Node):
         msg.enable = enable
         msg.stamp.sec = int(stamp)
         msg.stamp.nanosec = int((stamp - int(stamp)) * 1e9)
-        scale = self.args.amplitude_modifier if enable else 1.0
+        scale = self.args.amplitude_modifier
         scaled_values = tuple(float(value) * scale for value in values)
         msg.roll, msg.pitch, msg.yaw = scaled_values
         self.publisher.publish(msg)
