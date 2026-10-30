@@ -1,0 +1,537 @@
+{
+  "method": "OLS; truth alpha/beta, selectable IMU/truth outputs, filtered PWM; known geometry/mass/CG/thrust",
+  "reference_file": "/work/ardupilot_sid/libraries/SITL/SIM_Plane.h",
+  "known_calibration": {
+    "mass_kg": 2.0,
+    "area_m2": 0.45,
+    "span_m": 1.88,
+    "chord_m": 0.24,
+    "cg_offset_m": [
+      -0.15,
+      0,
+      -0.05
+    ],
+    "thrust_scale_n": 28.019000000000002,
+    "surface_pwm_center": 1500,
+    "surface_pwm_half_range": 500,
+    "force_airspeed": "EAS = norm(velocity_air) * sqrt(rho/1.225)"
+  },
+  "reference_sha256": "2afd1735175f2e4093138683e06c992ba0b118d602e980c11cb23860f7b8e5b6",
+  "dataflash_file": "/work/sid_results/ols_identification_20261022/logs/00000001.BIN",
+  "dataflash_sha256": "ff099e67af06b140acca6ebba120d2dd0cc5d8af38362b2579f1bdbdd9a693f3",
+  "limitations": [
+    "Not sensor-only: alpha and beta use simulator truth and zero wind.",
+    "One-step coefficient prediction, not free-running trajectory validation.",
+    "Correlated closed-loop regressors and sensor/servo timing can bias coefficients.",
+    "Drag is fitted as a polynomial in alpha; reference polynomial is derived from SIM_Plane.h.",
+    "No confidence intervals: residuals are temporally correlated."
+  ],
+  "state_source": "truth",
+  "train_samples": 7118,
+  "validation_samples": 1708,
+  "include_airborne_transients": true,
+  "train_intervals": [
+    {
+      "name": "chirp_pitch-commands",
+      "start_s": 152.684855,
+      "end_s": 162.08502
+    },
+    {
+      "name": "chirp_roll-commands",
+      "start_s": 122.16456799999999,
+      "end_s": 131.544741
+    },
+    {
+      "name": "chirp_yaw-commands",
+      "start_s": 183.12434100000002,
+      "end_s": 192.52450599999997
+    }
+  ],
+  "validation_intervals": [
+    {
+      "name": "multisine_pitch-commands",
+      "start_s": 166.845022,
+      "end_s": 178.244387
+    },
+    {
+      "name": "multisine_roll-commands",
+      "start_s": 136.44468700000002,
+      "end_s": 147.80490099999997
+    },
+    {
+      "name": "multisine_yaw-commands",
+      "start_s": 197.54440400000001,
+      "end_s": 208.94460199999997
+    }
+  ],
+  "models": {
+    "roll": {
+      "coefficients": {
+        "c_l_0": -7.117332565952811e-07,
+        "c_l_b": -0.12330446331750763,
+        "c_l_p": -0.9822285366760809,
+        "c_l_r": 0.15668639442432863,
+        "c_l_deltaa": 0.24443010855662584,
+        "c_l_deltar": -0.03708894041114188
+      },
+      "rank": 6,
+      "scaled_condition": 28.066348764831602,
+      "train": {
+        "rmse": 0.00039891185439391825,
+        "r2": 0.9636317641546723
+      },
+      "validation": {
+        "rmse": 0.00036600734413203716,
+        "r2": 0.97062946602484
+      },
+      "validation_by_maneuver": {
+        "multisine_pitch-commands": {
+          "samples": 570,
+          "rmse": 0.000360953922979723,
+          "r2": 0.9405314804349081
+        },
+        "multisine_roll-commands": {
+          "samples": 568,
+          "rmse": 0.0003669946276672001,
+          "r2": 0.987407246904579
+        },
+        "multisine_yaw-commands": {
+          "samples": 570,
+          "rmse": 0.0003700187506809943,
+          "r2": 0.8326927753391069
+        }
+      }
+    },
+    "pitch": {
+      "coefficients": {
+        "c_m_0": 0.04665625958686804,
+        "c_m_a": -0.6615715702661664,
+        "c_m_q": -19.31485656535876,
+        "c_m_deltae": 0.9880571865611478
+      },
+      "rank": 4,
+      "scaled_condition": 76.49629760633849,
+      "train": {
+        "rmse": 0.0031399424649187126,
+        "r2": 0.9782282135667936
+      },
+      "validation": {
+        "rmse": 0.0031291190904660744,
+        "r2": 0.9602521320835065
+      },
+      "validation_by_maneuver": {
+        "multisine_pitch-commands": {
+          "samples": 570,
+          "rmse": 0.003012886787065727,
+          "r2": 0.9857008669813707
+        },
+        "multisine_roll-commands": {
+          "samples": 568,
+          "rmse": 0.0032718448976948467,
+          "r2": 0.7576572356103549
+        },
+        "multisine_yaw-commands": {
+          "samples": 570,
+          "rmse": 0.0030975649426973006,
+          "r2": 0.8377995977712972
+        }
+      }
+    },
+    "yaw": {
+      "coefficients": {
+        "c_n_0": -1.187627745055745e-05,
+        "c_n_b": 0.20559403315096775,
+        "c_n_p": 0.00880810284237432,
+        "c_n_r": -0.8673542952160289,
+        "c_n_deltaa": 0.0007984073300939934,
+        "c_n_deltar": 0.08501612585350672
+      },
+      "rank": 6,
+      "scaled_condition": 28.066348764831602,
+      "train": {
+        "rmse": 0.00038031941919726355,
+        "r2": 0.7715466415730311
+      },
+      "validation": {
+        "rmse": 0.00038285984118594093,
+        "r2": 0.6583761949852802
+      },
+      "validation_by_maneuver": {
+        "multisine_pitch-commands": {
+          "samples": 570,
+          "rmse": 0.00037237640218245645,
+          "r2": -0.18471835076146803
+        },
+        "multisine_roll-commands": {
+          "samples": 568,
+          "rmse": 0.0003684611059460674,
+          "r2": 0.2064990461635644
+        },
+        "multisine_yaw-commands": {
+          "samples": 570,
+          "rmse": 0.0004065455009419809,
+          "r2": 0.8344066072678405
+        }
+      }
+    },
+    "sideforce": {
+      "coefficients": {
+        "c_y_0": -1.8722742206171622e-05,
+        "c_y_b": -0.9849582210816659,
+        "c_y_p": 0.016948020719674037,
+        "c_y_r": 0.039915535156610914,
+        "c_y_deltaa": -0.0031985926794557027,
+        "c_y_deltar": -0.20142923718468386
+      },
+      "rank": 6,
+      "scaled_condition": 28.066348764831602,
+      "train": {
+        "rmse": 0.0002217857563882769,
+        "r2": 0.9989665613757265
+      },
+      "validation": {
+        "rmse": 0.00021551406792885073,
+        "r2": 0.9958908297036637
+      },
+      "validation_by_maneuver": {
+        "multisine_pitch-commands": {
+          "samples": 570,
+          "rmse": 0.00021907851165766482,
+          "r2": 0.9823924946810044
+        },
+        "multisine_roll-commands": {
+          "samples": 568,
+          "rmse": 0.0002150845131479647,
+          "r2": 0.9943761206497493
+        },
+        "multisine_yaw-commands": {
+          "samples": 570,
+          "rmse": 0.00021232416103003046,
+          "r2": 0.9980293951649015
+        }
+      }
+    },
+    "lift": {
+      "coefficients": {
+        "c_lift_0": 0.5663076963473089,
+        "c_lift_a": 7.017408837644216,
+        "c_lift_q": 1.9711842674801079,
+        "c_lift_deltae": -0.02913409592726611
+      },
+      "rank": 4,
+      "scaled_condition": 76.49629760633849,
+      "train": {
+        "rmse": 0.0002640545909358502,
+        "r2": 0.9999301117559664
+      },
+      "validation": {
+        "rmse": 0.00025401015131382805,
+        "r2": 0.9998505515996343
+      },
+      "validation_by_maneuver": {
+        "multisine_pitch-commands": {
+          "samples": 570,
+          "rmse": 0.0002576002133591352,
+          "r2": 0.9999400782015934
+        },
+        "multisine_roll-commands": {
+          "samples": 568,
+          "rmse": 0.00025075878533911786,
+          "r2": 0.9992496291447658
+        },
+        "multisine_yaw-commands": {
+          "samples": 570,
+          "rmse": 0.0002536136313522972,
+          "r2": 0.9993724069867828
+        }
+      }
+    },
+    "drag": {
+      "coefficients": {
+        "drag_constant": 0.11269016527436282,
+        "drag_alpha": 0.31800925640611005,
+        "drag_alpha2": 2.049804610516864,
+        "c_drag_q": 0.05110295473854166,
+        "c_drag_deltae": 0.0009289163960224604
+      },
+      "rank": 5,
+      "scaled_condition": 492.4468369860128,
+      "train": {
+        "rmse": 0.00028855452307735655,
+        "r2": 0.6343438715862781
+      },
+      "validation": {
+        "rmse": 0.00022203947081240444,
+        "r2": 0.6569120084537825
+      },
+      "validation_by_maneuver": {
+        "multisine_pitch-commands": {
+          "samples": 570,
+          "rmse": 0.00023377845750091405,
+          "r2": 0.8192181098001892
+        },
+        "multisine_roll-commands": {
+          "samples": 568,
+          "rmse": 0.00021733580808372472,
+          "r2": 0.24034179891361163
+        },
+        "multisine_yaw-commands": {
+          "samples": 570,
+          "rmse": 0.00021449966816851376,
+          "r2": 0.2909589398533503
+        }
+      }
+    }
+  },
+  "comparison": [
+    {
+      "model": "roll",
+      "coefficient": "c_l_0",
+      "estimate": -7.117332565952811e-07,
+      "reference": 0.0,
+      "absolute_error": 7.117332565952811e-07,
+      "relative_error_percent": null
+    },
+    {
+      "model": "roll",
+      "coefficient": "c_l_b",
+      "estimate": -0.12330446331750763,
+      "reference": -0.12,
+      "absolute_error": 0.0033044633175076388,
+      "relative_error_percent": 2.7537194312563655
+    },
+    {
+      "model": "roll",
+      "coefficient": "c_l_p",
+      "estimate": -0.9822285366760809,
+      "reference": -1.0,
+      "absolute_error": 0.0177714633239191,
+      "relative_error_percent": 1.77714633239191
+    },
+    {
+      "model": "roll",
+      "coefficient": "c_l_r",
+      "estimate": 0.15668639442432863,
+      "reference": 0.14,
+      "absolute_error": 0.01668639442432862,
+      "relative_error_percent": 11.918853160234729
+    },
+    {
+      "model": "roll",
+      "coefficient": "c_l_deltaa",
+      "estimate": 0.24443010855662584,
+      "reference": 0.25,
+      "absolute_error": 0.005569891443374164,
+      "relative_error_percent": 2.2279565773496657
+    },
+    {
+      "model": "roll",
+      "coefficient": "c_l_deltar",
+      "estimate": -0.03708894041114188,
+      "reference": -0.037,
+      "absolute_error": 8.894041114188012e-05,
+      "relative_error_percent": 0.24037948957264899
+    },
+    {
+      "model": "pitch",
+      "coefficient": "c_m_0",
+      "estimate": 0.04665625958686804,
+      "reference": 0.045,
+      "absolute_error": 0.0016562595868680405,
+      "relative_error_percent": 3.6805768597067563
+    },
+    {
+      "model": "pitch",
+      "coefficient": "c_m_a",
+      "estimate": -0.6615715702661664,
+      "reference": -0.7,
+      "absolute_error": 0.038428429733833536,
+      "relative_error_percent": 5.489775676261934
+    },
+    {
+      "model": "pitch",
+      "coefficient": "c_m_q",
+      "estimate": -19.31485656535876,
+      "reference": -20.0,
+      "absolute_error": 0.6851434346412404,
+      "relative_error_percent": 3.425717173206202
+    },
+    {
+      "model": "pitch",
+      "coefficient": "c_m_deltae",
+      "estimate": 0.9880571865611478,
+      "reference": 1.0,
+      "absolute_error": 0.011942813438852173,
+      "relative_error_percent": 1.1942813438852173
+    },
+    {
+      "model": "yaw",
+      "coefficient": "c_n_0",
+      "estimate": -1.187627745055745e-05,
+      "reference": 0.0,
+      "absolute_error": 1.187627745055745e-05,
+      "relative_error_percent": null
+    },
+    {
+      "model": "yaw",
+      "coefficient": "c_n_b",
+      "estimate": 0.20559403315096775,
+      "reference": 0.25,
+      "absolute_error": 0.04440596684903225,
+      "relative_error_percent": 17.7623867396129
+    },
+    {
+      "model": "yaw",
+      "coefficient": "c_n_p",
+      "estimate": 0.00880810284237432,
+      "reference": 0.022,
+      "absolute_error": 0.01319189715762568,
+      "relative_error_percent": 59.96316889829855
+    },
+    {
+      "model": "yaw",
+      "coefficient": "c_n_r",
+      "estimate": -0.8673542952160289,
+      "reference": -1.0,
+      "absolute_error": 0.13264570478397109,
+      "relative_error_percent": 13.264570478397108
+    },
+    {
+      "model": "yaw",
+      "coefficient": "c_n_deltaa",
+      "estimate": 0.0007984073300939934,
+      "reference": 0.0,
+      "absolute_error": 0.0007984073300939934,
+      "relative_error_percent": null
+    },
+    {
+      "model": "yaw",
+      "coefficient": "c_n_deltar",
+      "estimate": 0.08501612585350672,
+      "reference": 0.1,
+      "absolute_error": 0.014983874146493284,
+      "relative_error_percent": 14.983874146493283
+    },
+    {
+      "model": "sideforce",
+      "coefficient": "c_y_0",
+      "estimate": -1.8722742206171622e-05,
+      "reference": 0.0,
+      "absolute_error": 1.8722742206171622e-05,
+      "relative_error_percent": null
+    },
+    {
+      "model": "sideforce",
+      "coefficient": "c_y_b",
+      "estimate": -0.9849582210816659,
+      "reference": -0.98,
+      "absolute_error": 0.004958221081665881,
+      "relative_error_percent": 0.5059409267006001
+    },
+    {
+      "model": "sideforce",
+      "coefficient": "c_y_p",
+      "estimate": 0.016948020719674037,
+      "reference": 0.0,
+      "absolute_error": 0.016948020719674037,
+      "relative_error_percent": null
+    },
+    {
+      "model": "sideforce",
+      "coefficient": "c_y_r",
+      "estimate": 0.039915535156610914,
+      "reference": 0.0,
+      "absolute_error": 0.039915535156610914,
+      "relative_error_percent": null
+    },
+    {
+      "model": "sideforce",
+      "coefficient": "c_y_deltaa",
+      "estimate": -0.0031985926794557027,
+      "reference": 0.0,
+      "absolute_error": 0.0031985926794557027,
+      "relative_error_percent": null
+    },
+    {
+      "model": "sideforce",
+      "coefficient": "c_y_deltar",
+      "estimate": -0.20142923718468386,
+      "reference": -0.2,
+      "absolute_error": 0.0014292371846838514,
+      "relative_error_percent": 0.7146185923419257
+    },
+    {
+      "model": "lift",
+      "coefficient": "c_lift_0",
+      "estimate": 0.5663076963473089,
+      "reference": 0.56,
+      "absolute_error": 0.006307696347308878,
+      "relative_error_percent": 1.126374347733728
+    },
+    {
+      "model": "lift",
+      "coefficient": "c_lift_a",
+      "estimate": 7.017408837644216,
+      "reference": 6.9,
+      "absolute_error": 0.1174088376442155,
+      "relative_error_percent": 1.7015773571625437
+    },
+    {
+      "model": "lift",
+      "coefficient": "c_lift_q",
+      "estimate": 1.9711842674801079,
+      "reference": 0.0,
+      "absolute_error": 1.9711842674801079,
+      "relative_error_percent": null
+    },
+    {
+      "model": "lift",
+      "coefficient": "c_lift_deltae",
+      "estimate": -0.02913409592726611,
+      "reference": 0.0,
+      "absolute_error": 0.02913409592726611,
+      "relative_error_percent": null
+    },
+    {
+      "model": "drag",
+      "coefficient": "drag_constant",
+      "estimate": 0.11269016527436282,
+      "reference": 0.11412148883929901,
+      "absolute_error": 0.0014313235649361933,
+      "relative_error_percent": 1.254210385347953
+    },
+    {
+      "model": "drag",
+      "coefficient": "drag_alpha",
+      "estimate": 0.31800925640611005,
+      "reference": 0.34799383211129686,
+      "absolute_error": 0.02998457570518681,
+      "relative_error_percent": 8.616410102233369
+    },
+    {
+      "model": "drag",
+      "coefficient": "drag_alpha2",
+      "estimate": 2.049804610516864,
+      "reference": 2.143890572828525,
+      "absolute_error": 0.09408596231166078,
+      "relative_error_percent": 4.388561781282018
+    },
+    {
+      "model": "drag",
+      "coefficient": "c_drag_q",
+      "estimate": 0.05110295473854166,
+      "reference": 0.0,
+      "absolute_error": 0.05110295473854166,
+      "relative_error_percent": null
+    },
+    {
+      "model": "drag",
+      "coefficient": "c_drag_deltae",
+      "estimate": 0.0009289163960224604,
+      "reference": 0.0,
+      "absolute_error": 0.0009289163960224604,
+      "relative_error_percent": null
+    }
+  ],
+  "servo_tau_s": 0.14000000059604645
+}

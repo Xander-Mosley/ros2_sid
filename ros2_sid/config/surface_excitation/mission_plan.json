@@ -1,0 +1,17 @@
+{
+  "units": "normalized_surface",
+  "maneuvers": [
+    {
+      "name": "Roll chirp",
+      "experiment": "chirp.json"
+    },
+    {
+      "name": "Roll multisine with pitch/yaw offsets",
+      "experiment": "multisine.json"
+    },
+    {
+      "name": "Independent roll/pitch/yaw multisines",
+      "experiment": "multisine_all_axes.json"
+    }
+  ]
+}

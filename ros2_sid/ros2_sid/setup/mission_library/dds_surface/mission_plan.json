@@ -1,0 +1,51 @@
+{
+  "name": "dds_surface",
+  "units": "normalized_surface",
+  "maneuvers": [
+    {
+      "filename": "chirp_roll.csv",
+      "name": "roll chirp",
+      "order": 7
+    },
+    {
+      "filename": "multisine_roll.csv",
+      "name": "roll multisine",
+      "order": 1
+    },
+    {
+      "filename": "chirp_pitch.csv",
+      "name": "pitch chirp",
+      "order": 8
+    },
+    {
+      "filename": "multisine_pitch.csv",
+      "name": "pitch multisine",
+      "order": 2
+    },
+    {
+      "filename": "chirp_yaw.csv",
+      "name": "yaw chirp",
+      "order": 9
+    },
+    {
+      "filename": "multisine_yaw.csv",
+      "name": "yaw multisine",
+      "order": 3
+    },
+    {
+      "filename": "doublet_roll.csv",
+      "name": "roll doublet",
+      "order": 4
+    },
+    {
+      "filename": "doublet_pitch.csv",
+      "name": "pitch doublet",
+      "order": 5
+    },
+    {
+      "filename": "doublet_yaw.csv",
+      "name": "yaw doublet",
+      "order": 6
+    }
+  ]
+}

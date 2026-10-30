@@ -1,0 +1,26 @@
+{
+  "units": "normalized_surface",
+  "rate": 50,
+  "duration": 12,
+  "axes": {
+    "pitch": {
+      "signal": "multisine",
+      "amplitude": 0.1,
+      "frequencies": [
+        0.5,
+        1,
+        2
+      ],
+      "amplitudes": [
+        0.03,
+        0.03,
+        0.04
+      ],
+      "phases": [
+        0,
+        1,
+        2
+      ]
+    }
+  }
+}

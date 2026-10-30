@@ -36,8 +36,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ros2_sid.plotter_class import PlotFigure
-from ros2_sid.input_designs import frequency_sweep, multi_step, multi_sine
+from plotter_class import PlotFigure
+from input_designs import frequency_sweep, multi_step, multi_sine
 
 
 __all__ = ['save_maneuver', 'plot_maneuver', 'plot_maneuver_spectrum']
@@ -76,7 +76,7 @@ def save_maneuver(
         raise ValueError("Maneuver must be a 2D numpy array with shape (n_samples, n_channels).")
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    folder = os.path.join(current_dir, "maneuvers")
+    folder = os.path.join(current_dir, "setup", "mission_library")
     os.makedirs(folder, exist_ok=True)
     filepath = os.path.join(folder, str(filename))
     
@@ -252,20 +252,33 @@ def _test_maneuver() -> None:
     # maneuvers must have the shape (N, 4) where the columns (in order) are:
     # time, roll signal, pitch signal, yaw signal; and the first time value must be zero
     # TODO: Justify why these inputs. Why this amplitude, these frequencies, and these time values?
-    amplitude: float = np.deg2rad(7)
-    minimum_frequency: float = 0.1
-    maximum_frequency: float = 1.5
-    natural_frequency: float = 1.0
+    amplitude: float = 0.1
+    # amplitude: float = np.deg2rad(10.)
+    minimum_frequency: float = 0.470
+    maximum_frequency: float = 7.048
+    natural_frequency: float = 4.70
     time_step: float = 0.02
-    final_time: float = 10.
-    time_delay: float = 5.
+    final_time: float = 15.
+    time_delay: float = 7.5
     num_channels: int = 3
+
     time, signal = frequency_sweep(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, 'logarithmic')
     # time, signal = multi_step(amplitude, natural_frequency, [1, 1], time_delay, time_step, final_time)
     # time, signal, *_ = multi_sine(amplitude, minimum_frequency, maximum_frequency, time_step, final_time, num_channels)
+
+    signal = (signal / np.max(np.abs(signal))) * amplitude
+    # signal = (signal / np.max(np.abs(signal), axis=0)) * amplitude
     empty = np.zeros_like(time)
-    pit_trim = np.ones_like(time) * np.deg2rad(-3.5)
-    maneuver = np.column_stack((time, empty, pit_trim, signal))
+    # pit_trim = np.ones_like(time) * np.deg2rad(-3.5)
+
+    # maneuver = np.column_stack((time, signal, empty, empty))
+    # maneuver = np.column_stack((time, empty, signal, empty))
+    maneuver = np.column_stack((time, empty, empty, signal))
+
+    # maneuver = np.column_stack((time, signal[:, 0], empty, empty))
+    # maneuver = np.column_stack((time, empty, signal[:, 1], empty))
+    # maneuver = np.column_stack((time, empty, empty, signal[:, 2]))
+    # maneuver = np.column_stack((time, signal))
 
     save_maneuver(maneuver)
     plot_maneuver(maneuver)

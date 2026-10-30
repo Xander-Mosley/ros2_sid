@@ -1,0 +1,13 @@
+{
+  "units": "normalized_surface",
+  "rate": 50,
+  "duration": 10,
+  "axes": {
+    "pitch": {
+      "signal": "chirp",
+      "amplitude": 0.1,
+      "start_frequency": 0.2,
+      "end_frequency": 3.0
+    }
+  }
+}
